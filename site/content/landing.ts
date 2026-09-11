@@ -2,12 +2,13 @@
 // not a screenshot: agents working, one waiting on you, one done.
 import { BUILTIN_AGENTS } from "../../src/config/agents";
 import { escape } from "./html";
+import { icon } from "./icons";
 
 export const INSTALL = "curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh";
-export const mark = `<svg class="mark" viewBox="0 0 26 32" aria-hidden="true"><path d="M8 30V12a6.5 6.5 0 0 1 13 0v1.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M21 15.5v1.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="17.6" y="17" width="6.8" height="8.2" rx="2" class="mark-lamp"/></svg>`;
+export const mark = (_base = "./") => `<span class="mark" aria-hidden="true"></span>`;
 
 const agentNames = BUILTIN_AGENTS.filter((a) => a.id !== "generic").map((a) => a.name);
-const copyButton = (text: string, label = "copy") => `<button type="button" class="copy" data-copy-text="${escape(text)}">${label}</button>`;
+const copyButton = (text: string, label = "Copy") => `<button type="button" class="copy" aria-label="Copy command" data-copy-text="${escape(text)}">${label}</button>`;
 
 // One pane of the demo session. Its body lines are what the agent has drawn.
 const pane = (id: string, name: string, agent: string, state: string, lines: string[]) => `
@@ -17,7 +18,8 @@ const pane = (id: string, name: string, agent: string, state: string, lines: str
   </div>`;
 
 const demo = `
-<figure class="demo" aria-label="A shepherd session: four agents in panes, one waiting on you">
+<figure class="demo" id="workspace" aria-label="A shepherd session: four agents in panes, one waiting on you">
+  <div class="demo-topline"><span><span class="status-dot"></span> YOUR WORKSPACE</span><span>EXAMPLE SESSION <span class="demo-slash">/</span> 04 PANES</span></div>
   <div class="tui" data-demo>
     <div class="tui-tabs"><span class="tui-space">◈ api ▸</span><span class="tui-tab on">1:@coder</span><span class="tui-tab" data-tab-blocked>2:@reviewer <i>!</i></span><span class="tui-tab">3:tests</span><span class="tui-plus">+</span></div>
     <div class="tui-main">
@@ -25,7 +27,7 @@ const demo = `
         <p class="tui-label">SPACES</p>
         <p class="tui-row sel">api</p><p class="tui-row">web</p><p class="tui-row">infra</p>
         <p class="tui-label">AGENTS / 3</p>
-        <div class="tui-agents" data-agents></div>
+        <div class="tui-agents" data-agents><div class="tui-agent"><span class="amber">!</span> <b>@reviewer</b><small>codex · needs you</small></div><div class="tui-agent focus"><span>◆</span> <b>@coder</b><small>claude-code · working</small></div><div class="tui-agent"><span>✓</span> <b>@docs</b><small>opencode · done</small></div></div>
         <p class="tui-foot">⚙ settings</p>
       </aside>
       <div class="tui-panes">
@@ -55,108 +57,41 @@ const demo = `
       </div>
     </div>
     <div class="tui-status"><span class="seg on">◧ sidebar</span><span class="seg acc">+ agent</span><span class="seg working" data-count-working>◆ 1 working</span><span class="seg blocked" data-count-blocked>! 1 need you</span><span class="spacer"></span><span class="seg">4 panes</span><span class="seg theme">◐ nightwatch</span></div>
-    <div class="tui-toast" data-toast role="status"></div>
+    <div class="tui-toast" data-toast aria-live="off"></div>
   </div>
-  <figcaption>Live, not a screenshot: this is what shepherd draws. <span data-caption>@reviewer is waiting on you.</span></figcaption>
+  <figcaption><span><span class="caption-dot"></span><span data-caption>@reviewer is waiting on you.</span></span><button type="button" data-demo-pause aria-pressed="false">Pause demo ${icon("pause-linear")}</button></figcaption>
 </figure>`;
 
+
+const storyVisuals = [
+  `<div class="story-screen attention-screen"><div class="screen-header"><span>AGENT ACTIVITY</span><span>03 CONNECTED</span></div><div class="activity-row needs"><span class="activity-symbol">!</span><div><strong>@reviewer</strong><small>codex</small></div><span class="activity-state">Needs you<span class="status-dot"></span></span></div><div class="activity-row"><span class="activity-symbol">↗</span><div><strong>@coder</strong><small>claude-code</small></div><span class="activity-state">Working</span></div><div class="activity-row"><span class="activity-symbol">✓</span><div><strong>@docs</strong><small>opencode</small></div><span class="activity-state">Done</span></div><div class="permission"><span>FROM @reviewer</span><p>Ready to push the changes.<br>May I continue?</p><div><span class="permission-option">↵ Allow command</span><span>esc Cancel</span></div></div><div class="screen-bottom"><span class="status-dot"></span> One agent needs your attention.</div></div>`,
+  `<div class="story-screen layout-screen"><div class="screen-header"><span>WORKSPACE / API</span><span>03 PANES</span></div><div class="split-demo"><div class="build-pane"><span>01 / @coder</span><strong>claude</strong><p>Refactoring session middleware…</p><div class="code-strokes" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div><div><span>02 / @reviewer</span><strong>codex</strong><p>Reviewing changes.</p></div><div><span>03 / @tests</span><strong>bun test</strong><p>214 passed.</p></div></div><div class="screen-bottom"><kbd>Ctrl+B</kbd><span>One prefix. Every pane.</span></div></div>`,
+  `<div class="story-screen resume-screen"><div class="screen-header"><span>SESSION / API</span><span>RUNNING</span></div><div class="session-command"><span>$</span> shepherd detach</div><div class="session-track"><span>Terminal closed</span><span class="session-track-line"></span><span class="session-live"><span class="status-dot"></span> Server running</span></div><div class="session-command"><span>$</span> shepherd attach</div><div class="restored"><span>${icon("check-circle-linear")}</span><div><strong>Welcome back.</strong><p>Same panes. Same conversations.</p></div></div><div class="screen-bottom">Your session has a life beyond the window.</div></div>`,
+];
+const stories = [
+  { label: "01 / ATTENTION", title: "Know when<br>you’re needed.", text: "A permission prompt. A question. A finished task. Shepherd reads the terminal and brings the agent that needs you to the top.", detail: "Follow the signal in the pane, sidebar, or a notification. Connect agent hooks for richer state detection.", link: "How detection works", url: "docs/agents/" },
+  { label: "02 / COORDINATION", title: "A place for<br>every agent.", text: "Spaces for projects. Tabs for context. Real terminal panes, arranged your way—with every agent’s full interface intact.", detail: "Agents can spawn a reviewer, wait for tests, and message another pane through shell commands or MCP.", link: "Explore the workflow", url: "docs/quick-start/" },
+  { label: "03 / CONTINUITY", title: "Leave the window.<br>Keep the work.", text: "A background server owns your panes. Detach, reattach, or connect over SSH. Your running session stays with you.", detail: "After a reboot, restore your layout and resume supported agents in their previous conversations.", link: "Read the documentation", url: "docs/introduction/" },
+];
+
 export function landing(o: { version: string; repo: string }) {
-  const herd = agentNames.map((n) => `<li>${escape(n)}</li>`).join("");
-  return `
-<div class="night" aria-hidden="true"></div>
-<header class="top">
-  <a class="brand" href="./" aria-label="shepherd home">${mark}<span>shepherd</span></a>
-  <nav aria-label="Main"><a href="docs/introduction/">Docs</a><a href="docs/agents/">Agents</a><a href="#start">Install</a><a href="${o.repo}" rel="noopener">GitHub ↗</a></nav>
-  <span class="version-pill">v${escape(o.version)}</span>
+  return `<header class="top landing-top">
+  <a class="brand" href="./" aria-label="Shepherd home">${mark()}<span>shepherd</span></a>
+  <nav class="desktop-nav" aria-label="Main"><a href="#workflow">Workflow</a><a href="docs/introduction/">Documentation</a><a href="${o.repo}">GitHub ${icon("arrow-right-up-linear")}</a></nav>
+  <a class="nav-install" href="#start">Get shepherd ${icon("arrow-right-up-linear")}</a>
+  <button class="mobile-menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-nav" data-nav-toggle>${icon("hamburger-menu-linear")}</button>
+  <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" hidden><a href="#workflow">Workflow</a><a href="docs/introduction/">Documentation</a><a href="${o.repo}">GitHub</a><a href="#start">Install shepherd</a></nav>
 </header>
 <main id="main">
-  <section class="hero">
-    <svg class="hero-art" viewBox="0 0 320 460" aria-hidden="true">
-      <defs>
-        <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffc964" stop-opacity=".55"/><stop offset=".45" stop-color="#f5a524" stop-opacity=".16"/><stop offset="1" stop-color="#f5a524" stop-opacity="0"/></radialGradient>
-        <linearGradient id="pane" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd98a"/><stop offset="1" stop-color="#f5a524"/></linearGradient>
-      </defs>
-      <circle class="art-glow" cx="228" cy="262" r="150" fill="url(#glow)"/>
-      <path d="M110 452V150a82 82 0 0 1 164 0v26" fill="none" stroke="#e8ecf5" stroke-width="9" stroke-linecap="round"/>
-      <path d="M274 176v30" stroke="#a7b1ca" stroke-width="3" stroke-dasharray="4 5" stroke-linecap="round"/>
-      <g class="art-lamp">
-        <path d="M252 214h44l-6 -10h-32z" fill="#2a3760"/>
-        <rect x="248" y="214" width="52" height="66" rx="10" fill="#141d36" stroke="#2a3760" stroke-width="3"/>
-        <rect x="258" y="224" width="32" height="46" rx="6" fill="url(#pane)"/>
-        <path d="M274 236c6 7 6 14 0 22c-6-8-6-15 0-22z" fill="#fff4dc" opacity=".85"/>
-        <rect x="244" y="280" width="60" height="8" rx="4" fill="#2a3760"/>
-      </g>
-      <g fill="#e8ecf5"><circle cx="40" cy="60" r="1.6"/><circle cx="80" cy="24" r="1"/><circle cx="300" cy="40" r="1.4"/><circle cx="20" cy="190" r="1"/><circle cx="190" cy="16" r="1.2"/></g>
-    </svg>
-    <p class="eyebrow"><span class="lamp" aria-hidden="true"></span>open source · macOS &amp; Linux · a terminal multiplexer for coding agents</p>
-    <h1>Every agent.<br><span>One terminal.</span></h1>
-    <p class="lede">Shepherd runs Claude Code, Codex and ${agentNames.length - 2} other agents side by side in real terminal panes — and lights a lantern the moment one of them <em>needs you</em>.</p>
-    <div class="install" data-install><span class="prompt" aria-hidden="true">$</span><code>${escape(INSTALL)}</code>${copyButton(INSTALL)}</div>
-    <div class="actions"><a class="btn lantern" href="docs/quick-start/">Take the five-minute tour</a><a class="btn" href="docs/introduction/">Read the docs</a></div>
-  </section>
-
+<section class="hero">
+  <div class="hero-meta"><p class="eyebrow"><span class="status-dot"></span> A TERMINAL FOR CODING AGENTS</p><a class="release" href="${o.repo}/releases">v${escape(o.version)} <span> / </span> OPEN SOURCE ${icon("arrow-right-up-linear")}</a></div>
+  <div class="hero-heading"><h1 data-reveal>Your agents.<br><span class="headline-muted">Under control.</span></h1><div class="hero-copy"><p>Claude Code. Codex. Your whole crew.<br>Run them side by side, and know<br class="desktop-break"> exactly who needs you.</p><div class="hero-actions"><a class="button primary" href="#start">Install shepherd ${icon("arrow-right-up-linear")}</a><a class="quiet-link" href="docs/introduction/">Read the docs ${icon("arrow-right-linear")}</a></div><p class="platforms">macOS &amp; Linux <span>·</span> Free &amp; open source</p></div></div>
   ${demo}
-
-  <section class="herd" aria-label="Agents shepherd knows">
-    <p class="section-tag">${agentNames.length} agents, recognised on sight</p>
-    <div class="herd-track"><ul>${herd}</ul><ul aria-hidden="true">${herd}</ul></div>
-  </section>
-
-  <section class="chapters">
-    <article class="chapter">
-      <span class="num">01</span>
-      <h2>Know who needs you.</h2>
-      <p>A permission prompt, a question, a finished task: shepherd reads each agent's screen, title and progress and sorts them — <b class="t-blocked">needs you</b>, <b class="t-working">working</b>, <b class="t-done">done</b>. The pane, its tab and the sidebar light up; you get a toast, a system notification or one of 17 sounds.</p>
-      <div class="vignette states"><span class="s blocked">! @reviewer <i>codex · needs you</i></span><span class="s working">◆ @coder <i>claude-code · working</i></span><span class="s done">✓ @docs <i>opencode · done</i></span></div>
-    </article>
-    <article class="chapter">
-      <span class="num">02</span>
-      <h2>Real terminals, arranged your way.</h2>
-      <p>Spaces for projects, tabs inside them, panes split any way you like. Every pane is a true PTY — your shell, your tools, the agent's full interface. Drive it all with <kbd>Ctrl+B</kbd> or the mouse: drag borders, right-click for menus.</p>
-      <div class="vignette split"><i></i><i></i><i class="hot"></i><i></i></div>
-    </article>
-    <article class="chapter">
-      <span class="num">03</span>
-      <h2>Agents that work together.</h2>
-      <p>From inside any pane, an agent can split a pane for the tests, spawn a reviewer, wait on it and message it — through plain shell commands or MCP. Hop counts and rate limits keep two agents from talking forever.</p>
-      <pre class="vignette cli"><code><span class="amber">$</span> shepherd agent spawn codex --name reviewer
-<span class="amber">$</span> shepherd wait @reviewer --state idle
-<span class="amber">$</span> shepherd send @reviewer "fixed — re-check?"</code></pre>
-    </article>
-    <article class="chapter">
-      <span class="num">04</span>
-      <h2>Close the laptop. Nothing stops.</h2>
-      <p>A background server owns every pane: detach, reattach, work over ssh with <code>--remote</code>. Reboot, and your layout comes back with each agent resumed in the exact conversation it was having.</p>
-      <div class="vignette resume"><span>claude --resume 7f3c…</span><span>codex resume 019a…</span><span>opencode --session ses_4b…</span></div>
-    </article>
-  </section>
-
-  <section class="knows">
-    <div class="knows-copy">
-      <p class="section-tag">How shepherd knows</p>
-      <h2>It reads the screen.<br><span>Then it asks the agent.</span></h2>
-      <p>Every agent comes with a manifest of rules over the live bottom of its screen, its terminal title and its progress signal. No setup, nothing to install. For more, <code>shepherd integration install all</code> connects each agent's own hooks: exact session resume for all of them, and exact state for the ones whose hooks see every step.</p>
-      <a class="text-link" href="docs/agents/">How detection works →</a>
-    </div>
-    <div class="knows-art">
-      <div class="screen-card"><p class="dim">codex · bottom of the screen</p><p>• Ran pnpm lint — clean</p><p class="hit">Press enter to confirm or esc to cancel</p></div>
-      <div class="rule-card"><p><span class="dim">rule</span> live_strong_blocker</p><p><span class="dim">region</span> after_last_prompt_marker</p><p><span class="dim">then</span> <b class="t-blocked">needs you</b></p></div>
-    </div>
-  </section>
-
-  <section class="start" id="start">
-    <p class="section-tag">Start</p>
-    <h2>Three steps to a quieter terminal.</h2>
-    <ol class="steps">
-      <li><span>1</span><h3>Install</h3><div class="install small"><code>${escape(INSTALL)}</code>${copyButton(INSTALL)}</div></li>
-      <li><span>2</span><h3>Open a session</h3><div class="install small"><code>shepherd</code>${copyButton("shepherd")}</div></li>
-      <li><span>3</span><h3>Bring an agent</h3><p><kbd>Ctrl+B</kbd> <kbd>a</kbd> and pick one — or just run <code>claude</code> in a pane.</p></li>
-    </ol>
-  </section>
-
-  <section class="finale">
-    <h2>Go on.<br><span>Start the herd.</span></h2>
-    <div class="actions"><a class="btn lantern" href="docs/install/">Install shepherd</a><a class="btn" href="${o.repo}" rel="noopener">Star it on GitHub ↗</a></div>
-  </section>
+  <div class="hero-bottom"><span>Your tools. Your shell. One terminal.</span><a href="#workflow">Find your flow ${icon("arrow-down-linear")}</a></div>
+</section>
+<section class="workflow" id="workflow"><div class="workflow-heading"><p class="eyebrow">BUILT AROUND YOUR ATTENTION</p><h2 data-reveal>Stay with the work.</h2><p>Shepherd keeps the moving parts in view.<br>You decide where to go next.</p></div><div class="story-layout"><div class="story-copy">${stories.map((story, i) => `<article class="story" data-story="${i}"><p class="eyebrow">${story.label}</p><h3 data-reveal>${story.title}</h3><p class="story-lede">${story.text}</p><p class="story-detail">${story.detail}</p><a class="text-link" href="${story.url}">${story.link} ${icon("arrow-right-linear")}</a><div class="mobile-visual">${storyVisuals[i]}</div></article>`).join("")}</div><div class="story-stage" aria-hidden="true"><div class="stage-label"><span>THE WORKSPACE, IN PRACTICE</span><span data-story-count>01 / 03</span></div>${storyVisuals.map((visual,i) => `<div class="story-panel" data-panel="${i}">${visual}</div>`).join("")}<div class="stage-progress"><i class="on"></i><i></i><i></i></div></div></div></section>
+<section class="compatibility"><p class="eyebrow">ALREADY SPEAKS THEIR LANGUAGE</p><div><p>Claude Code<span>/</span>Codex<span>/</span>Gemini CLI<span>/</span>OpenCode</p><a class="text-link" href="docs/agents/">All ${agentNames.length} supported agents ${icon("arrow-right-linear")}</a></div></section>
+<section class="start" id="start"><div class="start-heading"><p class="eyebrow">YOUR NEXT SESSION</p><h2 data-reveal>Bring everyone<br>together.</h2><p>One install. Then get back to building.</p><a class="text-link" href="docs/quick-start/">Take the five-minute tour ${icon("arrow-right-linear")}</a></div><ol class="install-steps"><li><div class="step-title"><span>01</span><h3>Install shepherd</h3><small>macOS &amp; Linux</small></div><div class="install"><span class="prompt">$</span><code>${escape(INSTALL)}</code>${copyButton(INSTALL)}</div></li><li><div class="step-title"><span>02</span><h3>Open a session</h3></div><div class="install"><span class="prompt">$</span><code>shepherd</code>${copyButton("shepherd")}</div></li><li><div class="step-title"><span>03</span><h3>Bring your agents</h3></div><p>Press <kbd>Ctrl+B</kbd> then <kbd>a</kbd> to pick an agent.<br>Or run <code>claude</code> in any pane.</p></li></ol></section>
+<section class="closing"><span class="closing-title">Your terminal. A little more together.</span><a href="${o.repo}">Build with us on GitHub ${icon("arrow-right-up-linear")}</a></section>
 </main>`;
 }

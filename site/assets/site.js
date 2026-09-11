@@ -18,7 +18,20 @@
 
   // ---------- copy ----------
   const copy = async (button, text) => {
-    try { await navigator.clipboard.writeText(text); } catch { return; }
+    try { await navigator.clipboard.writeText(text); } catch {
+      const source = button.closest(".install, .code")?.querySelector("code");
+      if (source) {
+        const range = document.createRange();
+        range.selectNodeContents(source);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      const label = button.textContent;
+      button.textContent = "Press ⌘/Ctrl+C";
+      setTimeout(() => { button.textContent = label; }, 2500);
+      return;
+    }
     const was = button.textContent;
     button.textContent = "copied";
     button.classList.add("done");

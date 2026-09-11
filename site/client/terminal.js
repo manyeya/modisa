@@ -1,8 +1,8 @@
 // The home page's live session: agents change state the way they do in shepherd — @reviewer asks,
 // you approve, @coder finishes while you look away, @reviewer asks again. Still under reduced motion.
-(() => {
+export function initDemo() {
   const tui = document.querySelector("[data-demo]");
-  if (!tui) return;
+  if (!tui) return () => {};
   const $ = (s) => tui.querySelector(s);
   const panes = Object.fromEntries([...tui.querySelectorAll("[data-pane]")].map((p) => [p.dataset.pane, p]));
   const original = Object.fromEntries(Object.entries(panes).map(([k, p]) => [k, p.querySelector(".pane-body").innerHTML]));
@@ -47,6 +47,9 @@
     sidebar();
     say("@reviewer is waiting on you.");
   };
+  const controller = new AbortController();
+  const { signal } = controller;
+  const timers = [];
   reset();
   const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
   const pauseButton = document.querySelector("[data-demo-pause]");
@@ -57,28 +60,27 @@
     pauseButton.setAttribute("aria-pressed", String(paused));
     pauseButton.innerHTML = paused ? 'Play demo <span aria-hidden="true">▷</span>' : 'Pause demo <span aria-hidden="true">Ⅱ</span>';
   };
-  pauseButton?.addEventListener("click", () => { paused = !paused; paintPause(); });
-  motionPreference.addEventListener("change", (event) => { paused = event.matches; paintPause(); });
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; }).observe(tui);
-  }
+  pauseButton?.addEventListener("click", () => { paused = !paused; paintPause(); }, { signal });
+  motionPreference.addEventListener("change", (event) => { paused = event.matches; paintPause(); }, { signal });
+  const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; syncRunning(); });
+  observer.observe(tui);
   const inactive = () => paused || !visible || document.hidden;
   paintPause();
 
   // @coder's live output, typed out a line at a time
   const lines = ["● Update src/auth/middleware.ts +54 −20", "● Run pnpm test auth", "● Update src/auth/rotate.ts +22 −3"];
   let line = 0, char = 0;
-  setInterval(() => {
+  const typeOutput = () => {
     if (inactive()) return;
     const stream = tui.querySelector("[data-stream]");
     if (!stream) return;
     char++;
     if (char > lines[line].length + 14) { char = 0; line = (line + 1) % lines.length; }
     stream.innerHTML = `<span class="ok">${lines[line].slice(0, 1)}</span>${lines[line].slice(1, char)}`;
-  }, 45);
+  };
   const spin = ["✻", "✢", "✳", "✶", "✽"];
   let s = 0;
-  setInterval(() => { if (inactive()) return; const el = tui.querySelector("[data-spinner]"); if (el) el.textContent = spin[s++ % spin.length]; }, 180);
+  const spinOutput = () => { if (inactive()) return; const el = tui.querySelector("[data-spinner]"); if (el) el.textContent = spin[s++ % spin.length]; };
 
   const steps = [
     () => { reset(); toast("@reviewer is blocked — needs you"); },
@@ -101,5 +103,16 @@
     },
   ];
   let step = 0;
-  setInterval(() => { if (inactive()) return; step = (step + 1) % steps.length; steps[step](); }, 5000);
-})();
+  const nextStep = () => { if (inactive()) return; step = (step + 1) % steps.length; steps[step](); };
+  function syncRunning() {
+    timers.splice(0).forEach(clearInterval);
+    if (!inactive()) timers.push(setInterval(typeOutput, 45), setInterval(spinOutput, 180), setInterval(nextStep, 5000));
+  }
+  pauseButton?.addEventListener("click", syncRunning, { signal });
+  motionPreference.addEventListener("change", syncRunning, { signal });
+  document.addEventListener("visibilitychange", syncRunning, { signal });
+  window.addEventListener("blur", () => { visible = false; syncRunning(); }, { signal });
+  window.addEventListener("focus", () => { const rect = tui.getBoundingClientRect(); visible = rect.bottom > 0 && rect.top < innerHeight; syncRunning(); }, { signal });
+  syncRunning();
+  return () => { controller.abort(); observer.disconnect(); timers.forEach(clearInterval); clearTimeout(toastTimer); reset(); };
+}

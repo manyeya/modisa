@@ -14,15 +14,15 @@ const pages: Page[] = [...guide, ...reference];
 const tag = (await Bun.$`git describe --tags --abbrev=0 --match v*`.quiet().nothrow().text()).trim();
 const version = (Bun.env.SHEPHERD_VERSION || tag || "0.1.0").replace(/^v/, "");
 
-const fonts = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700;800&display=swap">`;
+const fonts = `<link rel="preload" href="__BASE__assets/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>`;
 
 function shell(o: { title: string; description: string; body: string; base: string; path: string; landing?: boolean }) {
   return `<!doctype html><html lang="en" data-theme="night"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(o.title)}</title><meta name="description" content="${escape(o.description)}">
 <meta property="og:title" content="${escape(o.title)}"><meta property="og:description" content="${escape(o.description)}"><meta property="og:type" content="website"><meta property="og:image" content="${site}assets/social.png"><meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="${site}${o.path}"><link rel="icon" type="image/svg+xml" href="${o.base}assets/favicon.svg"><meta name="theme-color" content="#0b1020">
+<link rel="canonical" href="${site}${o.path}"><link rel="icon" type="image/png" href="${o.base}assets/shepherd-mark.png"><meta name="theme-color" content="#0b0b0d">
 <script>try{var t=localStorage.getItem("shepherd-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
-${fonts}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/landing.css"><script defer src="${o.base}assets/landing.js"></script>` : ""}<script defer src="${o.base}assets/site.js"></script>
+${fonts.replace("__BASE__", o.base)}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/terminal.css"><link rel="stylesheet" href="${o.base}assets/landing.css"><link rel="stylesheet" href="${o.base}assets/motion.css"><script type="module" src="${o.base}assets/motion.js"></script>` : ""}<script defer src="${o.base}assets/site.js"></script>
 </head><body class="${o.landing ? "is-landing" : "is-docs"}" data-base="${o.base}"><a class="skip" href="#main">Skip to content</a>
 ${o.body}
 ${footer(o.base)}
@@ -30,7 +30,7 @@ ${search()}</body></html>`;
 }
 
 function footer(base: string) {
-  return `<footer class="foot"><a class="brand" href="${base}">${mark}<span>shepherd</span></a><p>A terminal for your agents. Open source, built with Bun and OpenTUI.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
+  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>shepherd.</span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
 }
 
 function search() {
@@ -38,7 +38,7 @@ function search() {
 }
 
 function docsHeader(base: string) {
-  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="shepherd home">${mark}<span>shepherd</span></a><span class="top-tag">docs</span><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search</span><kbd>/</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
+  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="shepherd home">${mark(base)}<span>shepherd.</span></a><span class="top-tag">docs</span><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search</span><kbd>/</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
 }
 
 function docsPage(page: Page, index: number) {
@@ -67,9 +67,11 @@ const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&gt;/g, "
 
 await Bun.$`rm -rf ${out}`;
 for (const f of await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: `${root}/assets` }))) await Bun.write(`${out}/assets/${f}`, Bun.file(`${root}/assets/${f}`));
+const motion = await Bun.build({ entrypoints: [`${root}/client/motion.js`], outdir: `${out}/assets`, target: "browser", minify: true, naming: "motion.[ext]" });
+if (!motion.success) throw new AggregateError(motion.logs, "Site animation bundle failed");
 await Bun.write(`${out}/install.sh`, Bun.file(`${root}/../install.sh`));
 await Bun.write(`${out}/.nojekyll`, "");
-await Bun.write(`${out}/index.html`, shell({ title: "shepherd — every agent, one terminal", description: "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.", body: landing({ version, repo }), base: "./", path: "", landing: true }));
+await Bun.write(`${out}/index.html`, shell({ title: "Shepherd — your agents, under control", description: "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.", body: landing({ version, repo }), base: "./", path: "", landing: true }));
 for (const [i, page] of pages.entries()) await Bun.write(`${out}/docs/${page.slug}/index.html`, docsPage(page, i));
 await Bun.write(`${out}/docs/index.html`, `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=introduction/"><link rel="canonical" href="${site}docs/introduction/"><a href="introduction/">Documentation</a>`);
 await Bun.write(`${out}/search.json`, JSON.stringify(pages.flatMap((p) => [

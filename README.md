@@ -184,3 +184,7 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 - `site/` — the docs site: `build.ts` (a dependency-free static generator), `content/` (the landing page and docs), `assets/` (CSS, JS, icons)
 - `.github/` — CI, the release workflow and its scripts; `install.sh` is the installer
 - `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `shepherd hook`
+
+## License
+
+[MIT](LICENSE). The agent detection manifests in `src/config/agents/manifests` are third-party files under the Apache License 2.0 (see the `LICENSE` and `NOTICE` there); the site's bundled fonts carry their own licenses in `site/assets/fonts`.
