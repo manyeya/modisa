@@ -45,8 +45,10 @@ test("prefix keys: split, focus, zoom, tabs", async () => {
 
 test.skipIf(!Bun.which("zsh"))("zsh panes own their tty, and an agent typed into a plain pane is detected", async () => {
   // started from inside another agent's session: its markers must not reach the panes
-  // an empty ZDOTDIR: with no .zshrc, zsh on some systems (Ubuntu) opens its new-user setup menu instead
+  // a bare zsh config: no .zshrc makes zsh on Ubuntu open its new-user menu, and the system zshrc's
+  // compinit can stop to ask about "insecure directories" (on CI runners) — both would eat the typing
   await Bun.write(`${sb.root}/zdot/.zshrc`, "");
+  await Bun.write(`${sb.root}/zdot/.zshenv`, "skip_global_compinit=1\n");
   const server = await startServer(sb, "zsh", { SHELL: Bun.which("zsh")!, ZDOTDIR: `${sb.root}/zdot`, CLAUDECODE: "1", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_USE_BEDROCK: "keep" });
   const z = (...a: string[]) => sb.cli("zsh", a);
   // the shell has a controlling terminal (bash takes one itself; zsh only gets one via __pty-exec)
