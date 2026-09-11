@@ -45,7 +45,9 @@ test("prefix keys: split, focus, zoom, tabs", async () => {
 
 test.skipIf(!Bun.which("zsh"))("zsh panes own their tty, and an agent typed into a plain pane is detected", async () => {
   // started from inside another agent's session: its markers must not reach the panes
-  const server = await startServer(sb, "zsh", { SHELL: Bun.which("zsh")!, CLAUDECODE: "1", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_USE_BEDROCK: "keep" });
+  // an empty ZDOTDIR: with no .zshrc, zsh on some systems (Ubuntu) opens its new-user setup menu instead
+  await Bun.write(`${sb.root}/zdot/.zshrc`, "");
+  const server = await startServer(sb, "zsh", { SHELL: Bun.which("zsh")!, ZDOTDIR: `${sb.root}/zdot`, CLAUDECODE: "1", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_USE_BEDROCK: "keep" });
   const z = (...a: string[]) => sb.cli("zsh", a);
   // the shell has a controlling terminal (bash takes one itself; zsh only gets one via __pty-exec)
   const probe = await z("pane", "split", "--name", "probe", "ps -o tty= -p $$");

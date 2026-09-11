@@ -110,8 +110,8 @@ jobs:
           gh release create staging dist/* --target "$GITHUB_SHA" --title "shepherd $VERSION (staging)" --notes-file notes.md --prerelease
 
   pages:
-    needs: [version, publish]
-    if: always() && github.ref_name == 'main' && needs.version.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    needs: [test, version, publish]
+    if: always() && github.ref_name == 'main' && needs.test.result == 'success' && needs.version.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     runs-on: ubuntu-24.04
     environment:
       name: github-pages
