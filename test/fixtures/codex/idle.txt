@@ -1,0 +1,15 @@
+codex -a on-request -s read-only
+manyeya@manyeyas-MacBook-Air shepard % codex -a on-request -s read-only
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                     │
+│                                                │
+│ model:     gpt-6-astra high   /model to change │
+│ directory: ~/Documents/Code/shepard            │
+╰────────────────────────────────────────────────╯
+
+  Tip: Use /fork to branch the current chat into a new thread.
+
+
+› Ask Codex to do anything
+
+  gpt-6-astra high · ~/Documents/Code/shepard

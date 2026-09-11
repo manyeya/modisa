@@ -1,0 +1,4 @@
+› Run the tests
+• Working (4s • esc to interrupt)
+› Ask Codex to do anything
+  gpt-6-astra high · ~/Documents/Code/shepard

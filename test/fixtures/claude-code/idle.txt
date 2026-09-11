@@ -1,0 +1,12 @@
+ ▐▛███▛█   Claude Code v2.1.268
+▝▜██████▀  Opus 5 with high effort · Claude Pro
+  ▝▝ ▝▝    ~/Documents/Code/shepard · /rc
+❯ Use the Bash tool to run exactly: touch /tmp/shepherd-perm-test
+  Ran 1 shell command
+  ⎿  Interrupted · What should Claude do instead?
+✻ Churned for 3s · done 12:41 AM
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_…
+  ⏸ manual mode on · ? for shortcuts

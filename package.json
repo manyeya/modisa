@@ -1,0 +1,27 @@
+{
+  "name": "shepherd",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "shepherd": "src/main.ts"
+  },
+  "scripts": {
+    "start": "bun src/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build --compile src/main.ts --outfile dist/shepherd && (command -v codesign >/dev/null && codesign --remove-signature dist/shepherd && codesign -s - dist/shepherd || true)"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@opentui/core": "^0.5.11",
+    "libghostty-vt": "^0.6.3",
+    "zod": "^4.6.1"
+  }
+}

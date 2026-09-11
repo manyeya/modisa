@@ -1,0 +1,36 @@
+
+ ▐▛███▛█   Claude Code v2.1.268
+▝▜██████▀  Opus 5 with high effort · Claude Pro
+  ▝▝ ▝▝    ~/Documents/Code/shepard · /rc
+
+
+❯ Write the numbers 1 to 150 separated by spaces, then stop.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✳ Gitifying…
+                                                                                                    ● high · /effort
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_…
+  ⏸ manual mode on · esc to interrupt

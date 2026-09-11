@@ -1,0 +1,8 @@
+❯ refactor the parser
+⏺ I found two ways to split parser.ts. Do you want to proceed with the smaller one? Would you like to see both?
+  Esc to cancel is how you'd stop me mid-way, by the way.
+✻ Baked for 12s · done 12:22 AM
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
