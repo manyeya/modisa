@@ -58,7 +58,9 @@ test.skipIf(!Bun.which("zsh"))("zsh panes own their tty, and an agent typed into
   expect(await z("pane", "read", envProbe)).toContain("marker=none setting=keep");
   // launching an agent by hand in an ordinary shell pane
   await z("pane", "run", "p1", "fakeagent");
-  expect(await z("wait", "p1", "--state", "working", "--timeout", "10")).toBe("working");
+  const state = await z("wait", "p1", "--state", "working", "--timeout", "10");
+  if (state !== "working") console.log("zsh pane diagnostics:\n", await z("pane", "read", "p1"), "\n", await z("debug", "detect", "p1"), "\n", await Bun.$`ps -A -o pid=,ppid=,tpgid=,tty=,args=`.text());
+  expect(state).toBe("working");
   expect(await z("agent", "list")).toMatch(/p1\s+fakeagent/);
   await z("kill", "zsh");
   await server.exited;

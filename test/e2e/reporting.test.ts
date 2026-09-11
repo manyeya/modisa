@@ -45,8 +45,9 @@ test("a reported session id is resumed exactly after a server restart", async ()
   expect(JSON.parse(await cli("pane", "list", "--json")).find((p: any) => p.name === "fake").session).toMatchObject({ agent: "fakeagent", id: "sess-42" });
   await Bun.sleep(1500); // debounced save
   await cli("restart");
-  for (let i = 0; i < 120 && !(await cli("pane", "read", "@fake")).includes("--resume"); i++) await Bun.sleep(250); // CI machines restart slowly
-  expect(await cli("pane", "read", "@fake")).toContain("fakeagent --resume 'sess-42'");
+  const launched = () => Bun.file(`${sb.root}/fakeagent.log`).text().catch(() => "");
+  for (let i = 0; i < 120 && !(await launched()).includes("--resume"); i++) await Bun.sleep(250); // CI machines restart slowly
+  expect(await launched()).toContain("--resume sess-42");
 }, 60000);
 
 test("agents' hooks report through `shepherd hook`: sessions for most, state for lifecycle agents", async () => {
