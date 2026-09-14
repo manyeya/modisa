@@ -23,10 +23,14 @@ agents
   shepherd report [pane] [--state s] [--source id] [--agent id] [--seq n] [--session-id id] [--release]   (integrations)
 
 plugins (examples/plugins/README.md)
-  shepherd plugin list [--json] | logs <name> [--lines 50]
-  shepherd plugin link <dir> | unlink <name>   a directory with a plugin.json; it starts with the server (shepherd restart);
-                                              unlink also stops it in the session
-  shepherd plugin run <name> <action> [json]   call an action a running plugin offers
+  shepherd plugin new <name> [--dir d]        scaffold one: TypeScript, shepherd's client library, a guide, a test
+  shepherd plugin check <dir> | dev <dir>     verify it in a throwaway session | try it in one (not a sandbox)
+  shepherd plugin sdk | schema                the client library's source | every request, result and event (JSON Schema)
+  shepherd plugin list [--json] | logs <name> [--lines 50] | stop <name> | start <name>
+  shepherd plugin link <dir> | unlink <name>   link: it starts with the server (shepherd restart). unlink removes the
+                                              link and stops it in this session only; other sessions keep theirs
+  shepherd plugin run <name> <action> [json]   call an action a running plugin offers. A timeout means its outcome is
+                                              unknown: running it again can repeat its effects
 
 workspace
   shepherd workspace create [name] [--cwd dir] | workspace list

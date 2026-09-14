@@ -60,6 +60,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await cli("kill", S);
   await cli("kill", "slow");
+  await cli("kill", "tiny");
   await sb.cleanup();
 });
 
@@ -197,6 +198,15 @@ test("a client that stops reading is disconnected once its queue passes the limi
   expect((await Bun.file(out).text()).length).toBeLessThan(floodText); // it was cut off, not sent everything
   healthy.conn.close();
 }, 120000);
+
+test("a single message bigger than the limit closes that connection, even with nothing else waiting", async () => {
+  await startServer(sb, "tiny", { SHEPHERD_WRITE_QUEUE_LIMIT: "4096" });
+  await sb.run("tiny", ["pane", "run", "p1", "seq 1 3000"]);
+  expect((await sb.run("tiny", ["wait", "p1", "--match", "^3000$", "--timeout", "10"])).code).toBe(0);
+  const big = await sb.run("tiny", ["pane", "read", "p1", "--lines", "3000", "--json"]); // ~13 KB in one reply
+  expect(big.code).toBe(3); // its connection closed under it
+  expect((await sb.run("tiny", ["pane", "list"])).code).toBe(0); // a small reply on a new connection is fine
+}, 30000);
 
 test("a restarted server has a new epoch, so a client knows to take a new snapshot", async () => {
   const before = (await subscriber({})).sub.epoch;

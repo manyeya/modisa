@@ -29,6 +29,7 @@ export type PluginStatus = {
   connected: boolean; // it has said plugin.hello on a connection that's still open
   actions: string[]; // what `shepherd plugin run` can call
   group?: "running" | "gone"; // its process group: children can outlive the process shepherd started
+  invocations?: number; // action calls sent to it and not yet answered or timed out
 };
 
 export type PaneInfo = {

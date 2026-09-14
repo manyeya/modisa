@@ -1,147 +1,229 @@
 // Plugins: programs started with the session server. Linked plugins (a plugin.json in a directory linked under
 // ~/.config/shepherd/plugins) start from their argv in their own directory; [[plugin]] run lines from config.toml
-// start through a login shell. Shepherd owns each one's process group: stopping sends TERM to the whole group, then
-// KILL after STOP_MS, so a plugin's children don't outlive the session. Output goes to a log file per plugin.
-// A plugin's connection binds to it with the token in $SHEPHERD_PLUGIN_TOKEN (plugin.hello) and can offer actions,
-// which plugin.invoke (`shepherd plugin run`) calls. Nothing restarts a plugin that exits.
+// start through a login shell. Each gets $SHEPHERD_PLUGIN_DATA, a directory of its own, and a log file.
+//
+// Every start is a run: its own token, its own process group. Stopping a run (plugin stop, unlink, session stop) or
+// its process exiting first revokes it: the token stops binding and its connection is closed. Then its group gets
+// TERM, and KILL after STOP_MS, but only while the group is provably still that run's (see OwnedGroup).
+//
+// A run's connection binds with its token (plugin.hello) and can offer actions, which plugin.invoke (`shepherd plugin
+// run`) calls. An action that doesn't answer in time has an unknown outcome: the plugin is told to cancel (advisory),
+// a late reply is logged, and nothing retries. Nothing restarts a plugin either; plugin.start does, when asked.
 import { DIR } from "../core/paths";
 import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL } from "../protocol/schema";
 import type { PluginStatus } from "../protocol/types";
-import { linkedPlugins } from "../config/plugins";
+import { linkedPlugins, readManifest } from "../config/plugins";
 import type { Client, ServerContext } from "./context";
 import type { Handlers } from "./rpc/dispatch";
 
 const STOP_MS = 2000;
-const INVOKE_MS = 30_000;
-const LOG_LIMIT = 5 * 1024 * 1024; // per start; past it the rest is read and dropped, so the plugin never blocks on output
+const INVOKE_MS = Number(Bun.env.SHEPHERD_PLUGIN_INVOKE_MS) || 30_000;
+const LOG_LIMIT = 5 * 1024 * 1024; // per run; past it the rest is read and dropped, so the plugin never blocks on output
 
-type Plugin = PluginStatus & { token: string; client?: Client; stopping?: boolean };
+type Kill = { kill(pid: number, signal: NodeJS.Signals | 0): void };
 
-const groupAlive = (pgid: number) => {
-  try {
-    process.kill(-pgid, 0);
-    return true;
-  } catch (e) {
-    return (e as { code?: string }).code === "EPERM";
+// A run's process group, signalled only while it's provably still ours. Once it's seen gone (or owned by someone
+// else) it's retired for good: the id can be reused by an unrelated group, which must never be signalled.
+export class OwnedGroup {
+  private retired = false;
+  constructor(readonly pgid: number, private os: Kill = process as Kill) {}
+  alive() {
+    if (this.retired) return false;
+    try {
+      this.os.kill(-this.pgid, 0);
+      return true;
+    } catch {
+      this.retired = true; // gone, or (EPERM) not ours
+      return false;
+    }
   }
-};
-const signalGroup = (pgid: number, signal: "SIGTERM" | "SIGKILL") => {
-  try {
-    process.kill(-pgid, signal);
-  } catch {} // already gone
-};
+  signal(signal: "SIGTERM" | "SIGKILL") {
+    if (!this.alive()) return;
+    try {
+      this.os.kill(-this.pgid, signal);
+    } catch {}
+  }
+}
+
+type Run = { group: OwnedGroup; token: string; revoked: boolean; note(line: string): void };
+type Plugin = PluginStatus & { run?: Run; argv?: string[]; client?: Client; stopping?: boolean };
 
 export function createPluginHost(ctx: ServerContext) {
   const plugins = new Map<string, Plugin>();
+  let invocations = 0;
 
   const add = (name: string, source: Plugin["source"], dir?: string): Plugin => {
-    const pl: Plugin = { name, source, dir, status: "failed", log: `${DIR}/plugins/${ctx.session}.${name}.log`, token: crypto.randomUUID(), connected: false, actions: [] };
+    const pl: Plugin = { name, source, dir, status: "failed", log: `${DIR}/plugins/${ctx.session}.${name}.log`, connected: false, actions: [] };
     plugins.set(name, pl);
     return pl;
   };
+  const need = (name: string) => {
+    const pl = plugins.get(name);
+    if (!pl) throw fail("no_such_plugin", `no plugin named ${name} (see shepherd plugin list)`);
+    return pl;
+  };
 
-  const launch = async (pl: Plugin, argv: string[], cwd?: string) => {
+  // The run's token stops binding and its connection is closed, whether or not its group is still alive.
+  const revoke = (pl: Plugin) => {
+    if (pl.run) pl.run.revoked = true;
+    const client = pl.client;
+    pl.client = undefined;
+    pl.actions = [];
+    client?.conn.close();
+  };
+
+  const failed = async (pl: Plugin, error: string) => {
+    Object.assign(pl, { status: "failed", error, pid: undefined });
     await Bun.$`mkdir -p ${DIR}/plugins`.quiet();
+    await Bun.write(pl.log, `shepherd: ${error}\n`).catch(() => {});
+  };
+
+  // A linked plugin's manifest is read again on every start, so edits to plugin.json apply.
+  const prepare = async (pl: Plugin) => {
+    if (pl.source !== "linked") return true;
+    const { manifest, error } = await readManifest(pl.dir!);
+    const why = !manifest ? error!
+      : manifest.name !== pl.name ? `linked as ${pl.name}, but plugin.json names it ${manifest.name}`
+      : manifest.protocol !== PROTOCOL ? `plugin.json says protocol ${manifest.protocol}; this shepherd speaks protocol ${PROTOCOL}`
+      : undefined;
+    if (why) {
+      await failed(pl, why);
+      return false;
+    }
+    pl.argv = manifest!.run;
+    return true;
+  };
+
+  const launch = async (pl: Plugin) => {
+    const data = `${DIR}/plugins/${pl.name}`;
+    await Bun.$`mkdir -p ${data}`.quiet();
     await Bun.write(pl.log, "");
+    Object.assign(pl, { stopping: false, pid: undefined, exitCode: undefined, signal: undefined, error: undefined });
+    const token = crypto.randomUUID();
+    let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
     try {
       // detached: a new session and process group, led by the plugin, so the whole group can be signalled
-      const proc = Bun.spawn(argv, { cwd, env: { ...Bun.env, SHEPHERD_PLUGIN: pl.name, SHEPHERD_PLUGIN_TOKEN: pl.token }, stdio: ["ignore", "pipe", "pipe"], detached: true });
-      Object.assign(pl, { status: "running", pid: proc.pid, error: undefined });
-      // both streams into one log, in the order they arrive
-      const sink = Bun.file(pl.log).writer();
-      let written = 0;
-      const pump = async (stream: ReadableStream<Uint8Array>) => {
-        for await (const chunk of stream) {
-          if (written > LOG_LIMIT) continue;
-          written += chunk.length;
-          sink.write(written > LOG_LIMIT ? `\n[shepherd: log truncated at ${LOG_LIMIT / 1024 / 1024} MB]\n` : chunk);
-          sink.flush();
-        }
-      };
-      Promise.all([pump(proc.stdout), pump(proc.stderr)]).catch(() => {}).finally(() => sink.end());
-      proc.exited.then((code) => {
-        pl.exitCode = proc.signalCode ? undefined : code;
-        pl.signal = proc.signalCode ?? undefined;
-        pl.status = pl.stopping ? "stopped" : code === 0 ? "exited" : "failed";
-        if (pl.status === "failed") pl.error = `exited with ${proc.signalCode ?? code}; see ${pl.log}`;
-      });
+      proc = Bun.spawn(pl.argv!, { cwd: pl.dir, env: { ...Bun.env, SHEPHERD_PLUGIN: pl.name, SHEPHERD_PLUGIN_TOKEN: token, SHEPHERD_PLUGIN_DATA: data }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     } catch (e) {
-      pl.error = `couldn't start ${argv[0]}: ${(e as Error).message}`;
+      return failed(pl, `couldn't start ${pl.argv![0]}: ${(e as Error).message}`);
     }
+    // both streams, and shepherd's own notes, into one log in the order they happen
+    const sink = Bun.file(pl.log).writer();
+    let written = 0;
+    const write = (chunk: Uint8Array | string) => {
+      if (written > LOG_LIMIT) return;
+      written += chunk.length;
+      try {
+        sink.write(written > LOG_LIMIT ? `\n[shepherd: log truncated at ${LOG_LIMIT / 1024 / 1024} MB]\n` : chunk);
+        sink.flush();
+      } catch {} // the log was closed
+    };
+    const pump = async (stream: ReadableStream<Uint8Array>) => {
+      for await (const chunk of stream) write(chunk);
+    };
+    const run: Run = { group: new OwnedGroup(proc.pid), token, revoked: false, note: (line) => write(`${line}\n`) };
+    Object.assign(pl, { run, status: "running", pid: proc.pid });
+    Promise.all([pump(proc.stdout), pump(proc.stderr)]).catch(() => {});
+    proc.exited.then((code) => {
+      if (pl.run !== run) return; // started again since
+      revoke(pl);
+      pl.exitCode = code;
+      pl.signal = proc.signalCode ?? undefined;
+      pl.status = pl.stopping ? "stopped" : code === 0 ? "exited" : "failed";
+      if (pl.status === "failed") pl.error = `exited with ${proc.signalCode ?? code}; see ${pl.log}`;
+      // retire the group's id as soon as it's gone (its children can outlive the leader)
+      const watch = setInterval(() => run.group.alive() || clearInterval(watch), 1000);
+    });
   };
 
   const start = async () => {
     for (const l of await linkedPlugins()) {
       const pl = add(l.name, "linked", l.dir);
-      if (!l.manifest) pl.error = l.error;
-      else if (l.manifest.protocol !== PROTOCOL) pl.error = `plugin.json says protocol ${l.manifest.protocol}; this shepherd speaks protocol ${PROTOCOL}`;
-      else await launch(pl, l.manifest.run, l.dir);
-      if (pl.error && pl.status === "failed") await Bun.write(pl.log, `shepherd: ${pl.error}\n`).catch(() => {});
+      if (l.error) await failed(pl, l.error);
+      else if (await prepare(pl)) await launch(pl);
     }
-    for (const [i, c] of ctx.cfg.plugin.entries()) await launch(add(`config-${i + 1}`, "config"), [Bun.env.SHELL || "/bin/sh", "-lc", c.run]);
+    for (const [i, c] of ctx.cfg.plugin.entries()) {
+      const pl = add(`config-${i + 1}`, "config");
+      pl.argv = [Bun.env.SHELL || "/bin/sh", "-lc", c.run];
+      await launch(pl);
+    }
   };
 
   const stop = async (only?: Plugin) => {
-    const live = (only ? [only] : [...plugins.values()]).filter((p) => p.pid && groupAlive(p.pid));
-    for (const p of live) {
+    const targets = only ? [only] : [...plugins.values()];
+    for (const p of targets) {
       p.stopping = true;
-      p.client?.conn.close(); // its connection no longer speaks for it
-      signalGroup(p.pid!, "SIGTERM");
+      revoke(p);
     }
-    for (const end = Date.now() + STOP_MS; Date.now() < end && live.some((p) => groupAlive(p.pid!)); ) await Bun.sleep(50);
-    for (const p of live) if (groupAlive(p.pid!)) signalGroup(p.pid!, "SIGKILL");
+    const live = targets.filter((p) => p.run?.group.alive());
+    for (const p of live) p.run!.group.signal("SIGTERM");
+    for (const end = Date.now() + STOP_MS; Date.now() < end && live.some((p) => p.run!.group.alive()); ) await Bun.sleep(50);
+    for (const p of live) p.run!.group.signal("SIGKILL");
   };
 
-  const view = ({ token: _token, client, stopping: _stopping, ...p }: Plugin): PluginStatus => ({
+  const view = ({ run, argv: _argv, client, stopping: _stopping, ...p }: Plugin): PluginStatus => ({
     ...p,
     connected: !!client,
-    group: p.pid ? (groupAlive(p.pid) ? "running" : "gone") : undefined,
+    group: run ? (run.group.alive() ? "running" : "gone") : undefined,
+    invocations: client?.conn.inFlight,
   });
 
   const methods: Handlers = {
     "plugin.list": () => [...plugins.values()].map(view),
-    // stop one plugin (its whole group) until the next server start; `shepherd plugin unlink` calls it
+    // stop one plugin: revoke its run, then end its group if that's still there
     "plugin.stop": async (p) => {
-      const pl = plugins.get(p.name);
-      if (!pl) throw fail("no_such_plugin", `no plugin named ${p.name} (see shepherd plugin list)`);
+      const pl = need(p.name);
       await stop(pl);
       return view(pl);
     },
-    // The token says which plugin this server started is talking. It tells plugins apart; it isn't a permission
-    // boundary against other code running as the user, which can reach the socket too.
+    // start a plugin that isn't running, as a new run with a new token
+    "plugin.start": async (p) => {
+      const pl = need(p.name);
+      if (pl.run?.group.alive()) throw fail("error", `${p.name} is already running (shepherd plugin stop ${p.name} first)`);
+      if (await prepare(pl)) await launch(pl);
+      return view(pl);
+    },
+    // The token says which run of which plugin is talking. It tells plugins apart; it isn't a permission boundary
+    // against other code running as the user, which can reach the socket too.
     "plugin.hello": (p, c) => {
-      const pl = [...plugins.values()].find((x) => x.token === p.token);
-      if (!pl) throw fail("no_such_plugin", "that token doesn't belong to a plugin this server started");
-      if (pl.client && pl.client !== c) pl.client.conn.close(); // one live connection per plugin
+      const pl = [...plugins.values()].find((x) => x.run && !x.run.revoked && x.run.token === p.token);
+      if (!pl) throw fail("plugin_unavailable", "that token doesn't belong to a running plugin of this server: it was stopped, exited, or never started");
+      if (pl.client && pl.client !== c) pl.client.conn.close(); // one live connection per run
+      const run = pl.run!;
       pl.client = c;
       c.plugin = pl.name;
       pl.actions = p.actions ?? [];
+      c.conn.onLateReply = (m) => run.note(`shepherd: a late reply from ${pl.name}, after its invocation had timed out (dropped): ${JSON.stringify(m).slice(0, 500)}`);
       return { name: pl.name, protocol: PROTOCOL, session: ctx.session, epoch: ctx.epoch };
     },
     "plugin.invoke": async (p) => {
-      const pl = plugins.get(p.plugin);
-      if (!pl) throw fail("no_such_plugin", `no plugin named ${p.plugin} (see shepherd plugin list)`);
-      if (!pl.client) throw fail("plugin_unavailable", `${p.plugin} isn't connected (${pl.status}${pl.error ? `: ${pl.error}` : ""})`);
+      const pl = need(p.plugin);
+      const conn = pl.client?.conn;
+      const run = pl.run;
+      if (!conn || !run || run.revoked) throw fail("plugin_unavailable", `${p.plugin} isn't connected (${pl.status}${pl.error ? `: ${pl.error}` : ""})`);
       if (!pl.actions.includes(p.action)) throw fail("no_such_action", `${p.plugin} has no action ${p.action} (it offers: ${pl.actions.join(", ") || "none"})`);
-      let timer: Timer | undefined;
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(fail("timeout", `${p.plugin} didn't answer ${p.action} within ${INVOKE_MS / 1000}s`)), INVOKE_MS);
-      });
+      const invocation = `${pl.name}-${++invocations}`;
       try {
-        return (await Promise.race([pl.client.conn.request("plugin.action", { action: p.action, params: p.params ?? {} }), timeout])) ?? null;
+        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation }, { timeoutMs: INVOKE_MS })) ?? null;
       } catch (e) {
-        if ((e as { code?: string }).code === "timeout") throw e;
-        if (e instanceof ConnectionClosedError) throw fail("plugin_unavailable", `${p.plugin} disconnected before answering ${p.action}`);
+        if ((e as { code?: string }).code === "timeout") {
+          conn.notify("plugin.cancel", { invocation, action: p.action }); // advisory: nothing proves the action stopped
+          run.note(`shepherd: ${p.action} (invocation ${invocation}) didn't answer within ${INVOKE_MS / 1000}s; its outcome is unknown`);
+          throw fail("timeout", `${p.plugin} didn't answer ${p.action} within ${INVOKE_MS / 1000}s. Its outcome is unknown: it may still finish, and running it again can repeat its effects`);
+        }
+        if (e instanceof ConnectionClosedError) throw fail("plugin_unavailable", `${p.plugin} disconnected before answering ${p.action}; its outcome is unknown`);
         throw fail("plugin_error", `${p.plugin} ${p.action}: ${(e as Error).message}`);
-      } finally {
-        clearTimeout(timer);
       }
     },
   };
 
   const disconnected = (c: Client) => {
-    for (const pl of plugins.values()) if (pl.client === c) pl.client = undefined;
+    for (const pl of plugins.values()) {
+      if (pl.client !== c) continue;
+      pl.client = undefined;
+      pl.actions = [];
+    }
   };
 
   return { methods, start, stop, disconnected };

@@ -1,5 +1,17 @@
 # Writing a shepherd plugin
 
+## Quick start
+
+```sh
+shepherd plugin new my-plugin      # TypeScript, shepherd's client library, AGENTS.md (the guide), a test
+cd my-plugin                       # put the logic in plugin.ts
+shepherd plugin check .            # manifest, build, then a throwaway session: starts, connects, your tests, exits
+shepherd plugin link . && shepherd restart
+```
+
+`attention-log/` is a complete one made that way: when an agent newly becomes blocked, it appends a line to a log.
+The rest of this page is the protocol underneath, for plugins that don't use the client library.
+
 A plugin is **any program** shepherd starts alongside the session server. There is no SDK, no
 manifest and no API to implement: shepherd hands you a unix socket and gets out of the way. If it can
 speak newline-delimited JSON, it can be a plugin — Bun, Python, Go, a shell script wrapping the
@@ -45,11 +57,25 @@ the token shepherd started you with and the actions you offer:
 Shepherd then sends `plugin.action` requests (`{"action":"summary","params":{...}}`) on that
 connection. Reply with a result or an error on the request's `id`; the caller gets it, or
 `plugin_error`, `plugin_unavailable`, `no_such_action` or `timeout` (30s) as its error code.
+Each request carries an `invocation` id.
 
-Once bound, that connection acts as your plugin: a request on it that passes `caller` (claiming to be
-a pane) is rejected. The token tells plugins apart; **it isn't a security boundary.** Anything running
-as you can reach the socket, and a plugin is not sandboxed. Each plugin's log keeps the first 5 MB of
-output per start. `shepherd plugin unlink` also stops the plugin in the session.
+**A timeout means the outcome is unknown, not failed.** The plugin may still finish the action, and
+running it again can repeat its effects, so nothing retries it. Shepherd sends the plugin a
+`plugin.cancel` notification (`{invocation, action}`), which is advisory: nothing proves the action
+stopped. A reply that arrives after the timeout is dropped and noted in the plugin's log.
+
+**Only a bound connection is attributed to your plugin.** A request on it that passes `caller`
+(claiming to be a pane) is rejected. Any other connection, including a second one your plugin opens,
+is trusted as the local user, `caller` claims and all. The token tells plugins apart; **it isn't a
+security boundary.** Anything running as you can reach the socket, and a plugin is not sandboxed.
+
+**A run's token stops working when the run ends.** Stopping the plugin (`plugin stop`, `unlink`,
+the session stopping) or its process exiting revokes it and closes its connection; a new start gets a
+new token. Each plugin's log keeps the first 5 MB of output per run.
+
+`shepherd plugin unlink` removes the link, so no session starts the plugin again, and stops the running
+copy in the one session it reaches (the default, or `-s`). Other running sessions keep theirs until
+they restart.
 
 ## Declare it in config.toml instead
 
@@ -136,7 +162,9 @@ That's how you tell "already blocked when I started" from "just became blocked".
 
 **Events are not replayed.** Within one connection they arrive in `seq` order and none are dropped.
 A connection that stops reading doesn't make the server buffer without limit: once more than 16 MB is
-waiting to be written to it, the server closes it (other clients aren't affected). After a disconnect,
+waiting to be written to it, the server closes it (other clients aren't affected). The same 16 MB is
+also the most one message can be: a single reply bigger than that (a huge `pane.read`) closes the
+connection too, even when nothing else is waiting. After a disconnect,
 or when `epoch` changes (the server restarted: pane ids and seqs from the old epoch mean nothing
 now), subscribe again with `snapshot: true`. **A disconnect is a gap in history.** The new snapshot
 has the current state, but a transition that started and ended during the gap (blocked, then

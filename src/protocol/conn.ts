@@ -18,13 +18,16 @@ export class ConnectionClosedError extends Error {
   }
 }
 
+type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; timer?: Timer };
+
 // One connection, either transport. Lines out via `write`, lines in via `feed`.
 export class Conn {
   private buf = "";
   private seq = 0;
   private ended = false;
-  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, Pending>();
   onMessage: (m: Msg) => void = () => {};
+  onLateReply: (m: Msg) => void = () => {};
   onClose: () => void = () => {};
   closed = false;
   closeReason: ConnectionClosedError | undefined;
@@ -45,10 +48,15 @@ export class Conn {
         this.send({ jsonrpc: "2.0", error: { code: -32700, message: "parse error" } });
         continue;
       }
-      if (m.id !== undefined && !m.method && this.pending.has(m.id)) {
-        const p = this.pending.get(m.id)!;
-        this.pending.delete(m.id);
-        m.error ? p.reject(fail(errorCode(m.error.data?.code), m.error.message)) : p.resolve(m.result);
+      if (m.id !== undefined && !m.method) {
+        const p = this.pending.get(m.id);
+        // a reply to a request that timed out (or was never made): reported, never taken for a request
+        if (!p) this.onLateReply(m);
+        else {
+          this.pending.delete(m.id);
+          clearTimeout(p.timer);
+          m.error ? p.reject(fail(errorCode(m.error.data?.code), m.error.message)) : p.resolve(m.result);
+        }
       } else this.onMessage(m);
     }
   }
@@ -63,20 +71,37 @@ export class Conn {
     this.send({ jsonrpc: "2.0", method, params });
   }
 
-  request<T = any>(method: string, params: any = {}): Promise<T> {
+  // timeoutMs: stop waiting and forget the request, so a peer that never answers can't pile up pending requests.
+  // The request was still sent, so its outcome is unknown; a reply that comes after goes to onLateReply.
+  request<T = any>(method: string, params: any = {}, options: { timeoutMs?: number } = {}): Promise<T> {
     if (this.closed) return Promise.reject(this.closeReason ?? new ConnectionClosedError());
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const entry: Pending = { resolve, reject };
+      if (options.timeoutMs) {
+        entry.timer = setTimeout(() => {
+          this.pending.delete(id);
+          reject(fail("timeout", `no reply to ${method} within ${options.timeoutMs! / 1000}s`));
+        }, options.timeoutMs);
+      }
+      this.pending.set(id, entry);
       this.send({ jsonrpc: "2.0", id, method, params });
     });
+  }
+
+  // requests sent and not yet answered, failed or timed out
+  get inFlight() {
+    return this.pending.size;
   }
 
   closedByPeer(cause?: Error) {
     if (this.closed) return;
     this.closed = true;
     this.closeReason = new ConnectionClosedError(cause);
-    for (const p of this.pending.values()) p.reject(this.closeReason);
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(this.closeReason);
+    }
     this.pending.clear();
     this.onClose();
   }

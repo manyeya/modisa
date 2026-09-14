@@ -1,0 +1,13 @@
+// Behavioural tests for {{name}}, run against a real throwaway session by `shepherd plugin check .`
+import { test, expect } from "bun:test";
+import { checkSession } from "./shepherd-plugin";
+
+const s = checkSession();
+
+test("it's connected and answers its status action", async () => {
+  const me = (await s.json<any[]>("plugin", "list")).find((p) => p.name === s.plugin);
+  expect(me).toMatchObject({ status: "running", connected: true });
+  const status = await s.shepherd("plugin", "run", s.plugin, "status");
+  expect(status.code).toBe(0);
+  expect(JSON.parse(status.stdout)).toHaveProperty("agents");
+});

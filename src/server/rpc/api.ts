@@ -7,8 +7,8 @@ import { integrationStatus, setIntegration } from "../../integrations";
 import { keyBytes } from "../keys";
 import type { Handlers } from "./dispatch";
 import { fail } from "../../protocol/conn";
-import { z } from "zod";
-import { api, envelope, errorReply, events, PROTOCOL, results } from "../../protocol/schema";
+import { PROTOCOL } from "../../protocol/schema";
+import { describeProtocol } from "../../protocol/describe";
 
 export function apiMethods(ctx: ServerContext): Handlers {
   const { s, mail, detector } = ctx;
@@ -135,10 +135,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
       // a deep copy, so nothing that changes after this step (an agent's state is updated in place) can reach the reply
       return { protocol: PROTOCOL, epoch: ctx.epoch, seq: ctx.seq, ...(p.snapshot && { panes: structuredClone(list()) }) };
     },
-    "protocol.describe": () => {
-      const json = (schemas: Record<string, z.ZodType>, io: "input" | "output") => Object.fromEntries(Object.entries(schemas).map(([k, schema]) => [k, z.toJSONSchema(schema, { io })]));
-      return { protocol: PROTOCOL, envelope: z.toJSONSchema(envelope), requests: json(api, "input"), results: json(results, "output"), events: json(events, "output"), error: z.toJSONSchema(errorReply) };
-    },
+    "protocol.describe": () => describeProtocol(),
     // Save, stop, and let the caller start a fresh server on the current code; it restores the session.
     // ---------- integrations (on this machine, where the agents run) ----------
     integrations: () => integrationStatus(),

@@ -58,10 +58,11 @@ switch (cmd) {
   case "config":
     await configCommand(rest[0]);
     break;
-  case "plugin": // link and unlink are local; list, logs and run go through the server
-    if (rest[0] === "link" || rest[0] === "unlink") process.exitCode = await (await import("./cli/plugin")).runPluginLink(rest[0], rest[1], flag("session"));
-    else process.exitCode = await runCli(a);
+  case "plugin": { // new, sdk, schema, check, dev, link and unlink need no server; the rest go through it
+    const local = await import("./cli/plugin");
+    process.exitCode = local.isLocalPluginCommand(rest[0]) ? await local.runPluginLocal(rest[0]!, rest.slice(1), a.flags) : await runCli(a);
     break;
+  }
   case "help":
   case "--help":
   case "-h":

@@ -70,7 +70,7 @@ const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string()
 const pluginStatus = z.strictObject({
   name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["running", "exited", "failed", "stopped"]),
   pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
-  connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(),
+  connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
 });
 export const results = {
   list: z.array(listedPane),
@@ -109,6 +109,7 @@ export const api = {
   "protocol.describe": z.object({ caller }),
   "plugin.list": z.object({ caller }),
   "plugin.stop": z.object({ caller, name: z.string().min(1) }),
+  "plugin.start": z.object({ caller, name: z.string().min(1) }),
   // a plugin's own connection says which plugin it is (the token it was started with) and what actions it offers
   "plugin.hello": z.object({ caller, token: z.string().min(1), actions: z.array(z.string().min(1)).optional() }),
   // call an action a connected plugin offers; shepherd sends it a plugin.action request ({ action, params })

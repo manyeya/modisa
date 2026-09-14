@@ -1,0 +1,3 @@
+[test]
+# only the suite: plugins' own tests (examples/plugins/*/plugin.test.ts) run under `shepherd plugin check`
+root = "test"

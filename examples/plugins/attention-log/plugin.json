@@ -1,0 +1,9 @@
+{
+  "name": "attention-log",
+  "protocol": 1,
+  "run": [
+    "bun",
+    "plugin.ts"
+  ],
+  "description": "when an agent newly becomes blocked, append a line to attention.log"
+}

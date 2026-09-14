@@ -278,7 +278,8 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 - `src/platform/` — controlling-terminal exec (`bun:ffi`) and the embedded libghostty libraries
 - `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `shepherd hook`
 - `src/skills/` — the shepherd skill (`shepherd/SKILL.md`), installed by the integrations
-- `examples/plugins/` — how to write a plugin, and a working one (covered by `test/e2e/plugins.test.ts`)
+- `src/plugins/` — the plugin authoring kit: `shepherd-plugin.ts` (the client library plugins vendor) and the `shepherd plugin new` templates
+- `examples/plugins/` — how to write a plugin, the attention log (built from `shepherd plugin new`, checked by `test/e2e/plugin-authoring.test.ts`) and an older hand-written one
 - `site/` — the docs site: `build.ts` (a dependency-free static generator), `content/` (the landing page and docs), `assets/` (CSS, JS, icons)
 - `.github/` — CI, the release workflow and its scripts; `install.sh` is the installer
 
