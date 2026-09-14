@@ -7,12 +7,15 @@ import { integrationStatus, setIntegration } from "../../integrations";
 import { keyBytes } from "../keys";
 import type { Handlers } from "./dispatch";
 import { fail } from "../../protocol/conn";
+import { z } from "zod";
+import { api, envelope, events, PROTOCOL } from "../../protocol/schema";
 
 export function apiMethods(ctx: ServerContext): Handlers {
   const { s, mail, detector } = ctx;
+  const list = () => [...s.panes.values()].map((p) => ({ ...p.info, focused: s.focusedId === p.id, workspace: s.locate(p.id)?.ws.name }));
   return {
     // ---------- session & workspaces ----------
-    list: () => [...s.panes.values()].map((p) => ({ ...p.info, focused: s.focusedId === p.id, workspace: s.locate(p.id)?.ws.name })),
+    list,
     "session.info": async () => ({ session: ctx.session, clients: ctx.attached().length, panes: s.panes.size, workspaces: s.workspaces.length, paused: mail.paused, version: await codeVersion() }),
     "workspace.list": () => s.workspaces.map((w, i) => ({ id: w.id, name: w.name, cwd: w.cwd, tabs: w.tabs.length, active: i === s.active })),
     "workspace.rename": (p) => (s.renameWorkspace(p.name, s.findWorkspace(p.workspace)), true),
@@ -124,11 +127,19 @@ export function apiMethods(ctx: ServerContext): Handlers {
     },
 
     // ---------- events & lifecycle ----------
+    // The snapshot is taken in the same synchronous step that turns events on, so every change after it is an event
+    // with a higher seq and nothing is in both. An event can reach the client before this reply does: order by seq.
     "events.subscribe": (p, c) => {
       c.events = true;
       c.output = !!p.output;
-      return true;
+      return { protocol: PROTOCOL, epoch: ctx.epoch, seq: ctx.seq, ...(p.snapshot && { panes: list() }) };
     },
+    "protocol.describe": () => ({
+      protocol: PROTOCOL,
+      envelope: z.toJSONSchema(envelope),
+      requests: Object.fromEntries(Object.entries(api).map(([method, schema]) => [method, z.toJSONSchema(schema, { io: "input" })])),
+      events: Object.fromEntries(Object.entries(events).map(([type, schema]) => [type, z.toJSONSchema(schema)])),
+    }),
     // Save, stop, and let the caller start a fresh server on the current code; it restores the session.
     // ---------- integrations (on this machine, where the agents run) ----------
     integrations: () => integrationStatus(),

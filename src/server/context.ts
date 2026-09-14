@@ -16,6 +16,9 @@ export type Client = { conn: Conn; attached: boolean; events: boolean; output: b
 export type ServerContext = {
   session: string;
   version: string;
+  epoch: string; // this server run, new on every start
+  seq: number; // the last event's seq
+
   cfg: Config;
   adapters: Adapter[];
   s: Session;
@@ -40,12 +43,13 @@ export type ServerContext = {
 };
 
 export function createContext(session: string, version: string, cfg: Config, adapters: Adapter[]): ServerContext {
-  const ctx = { session, version, cfg, adapters, clients: new Set<Client>(), down: false, prompts: new Map() } as ServerContext;
+  const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), down: false, prompts: new Map() } as ServerContext;
 
   ctx.attached = () => [...ctx.clients].filter((c) => c.attached);
   ctx.broadcast = (event, data, to = ctx.attached()) => to.forEach((c) => c.conn.notify(event, data));
+  // shapes: `events` in protocol/schema.ts (an e2e test checks every emitted event against them)
   ctx.emit = (type, data = {}) => {
-    const ev = { type, at: Date.now(), ...data };
+    const ev = { type, at: Date.now(), seq: ++ctx.seq, epoch: ctx.epoch, ...data };
     for (const c of ctx.clients) if (c.events && (type !== "pane.output" || c.output)) c.conn.notify("event", ev);
   };
 
@@ -68,10 +72,10 @@ export function createContext(session: string, version: string, cfg: Config, ada
   ctx.s = new Session({
     output: (p, bytes) => {
       ctx.broadcast("output", { pane: p.id, data: b64(bytes) });
-      ctx.emit("pane.output", { pane: p.id, text: new TextDecoder().decode(bytes) });
+      ctx.emit("pane.output", { pane: p.id, instance: p.info.instance, text: new TextDecoder().decode(bytes) });
     },
-    exited: (p) => ctx.emit("process.exited", { pane: p.id, name: p.info.name, exitCode: p.info.exitCode }),
-    created: (p) => ctx.emit("pane.created", { pane: p.id, name: p.info.name, command: p.info.command }),
+    exited: (p) => ctx.emit("process.exited", { pane: p.id, instance: p.info.instance, name: p.info.name, exitCode: p.info.exitCode }),
+    created: (p) => ctx.emit("pane.created", { pane: p.id, instance: p.info.instance, name: p.info.name, command: p.info.command }),
     changed: () => ctx.changed(),
     empty: () => ctx.shutdown(true),
   });

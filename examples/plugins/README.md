@@ -69,15 +69,30 @@ field name is an error, not a silent default.
 Events are **notifications** — no `id`, always `method: "event"`:
 
 ```json
-{"jsonrpc":"2.0","method":"event","params":{"type":"pane.created","at":1789292993937,"pane":"p2","name":"demo","command":"echo hi"}}
+{"jsonrpc":"2.0","method":"event","params":{"type":"pane.created","at":1789292993937,"seq":42,"epoch":"3f9c1a2b","pane":"p2","instance":"8d1e0c7a","name":"demo","command":"echo hi"}}
 ```
 
-Call `events.subscribe` once to start receiving them.
+Call `events.subscribe` once to start receiving them. Pass `snapshot: true` to get every pane as of
+that moment in the same reply:
 
-**Events are not replayed.** You get what happens *after* your subscription lands, and nothing
-before it. Plugins start while the server is still booting, so a slow interpreter can easily miss the
-first transitions of a restored session. If you need the state of the world at startup, call `list`
-once after subscribing — subscribe first, then read, or you have a gap between the two.
+```json
+{"jsonrpc":"2.0","id":2,"method":"events.subscribe","params":{"snapshot":true}}
+{"jsonrpc":"2.0","id":2,"result":{"protocol":1,"epoch":"3f9c1a2b","seq":41,"panes":[ ... ]}}
+```
+
+**The snapshot and the stream don't overlap and don't leave a gap.** The server takes the snapshot in
+the same step that turns your events on, so every later change arrives as an event with a `seq`
+greater than the snapshot's, and nothing is in both. An event can reach you before the reply does;
+order by `seq`. Use this to tell "already blocked when I started" from "just became blocked".
+
+**Events are not replayed.** Within one connection they arrive in `seq` order and none are dropped.
+After a disconnect, or when `epoch` changes (the server restarted: pane ids and seqs from the old
+epoch mean nothing now), subscribe again with `snapshot: true`. `seq` rises with every event the
+server emits, including ones you didn't ask for, so the seqs you see can skip: a skip is not a lost
+event.
+
+`protocol.describe` returns the protocol version and a JSON Schema for every request, every event and
+the envelope, generated from the same schemas the server validates with.
 
 ### The cheap way
 
@@ -97,13 +112,16 @@ the example does when it reads the blocked pane's screen.
 
 ## Events
 
-Every event has `type` and `at` (epoch ms). Verified shapes:
+Every event has `type`, `at` (epoch ms), `seq` and `epoch`. Pane events name the pane by `pane` (its
+id) and `instance` (unique to the process it was started with; an id can come back after a restart,
+an instance never does). These shapes are checked against every event the server emits in the e2e
+suite (`protocol.describe` has them as JSON Schema):
 
 | `type` | Fires when | Extra fields |
 |---|---|---|
-| `pane.created` | a pane opens | `pane`, `name`, `command` |
-| `process.exited` | a pane's process ends (the pane stays) | `pane`, `name`, `exitCode` |
-| `agent.state` | a detected agent changes state | `pane`, `name`, `harness`, `from`, `to` |
+| `pane.created` | a pane opens | `pane`, `instance`, `name`, `command` |
+| `process.exited` | a pane's process ends (the pane stays) | `pane`, `instance`, `name`, `exitCode` (absent: killed by a signal) |
+| `agent.state` | a detected agent changes state | `pane`, `instance`, `name`, `harness`, `from`, `to` |
 | `message.sent` | one agent messages another | `id`, `from`, `to`, `hops` |
 | `message.delivered` | that message is typed into the recipient | `id`, `from`, `to` |
 | `client.attached` | someone attaches the TUI | — |
