@@ -161,6 +161,8 @@ done`) },
       { id: "cli", title: "From the command line", html: code("sh", `shepherd version     # this version, and whether a newer one is out
 shepherd update      # download, verify its SHA-256, replace this binary
 shepherd restart     # load it into running sessions`) },
+      { id: "managed", title: "Installed with a package manager", html: p(`A package manager owns the binary it installed, so ${c("shepherd update")} and the update badge give you that tool's command instead (${c("mise upgrade github:manyeya/shepherd")}, or ${c("apt")} or ${c("dnf")} for the .deb and .rpm packages). Run ${c("shepherd restart")} afterwards. Agents' hooks call the ${c("shepherd")} on your ${c("PATH")}, so they keep working across upgrades.`) },
+      { id: "verify", title: "Verifying a release", html: p(`Every release file has signed build provenance. ${c("gh attestation verify <file> -R manyeya/shepherd")} confirms that this repository's release workflow built the file from a tagged commit.`) },
       { id: "channels", title: "Channels", html: p(`${c("stable")} follows releases. ${c("staging")} follows prereleases built from the staging branch. Set it in ${c("[update] channel")}, or install from it with ${c("SHEPHERD_CHANNEL=staging")}. ${c("[update] check = false")} turns the check off.`) },
     ],
   },

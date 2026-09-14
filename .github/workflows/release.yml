@@ -1,7 +1,9 @@
 # Every push to main is a release; every push to staging replaces the rolling "staging" prerelease.
 #   test → version (from git tags; see .github/scripts/next-version.ts) → a native build per
-#   platform → release with SHA256SUMS + manifest.json (what `shepherd update` and install.sh read)
-#   → on main, the docs site on GitHub Pages. A push that only changes docs skips the release.
+#   platform → release with SHA256SUMS + manifest.json (what `shepherd update` and install.sh read),
+#   .deb/.rpm packages and signed build provenance (`gh attestation verify <file> -R manyeya/shepherd`)
+#   → on main, the Homebrew formula in manyeya/homebrew-tap (when the HOMEBREW_TAP_TOKEN secret is set)
+#   and the docs site on GitHub Pages. A push that only changes docs skips the release.
 name: Release
 on:
   push:
@@ -11,6 +13,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  attestations: write
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
@@ -85,6 +88,7 @@ jobs:
       TAG: ${{ needs.version.outputs.tag }}
       CHANNEL: ${{ needs.version.outputs.channel }}
       NOTES: ${{ needs.version.outputs.notes }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -100,6 +104,27 @@ jobs:
           printf '%s\n' "$NOTES" > notes.md
           bun .github/scripts/release-assets.ts "$VERSION" "$CHANNEL" "$TAG" dist notes.md
           ls -l dist
+      # after the manifest, so the packages stay out of it; their checksums join SHA256SUMS
+      - name: Linux packages (.deb, .rpm)
+        run: |
+          mkdir -p build
+          for target in linux-x64:amd64 linux-arm64:arm64; do
+            cp "dist/shepherd-${target%%:*}" build/shepherd
+            for packager in deb rpm; do
+              docker run --rm -v "$PWD:/work" -w /work -e VERSION -e ARCH="${target##*:}" \
+                goreleaser/nfpm:v2.47.0 package --config .github/nfpm.yaml --packager "$packager" --target dist/
+            done
+          done
+          (cd dist && sha256sum ./*.deb ./*.rpm | sed 's| \./| |' >> SHA256SUMS)
+          ls -l dist
+      - name: Build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/shepherd-darwin-*
+            dist/shepherd-linux-*
+            dist/*.deb
+            dist/*.rpm
       - name: Release
         if: env.CHANNEL == 'stable'
         run: gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "shepherd $VERSION" --notes-file notes.md --latest
@@ -108,6 +133,18 @@ jobs:
         run: |
           gh release delete staging --cleanup-tag --yes || true
           gh release create staging dist/* --target "$GITHUB_SHA" --title "shepherd $VERSION (staging)" --notes-file notes.md --prerelease
+      - name: Homebrew tap
+        if: env.CHANNEL == 'stable' && env.TAP_TOKEN != ''
+        run: |
+          bun .github/scripts/homebrew-formula.ts dist/manifest.json shepherd.rb
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/manyeya/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp shepherd.rb tap/Formula/shepherd.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/shepherd.rb
+          git diff --cached --quiet || { git commit -m "shepherd $VERSION" && git push; }
 
   pages:
     needs: [test, version, publish]

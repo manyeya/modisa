@@ -3,6 +3,7 @@
 #   SHEPHERD_INSTALL_DIR  where the binary goes (default ~/.local/bin)
 #   SHEPHERD_CHANNEL      stable (default) or staging for prerelease builds
 #   SHEPHERD_MANIFEST_URL a release manifest to install from instead
+# Remove it again: curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh -s -- --uninstall [--purge]
 set -eu
 
 REPO="manyeya/shepherd"
@@ -12,6 +13,17 @@ CHANNEL="${SHEPHERD_CHANNEL:-stable}"
 say() { printf '  %s\n' "$*"; }
 die() { printf '  error: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required"; }
+
+if [ "${1:-}" = "--uninstall" ]; then
+  shift
+  BIN="$DIR/shepherd"
+  [ -x "$BIN" ] || BIN="$(command -v shepherd || true)"
+  [ -n "$BIN" ] || die "shepherd isn't installed: nothing in $DIR or on your PATH"
+  # the binary does the work: integrations, sessions and state first, then itself. Under curl | sh
+  # stdin is this script, so its "Continue?" question reads the terminal instead, when there is one.
+  if (exec </dev/tty) 2>/dev/null; then exec "$BIN" uninstall "$@" </dev/tty; fi
+  exec "$BIN" uninstall "$@"
+fi
 
 case "$(uname -s)" in
   Darwin) os=darwin ;;

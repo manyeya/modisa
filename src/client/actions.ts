@@ -2,7 +2,7 @@
 import { panes as treePanes } from "../core/layout";
 import { self } from "../core/paths";
 import { ensureConfigFile } from "../config/config";
-import { checkForUpdate } from "../cli/update";
+import { checkForUpdate, updateCommand } from "../cli/update";
 import { VERSION } from "../core/version";
 import type { Action, App, Option } from "./context";
 import { bindings } from "./input/bindings";
@@ -118,6 +118,8 @@ export function createActions(app: App): Record<string, Action> {
       run: async () => {
         const m = app.update ?? (await checkForUpdate(true));
         if (!m) return app.toast(`shepherd ${VERSION} is up to date`, app.th.done);
+        const managed = updateCommand(); // Homebrew or mise installed it: their command, not ours
+        if (managed !== "shepherd update") return app.toast(`shepherd ${m.version} is out: run ${managed}, then shepherd restart`, app.th.warn);
         const notes = m.notes.trim().split("\n").filter(Boolean).slice(0, 6).map((l) => fit(l, 60));
         const ok = await confirm(app, `UPDATE / ${m.version}`, [`shepherd ${VERSION} → ${m.version}`, ...(notes.length ? ["", ...notes] : []), "", "Downloads it, then restarts the server; agents resume."].join("\n"), "update and restart");
         if (!ok) return;

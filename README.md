@@ -10,9 +10,27 @@ Built with Bun and OpenTUI: real terminal panes, named spaces, an agent sidebar,
 curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh
 ```
 
-Releases are built for macOS on Apple silicon and Linux on x64 and arm64. The installer checks the download against its published SHA-256 and puts `shepherd` in `~/.local/bin` (`SHEPHERD_INSTALL_DIR` changes that; `SHEPHERD_CHANNEL=staging` installs the latest prerelease). Every release on [GitHub Releases](https://github.com/manyeya/shepherd/releases) has the binaries, `SHA256SUMS` and the `manifest.json` the installer and updater read.
+Releases are built for macOS on Apple silicon and Linux on x64 and arm64. The installer checks the download against its published SHA-256 and puts `shepherd` in `~/.local/bin` (`SHEPHERD_INSTALL_DIR` changes that; `SHEPHERD_CHANNEL=staging` installs the latest prerelease).
 
-When a newer release is out, the status row shows `↑ <version>`: click it to update and restart the server (agents resume). From the command line: `shepherd version`, `shepherd update`, then `shepherd restart`. `[update] channel = "staging"` follows prereleases; `[update] check = false` turns the check off.
+Or install with a package manager, which then updates and removes it:
+
+| With | Install | Remove |
+|------|---------|--------|
+| mise | `mise use -g github:manyeya/shepherd` | `mise uninstall github:manyeya/shepherd` |
+| Debian, Ubuntu | `sudo apt install ./shepherd_<version>_<arch>.deb` | `sudo apt remove shepherd` |
+| Fedora, RHEL | `sudo dnf install ./shepherd-<version>-1.<arch>.rpm` | `sudo dnf remove shepherd` |
+
+Every release on [GitHub Releases](https://github.com/manyeya/shepherd/releases) has the binaries, the .deb and .rpm packages, `SHA256SUMS`, the `manifest.json` the installer and updater read, and signed build provenance. To check that a file was built by this repository's release workflow from a tagged commit, run `gh attestation verify shepherd-darwin-arm64 -R manyeya/shepherd`.
+
+When a newer release is out, the status row shows `↑ <version>`: click it to update and restart the server (agents resume). From the command line: `shepherd version`, `shepherd update`, then `shepherd restart`. If mise or a package installed shepherd, update with that tool instead (shepherd tells you the command). `[update] channel = "staging"` follows prereleases; `[update] check = false` turns the check off.
+
+### Uninstall
+
+```bash
+shepherd uninstall        # or: curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh -s -- --uninstall
+```
+
+It lists what it will do and asks first. Then it removes shepherd's hooks and skill from every agent, stops running sessions, and deletes saved state in `~/.local/state/shepherd`. Your config in `~/.config/shepherd` stays unless you add `--purge`. If the install script put the binary there, uninstall deletes it too; if mise or a package did, finish with that tool's remove command.
 
 From source (also the way to run it on an Intel Mac), with Bun ≥ 1.3.5:
 

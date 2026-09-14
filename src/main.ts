@@ -49,6 +49,9 @@ switch (cmd) {
   case "version":
     await (await import("./cli/update")).runVersion();
     break;
+  case "uninstall":
+    process.exitCode = await (await import("./cli/uninstall")).runUninstall({ purge: a.flags.purge === true, yes: a.flags.yes === true });
+    break;
   case "hook": // run by agents' hooks: shepherd hook <agent> <action>
     await (await import("./integrations/hook")).runHook(rest[0], rest[1]);
     break;

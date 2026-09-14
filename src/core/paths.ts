@@ -21,6 +21,16 @@ export function self(): string[] {
   return (selfCmd = [exe]);
 }
 
+// What agents' hooks and plugins run. A release binary prefers the `shepherd` on PATH: Homebrew and mise
+// install into a directory per version, and a hook pointing there breaks at the next upgrade, while
+// the PATH entry (Homebrew's bin symlink, mise's shim, /usr/bin, ~/.local/bin) stays put.
+// ponytail: trusts that whatever is called shepherd on PATH is this program.
+export function stableSelf(): string[] {
+  if (!import.meta.path.startsWith("/$bunfs/")) return self();
+  const onPath = Bun.which("shepherd");
+  return onPath ? [onPath] : self();
+}
+
 // Identifies the code a process runs, so a client can tell its server is out of date.
 let version: Promise<string> | undefined;
 export function codeVersion(): Promise<string> {

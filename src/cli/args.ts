@@ -1,7 +1,7 @@
 // Command-line argument parsing: positionals, --flags (valued or boolean), and -s <session>.
 export type Args = { _: string[]; flags: Record<string, string | boolean> };
 
-const BOOLEAN = new Set(["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version"]);
+const BOOLEAN = new Set(["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes"]);
 
 export function parseArgs(argv: string[]): Args {
   const a: Args = { _: [], flags: {} };

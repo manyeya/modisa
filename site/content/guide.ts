@@ -32,9 +32,24 @@ export const guide: Page[] = [
           [c("SHEPHERD_INSTALL_DIR"), `Where the binary goes (default ${c("~/.local/bin")}).`],
           [c("SHEPHERD_CHANNEL=staging"), "Install the latest prerelease instead of the latest release."],
         ]) },
-      { id: "releases", title: "From a release", html: p(`Every release on <a href="https://github.com/manyeya/shepherd/releases">GitHub Releases</a> carries one binary per platform, a ${c("SHA256SUMS")} file, and the ${c("manifest.json")} that the installer and ${c("shepherd update")} read. Download the binary for your platform, ${c("chmod +x")} it, and put it on your ${c("PATH")}.`) },
+      { id: "managers", title: "With a package manager", html:
+        p("A package manager installs shepherd, updates it, and removes it again.") +
+        table(["With", "Install", "Remove"], [
+          ["mise", c("mise use -g github:manyeya/shepherd"), c("mise uninstall github:manyeya/shepherd")],
+          ["Debian, Ubuntu", c("sudo apt install ./shepherd_<version>_<arch>.deb"), c("sudo apt remove shepherd")],
+          ["Fedora, RHEL", c("sudo dnf install ./shepherd-<version>-1.<arch>.rpm"), c("sudo dnf remove shepherd")],
+        ]) +
+        p(`The .deb and .rpm files are attached to every release. When one of these tools installed shepherd, ${c("shepherd update")} tells you its update command rather than replacing the binary itself.`) },
+      { id: "releases", title: "From a release", html: p(`Every release on <a href="https://github.com/manyeya/shepherd/releases">GitHub Releases</a> carries one binary per platform, the .deb and .rpm packages, a ${c("SHA256SUMS")} file, and the ${c("manifest.json")} that the installer and ${c("shepherd update")} read. Download the binary for your platform, ${c("chmod +x")} it, and put it on your ${c("PATH")}.`) },
+      { id: "verify", title: "Verify a download", html: p(`Every file in a release has signed build provenance: proof that the repository's release workflow built it from a tagged commit. With the GitHub CLI:`) + code("sh", "gh attestation verify shepherd-darwin-arm64 -R manyeya/shepherd") + p("mise checks this automatically when it installs shepherd.") },
       { id: "source", title: "From source", html: p(`Needs <a href="https://bun.sh">Bun</a> 1.3.5 or newer (for its built-in PTY). This is also the way to run shepherd on an Intel Mac.`) + code("sh", "git clone https://github.com/manyeya/shepherd\ncd shepherd\nbun install\nbun start") },
       { id: "check", title: "Check it", html: code("sh", "shepherd --version") + p(`Then run ${c("shepherd")} to open your first session.`) },
+      { id: "uninstall", title: "Uninstall", html:
+        code("sh", `shepherd uninstall
+# or, through the install script
+curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh -s -- --uninstall`) +
+        p(`It lists what it will do and asks first. Then it removes shepherd's hooks and skill from every agent, stops running sessions, and deletes saved state in ${c("~/.local/state/shepherd")}. Your config in ${c("~/.config/shepherd")} stays unless you add ${c("--purge")}; ${c("--yes")} skips the question.`) +
+        p(`If the install script put the binary there, uninstall deletes it too. If mise or a package did, finish with that tool's remove command, which shepherd prints. Run it from a terminal outside shepherd, since it stops every session.`) },
     ],
   },
   {

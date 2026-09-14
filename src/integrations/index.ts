@@ -71,6 +71,22 @@ export async function setIntegration(id: string, install: boolean): Promise<stri
   return install ? `${t.name}: installed ${what} (restart running ${t.name} sessions to load it)` : `${t.name}: removed`;
 }
 
+// Everything shepherd put into agents' configs, for `shepherd uninstall`: each installed integration,
+// then any skill link or shared skill copy an earlier install left without its hooks.
+export async function uninstallAll(): Promise<{ removed: string[]; failed: string[] }> {
+  const removed: string[] = [], failed: string[] = [];
+  for (const s of await integrationStatus()) {
+    if (s.status === "none") continue;
+    await setIntegration(s.id, false).then((line) => removed.push(line), (e) => failed.push(`${s.name}: ${(e as Error).message}`));
+  }
+  for (const t of TARGETS) {
+    const link = linkPath(t);
+    if (link && (await readlink(link).catch(() => "")) === skillDir()) await Bun.$`rm -f ${link}`.quiet().nothrow();
+  }
+  await Bun.$`rm -rf ${skillDir()}`.quiet().nothrow();
+  return { removed, failed };
+}
+
 const LABEL = { current: "✓ installed", outdated: "↻ update available", none: "not installed" };
 
 export async function runIntegration(verb: string | undefined, agent: string | undefined): Promise<number> {

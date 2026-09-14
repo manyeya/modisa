@@ -29,7 +29,8 @@ workspace
   shepherd events [--follow] [--output]
 
 setup
-  shepherd update                            install the newest release (then shepherd restart)
+  shepherd update                            install the newest release (then shepherd restart); names brew or mise's command when they installed it
+  shepherd uninstall [--purge] [--yes]       remove integrations, sessions, state (and config with --purge), and install.sh's binary
   shepherd version | --version               this version, and whether a newer one is out
   shepherd integration status | install|uninstall <agent|all>   (hooks + the shepherd skill)
   shepherd config [path|edit]

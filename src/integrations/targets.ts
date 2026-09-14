@@ -5,7 +5,7 @@
 //   session   — hooks that report only the agent's session id, for exact resume; state keeps coming
 //               from the agent's screen, because these agents' hooks miss some transitions
 //               (interrupts, permission answers).
-import { self } from "../core/paths";
+import { stableSelf as self } from "../core/paths"; // hooks outlive upgrades, so never a per-version path
 import { addFlat, addNested, hooksOf, MARK, oursIn, readJson, removeOurs, withBlock, withCodexHooksFeature, withHermesPlugin, writeJson } from "./edit";
 import { hermesPlugin, opencodePlugin, piExtension } from "./plugins";
 
@@ -71,7 +71,8 @@ function jsonHooks(o: {
       if (!(await exists(o.file()))) return;
       const root = await readJson(o.file());
       if (removeOurs(events(root))) {
-        if (o.owned && o.key) delete root[o.key];
+        // ours alone, or left empty by taking ours out: no `"hooks": {}` stays behind in their settings
+        if (o.key !== null && (o.owned || !Object.keys(events(root)).length)) delete root[o.key ?? "hooks"];
         await writeJson(o.file(), root);
       }
       await o.after?.(false);

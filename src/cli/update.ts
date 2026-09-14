@@ -3,7 +3,11 @@
 // new release after checking its SHA-256.
 import { loadConfig } from "../config/config";
 import { DIR, self } from "../core/paths";
+import { installedBy } from "../core/install";
 import { CHANNEL, FROM_SOURCE, REPO, VERSION, newer, platform } from "../core/version";
+
+// What to run to update this install: its package manager's command, or `shepherd update`.
+export const updateCommand = () => installedBy(self()[0]!, FROM_SOURCE).upgrade ?? "shepherd update";
 
 export type Manifest = { version: string; channel: string; notes: string; assets: Record<string, { url: string; sha256: string }> };
 
@@ -52,7 +56,7 @@ export async function checkForUpdate(force = false): Promise<Manifest | undefine
 export async function runVersion(): Promise<number> {
   console.log(`shepherd ${VERSION}${CHANNEL === "staging" ? " (staging)" : ""}${FROM_SOURCE ? " (from source)" : ""}`);
   const m = await checkForUpdate();
-  if (m) console.log(`update available: ${m.version} — run \`shepherd update\``);
+  if (m) console.log(`update available: ${m.version} — run \`${updateCommand()}\``);
   return 0;
 }
 
@@ -60,6 +64,12 @@ export async function runUpdate(): Promise<number> {
   if (FROM_SOURCE) {
     console.log(`shepherd ${VERSION} runs from source: update it with git pull`);
     return 0;
+  }
+  // replacing a binary a package manager owns would leave the manager's records wrong
+  const how = installedBy(self()[0]!, FROM_SOURCE);
+  if (how.upgrade) {
+    console.error(`shepherd was installed with ${how.manager}: update it with \`${how.upgrade}\`, then \`shepherd restart\``);
+    return 1;
   }
   const plat = platform();
   if (!plat) {
