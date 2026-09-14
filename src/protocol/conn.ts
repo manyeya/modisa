@@ -1,9 +1,12 @@
 // One JSON-RPC connection over any byte transport (unix socket or ssh stdio).
 import type { Msg } from "./schema";
-import type { ErrorCode } from "./types";
+import { ERROR_CODES, type ErrorCode } from "./types";
 
 // An error carrying a stable code, on either side of the wire.
 export const fail = (code: ErrorCode, message: string) => Object.assign(new Error(message), { code });
+
+// Only shepherd's own codes count; anything else (an OS error's ECONNRESET, a library's code) is plain "error".
+export const errorCode = (x: unknown): ErrorCode => ((ERROR_CODES as readonly unknown[]).includes(x) ? (x as ErrorCode) : "error");
 
 export const b64 = (bytes: Uint8Array) => bytes.toBase64();
 export const unb64 = (s: string) => Uint8Array.fromBase64(s);
@@ -45,7 +48,7 @@ export class Conn {
       if (m.id !== undefined && !m.method && this.pending.has(m.id)) {
         const p = this.pending.get(m.id)!;
         this.pending.delete(m.id);
-        m.error ? p.reject(fail(m.error.data?.code ?? "error", m.error.message)) : p.resolve(m.result);
+        m.error ? p.reject(fail(errorCode(m.error.data?.code), m.error.message)) : p.resolve(m.result);
       } else this.onMessage(m);
     }
   }

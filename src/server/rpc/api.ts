@@ -61,8 +61,9 @@ export function apiMethods(ctx: ServerContext): Handlers {
       const want = p.state as AgentState | undefined;
       const deadline = p.timeout ? Date.now() + p.timeout * 1000 : Infinity;
       for (;;) {
-        if (!s.panes.has(pane.id)) return { closed: true };
+        // exited-then-closed (a shell pane closes itself on exit) still counts as exited; closed any other way fails
         if (p.exited && pane.info.status === "exited") return { exitCode: pane.info.exitCode };
+        if (!s.panes.has(pane.id)) throw fail("pane_gone", `${pane.id} closed before the wait was met`);
         const st = pane.info.agent?.state;
         if (want && (st === want || (want === "idle" && st === "done"))) return { state: st };
         if (re) {
@@ -113,7 +114,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
       // queued, not delivered: it's typed in when the recipient is idle (see `messages`)
       return { id: m.id, queued: true, delivered: false, recipientState: to.info.agent?.state };
     },
-    inbox: (p) => mail.take(ctx.need(undefined, p.caller).id).map((m) => ({ from: m.fromName, body: m.body, at: m.at })),
+    inbox: (p) => mail.take(ctx.need(undefined, p.caller).id).map((m) => ({ id: m.id, from: m.fromName, replyTo: m.replyTo, body: m.body, at: m.at })),
     messages: () => mail.log,
     "messaging.pause": (p) => {
       mail.paused = p.paused ?? !mail.paused;

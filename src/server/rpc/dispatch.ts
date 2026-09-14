@@ -2,6 +2,7 @@
 // result or a JSON-RPC error.
 import { api, type Msg } from "../../protocol/schema";
 import type { Client } from "../context";
+import { errorCode } from "../../protocol/conn";
 
 export type Handlers = Record<string, (params: any, client: Client) => any>;
 
@@ -17,7 +18,7 @@ export function createDispatcher(handlers: Handlers) {
     try {
       reply({ result: (await h(parsed.data, c)) ?? null });
     } catch (e: any) {
-      reply({ error: { code: -32000, message: e?.message ?? String(e), data: { code: e?.code ?? "error" } } });
+      reply({ error: { code: -32000, message: e?.message ?? String(e), data: { code: errorCode(e?.code) } } });
     }
   };
 }

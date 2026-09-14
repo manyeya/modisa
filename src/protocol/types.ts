@@ -11,7 +11,8 @@ export type NotifyEvent = Exclude<AgentState, "idle">;
 export type IntegrationStatus = { id: string; name: string; kind: "lifecycle" | "session"; status: "current" | "outdated" | "none"; available: boolean; configured: boolean };
 
 // A failed request's stable code (JSON-RPC error.data.code); the CLI maps some to exit statuses.
-export type ErrorCode = "error" | "usage" | "unreachable" | "timeout" | "invalid_params" | "unknown_method" | "no_such_pane" | "pane_gone";
+export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone"] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export type PaneInfo = {
   id: string;

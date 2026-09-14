@@ -66,7 +66,8 @@ shepherd pane read tests --lines 100    # then read the result
 Also `--state idle|working|blocked|done` (`idle` also matches `done`), `--match <regex>` against new
 output, and `--timeout <seconds>`. Reading in a loop wastes tokens and misses output between reads.
 The exit status says what happened: `wait --exited` exits with the pane's code, a timeout exits 124,
-an unreachable server 3, bad usage 2, any other failure 1.
+an unreachable server 3, bad usage 2, any other failure 1. A child can exit with those same numbers, so
+when it matters use `--json`: the child's `{"exitCode":…}` is on stdout, shepherd's `{"error":…}` on stderr.
 
 **Panes outlive their process.** A pane stays open after its command exits, so the output is still
 there to read. Close it when you're done with it.
@@ -78,8 +79,9 @@ permission and is the supported path. Keep `pane keys` and `pane run` for shells
 
 **Messages land only when the other agent is free.** `shepherd send` queues into the recipient's
 mailbox and is typed in when they go `idle` or `done` — never mid-turn. It arrives with a reply
-hint like `shepherd send p3:1a2b3c4d "…"`: use that target, since it keeps working after a rename and
-fails (instead of reaching someone else) if the sender has gone. Don't follow up with a second message because the
+hint like `shepherd send p3:1a2b3c4d "…"`: use that target (it's in `shepherd inbox` too), since it keeps
+working after a rename and fails (instead of reaching someone else) once the sender has closed or the server has
+restarted. Don't follow up with a second message because the
 first hasn't been answered yet; `shepherd wait <them> --state idle` instead, then `shepherd inbox`.
 
 A full exchange, with no permission prompts anywhere:

@@ -36,7 +36,9 @@ setup
   shepherd config [path|edit]
   shepherd debug detect <target>
 
-targets: pane id (p3), @name or name; p3:1a2b3c4d (from a message's reply hint) reaches only that pane, and fails once it's gone
+targets: pane id (p3), @name or name; p3:1a2b3c4d (from a message's reply hint) reaches only that pane: it survives a
+  rename, but fails once the pane closes or the server restarts
 
 exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 wait timed out; wait --exited exits with the pane's code
+  (so a child's own 1/2/3/124 looks the same: with --json its result is on stdout, shepherd's error on stderr)
   with --json, a failure prints {"error":{"code","message"}} to stderr (codes: no_such_pane, pane_gone, timeout, unreachable…)`;

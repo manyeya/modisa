@@ -1,6 +1,6 @@
 // `shepherd <noun> <verb>` — the socket API as shell commands, so any agent can drive panes with zero integration.
 import { connectExisting } from "../protocol/transport";
-import { ConnectionClosedError, type Conn } from "../protocol/conn";
+import { ConnectionClosedError, errorCode, type Conn } from "../protocol/conn";
 import type { ErrorCode } from "../protocol/types";
 import { str, num, type Args } from "./args";
 import { HELP } from "./help";
@@ -92,10 +92,8 @@ export async function runCli(a: Args): Promise<number> {
       case `wait ${verb}`: {
         const res = await call("wait", { target: verb, exited: !!f.exited, state: f.idle ? "idle" : str(f.state), match: str(f.match), timeout: num(f.timeout) });
         if (json) print(res, true);
-        else if ("exitCode" in res) {
-          console.log(`exited ${res.exitCode}`);
-          return res.exitCode ?? 0;
-        } else console.log(res.state ?? res.match ?? (res.closed ? "closed" : ""));
+        else console.log("exitCode" in res ? `exited ${res.exitCode}` : res.state ?? res.match);
+        if ("exitCode" in res) return res.exitCode ?? 0; // the child's status, in either output format
         break;
       }
       case `send ${verb}`: {
@@ -108,7 +106,7 @@ export async function runCli(a: Args): Promise<number> {
         const ms = await call<any[]>("inbox");
         if (json) print(ms, true);
         else if (!ms.length) console.log("(no messages)");
-        else for (const m of ms) console.log(`from @${m.from}:\n${m.body}\n`);
+        else for (const m of ms) console.log(`from @${m.from}${m.replyTo ? ` (reply: shepherd send ${m.replyTo} "...")` : ""}:\n${m.body}\n`);
         break;
       }
       case "messages": {
@@ -161,7 +159,7 @@ export async function runCli(a: Args): Promise<number> {
         return failed("usage", `unknown command: ${a._.join(" ")}${json ? "" : `\n\n${HELP}`}`, json);
     }
   } catch (e: any) {
-    return failed(e instanceof ConnectionClosedError ? "unreachable" : e.code ?? "error", `shepherd: ${e.message}`, json);
+    return failed(e instanceof ConnectionClosedError ? "unreachable" : errorCode(e.code), `shepherd: ${e.message}`, json);
   } finally {
     if (!f.follow) conn.close();
   }

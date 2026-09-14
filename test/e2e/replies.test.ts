@@ -57,3 +57,31 @@ test("send → close the sender → a new pane takes its name → the reply fail
   expect(r.out).toContain(`${b} has gone`);
   expect(await cli("messages")).not.toContain("pong-2");
 }, 60000);
+
+// last: it pauses delivery, so messages stay queued and are pulled with `inbox`
+test("the pull flow (inbox, then reply) keeps its target through a rename, and fails after a close-and-replace", async () => {
+  expect(await cli("pause")).toBe("messaging paused");
+  try {
+    const c = await spawn("--name", "carol");
+    const as = (id: string) => ({ SHEPHERD_PANE_ID: id });
+    await sb.cli(S, ["send", "@fake", "hello-3"], as(c));
+    const plain = await sb.cli(S, ["inbox"], as(fake));
+    const hint = /from @carol \(reply: shepherd send (\S+) "\.\.\."\):\nhello-3/.exec(plain)?.[1];
+    expect(hint).toMatch(new RegExp(`^${c}:\\w+$`));
+    await cli("pane", "rename", c, "dave");
+    await sb.cli(S, ["send", hint!, "pong-3"], as(fake));
+    expect(JSON.parse(await sb.cli(S, ["inbox", "--json"], as(c)))).toMatchObject([{ from: "fake", body: "pong-3" }]);
+
+    await sb.cli(S, ["send", "@fake", "hello-4"], as(c));
+    const [m] = JSON.parse(await sb.cli(S, ["inbox", "--json"], as(fake)));
+    expect(m).toMatchObject({ from: "dave", body: "hello-4", replyTo: hint });
+    await cli("pane", "close", c);
+    await spawn("--name", "dave");
+    const r = await sb.run(S, ["send", m.replyTo, "pong-4"], as(fake));
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(`${c} has gone`);
+    expect(await cli("messages")).not.toContain("pong-4");
+  } finally {
+    await cli("pause"); // resumed
+  }
+}, 90000);
