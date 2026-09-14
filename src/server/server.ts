@@ -1,4 +1,4 @@
-// The session server: owns every PTY and speaks the protocol to TUI clients, the CLI, MCP and plugins.
+// The session server: owns every PTY and speaks the protocol to TUI clients, the CLI, the integrations and plugins.
 // This file is the startup/shutdown order; the pieces live in context, rpc/, agents/, persist/.
 import { DIR, codeVersion, cwd, socketPath } from "../core/paths";
 import { socketConn } from "../protocol/conn";

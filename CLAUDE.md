@@ -107,7 +107,7 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 
 ## Project structure
 
-Code lives in feature folders under `src/` (`cli`, `core`, `protocol`, `config`, `server`, `client`, `platform`, `mcp`, `integrations`); README's "Layout" section lists what goes where. Types shared by client and server go in `src/protocol/types.ts`, never in a server or client file. Server features are modules that take the `ServerContext` (`src/server/context.ts`); client features are functions that take the `App` (`src/client/context.ts`).
+Code lives in feature folders under `src/` (`cli`, `core`, `protocol`, `config`, `server`, `client`, `platform`, `integrations`, `skills`); README's "Layout" section lists what goes where. Types shared by client and server go in `src/protocol/types.ts`, never in a server or client file. Server features are modules that take the `ServerContext` (`src/server/context.ts`); client features are functions that take the `App` (`src/client/context.ts`).
 
 Tests live in `test/`, not next to the code: `test/unit` for pure logic, `test/e2e` (and `test/e2e/ui`) for one feature per file, each in its own `sandbox()` session, `test/support` for shared helpers, and `test/fixtures` for captured screens. Put a helper in `test/support` instead of copying it between files.
 

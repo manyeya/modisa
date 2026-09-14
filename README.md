@@ -75,6 +75,46 @@ shepherd --remote ssh://devbox   # thin client here, server there (needs shepher
 
 Layouts, pane names, working directories and agents are saved in `~/.local/state/shepherd/shepherd.db`. After a reboot, attaching restores the session: shells come back in their directories, agents are relaunched into the exact conversation their integration reported (`claude --resume <id>`, `codex resume <id>`, …) or else their latest one (`claude --continue`, …), and plain commands are typed back in but not run.
 
+### Remote sessions over SSH
+
+`--remote` splits shepherd in two: the TUI runs on your machine, the server and every pane run on the far side. Your keybindings, theme, sounds and notifications stay local; the panes, the agents and their files are remote.
+
+```bash
+shepherd --remote ssh://devbox              # host
+shepherd --remote ssh://me@build-01:2222    # user and port
+shepherd --remote devbox                    # a Host alias from ~/.ssh/config
+shepherd -s api --remote ssh://devbox       # a named session on that machine
+```
+
+There is no daemon to install and no port to open. Shepherd shells out to your own `ssh`, so agent forwarding, jump hosts, `Match` blocks and keys from `~/.ssh/config` all apply. The exact command it runs:
+
+```bash
+ssh -T devbox shepherd proxy -s default             # ssh://devbox
+ssh -T -p 2222 me@build-01 shepherd proxy -s api    # ssh://me@build-01:2222, -s api
+```
+
+`shepherd proxy` on the far side starts the session server if it isn't running, then bridges its unix socket to stdio. `-T` means no pty is allocated: the protocol is newline-delimited JSON, not a terminal.
+
+**Shepherd must be on the remote machine**, and by default it must be on the `PATH` of a
+*non-interactive* ssh shell — which often excludes `~/.local/bin`, where the installer puts it. If
+`--remote` fails with something like `shepherd: command not found`, set an absolute path in your
+**local** config (`~/.config/shepherd/config.toml`):
+
+```toml
+remote_command = "/home/me/.local/bin/shepherd"
+```
+
+Check what the remote shell actually sees with `ssh devbox 'command -v shepherd'`.
+
+Other things worth knowing:
+
+- **Everything server-side happens remotely.** Panes, agents, integrations and `[[plugin]]` programs all run on the remote machine. A plugin that raises a desktop notification raises it there.
+- **Sessions are per machine.** `shepherd ls` lists local sessions; to see the remote ones, `ssh devbox shepherd ls`.
+- **Detaching leaves it running.** `Ctrl+B d` drops the ssh connection; the remote session keeps going, and so do the agents. Reattach from any machine.
+- **Copy uses OSC 52**, so `Ctrl+B` copy actions reach your local clipboard through ssh in terminals that support it.
+- **Updating is per machine.** `shepherd update` on your laptop doesn't touch the remote install; run it there too, then `shepherd restart`.
+- `SHEPHERD_SSH` overrides the ssh binary, which is how the test suite substitutes a fake.
+
 A `shepherd.toml` in the directory you start from lays out a new session:
 
 ```toml
@@ -105,7 +145,26 @@ shepherd integration install all         # everything recommended for the agents
 shepherd integration install codex       # or one agent; uninstall takes out only shepherd's entries
 ```
 
-The settings page (`Ctrl+B s` → integrations) does the same. Integrations install on the machine the server runs on, where the agents are. Claude Code and Codex also get the shepherd MCP server.
+The settings page (`Ctrl+B s` → integrations) does the same. Integrations install on the machine the server runs on, where the agents are.
+
+### The skill
+
+Installing an integration also drops in the **shepherd skill** — a `SKILL.md` teaching the agent to split panes, spawn and message other agents, and wait on them, so it drives the session without you explaining the CLI each time. There's no separate command; it comes with the integration:
+
+```bash
+shepherd integration install claude       # hooks + the skill, for one agent
+shepherd integration install all          # …for every agent on this machine
+shepherd integration status               # "↻ update available" when a newer skill ships
+shepherd integration uninstall claude     # takes the skill back out too
+```
+
+```text
+~/.agents/skills/shepherd/SKILL.md          the one copy
+~/.claude/skills/shepherd  -> …/.agents/skills/shepherd
+~/.codex/skills/shepherd   -> …/.agents/skills/shepherd
+```
+
+Every agent above gets it except MastraCode and OMP, whose skills directories aren't established. Kimi Code reads `~/.agents/skills` itself, so it needs no link. Restart a running agent to pick the skill up.
 
 Your own tools can report too: `shepherd report --source my-tool --agent my-agent --state working|blocked|idle [--seq n] [--session-id id]`, and `--release` hands the pane back to screen detection. Reports without `--source` don't change state.
 
@@ -126,11 +185,30 @@ shepherd inbox
 shepherd events --follow
 ```
 
-`shepherd help` lists every command. `shepherd mcp` exposes the same operations as MCP tools. Messages carry a hop count and a per-pair rate limit so two agents can't ping-pong forever, and `Ctrl+B m` pauses delivery. When an agent types into or closes a pane it didn't create, you get an allow / always / deny prompt; the policy is set in `[permissions]` in the config.
+`shepherd help` lists every command, and the shepherd skill teaches them to an agent that has it. Messages carry a hop count and a per-pair rate limit so two agents can't ping-pong forever, and `Ctrl+B m` pauses delivery. When an agent types into or closes a pane it didn't create, you get an allow / always / deny prompt; the policy is set in `[permissions]` in the config.
+
+## Plugins
+
+A plugin is any program shepherd starts alongside the session server — no SDK, no manifest. It gets `SHEPHERD_SOCKET` (the session's unix socket, which is the whole API) and `SHEPHERD_SESSION`, and talks the same newline-delimited JSON-RPC the CLI does. Watch events, react to agents, open panes, drive state.
+
+```toml
+[[plugin]]
+run = "bun ~/code/watcher/plugin.ts"
+```
+
+Plugins are **not** panes: `SHEPHERD_PANE_ID` is unset, so pass an explicit `target` to every command, and know that you act with the user's authority — the permission prompts that gate agents don't apply to you.
+
+Anything that reads a pipe qualifies:
+
+```sh
+shepherd events --follow | while read -r line; do ... done
+```
+
+**[`examples/plugins/`](examples/plugins/) is the full guide**: the event catalogue with verified payloads, the methods worth calling, the error codes, and the rules that will bite you (events aren't replayed; `run` goes through a *login* shell that can rewrite `PATH`; exit when the socket closes rather than reconnecting). [`blocked-notifier/plugin.ts`](examples/plugins/blocked-notifier/plugin.ts) is a complete working example — it announces any agent that gets blocked, with the question it's stuck on.
 
 ## Config
 
-`Ctrl+B s` opens the settings page; `shepherd config edit` (or "Edit config.toml" in the command palette) opens `~/.config/shepherd/config.toml` itself; changes apply live. It covers the prefix key, theme, sidebar, which notifications fire (toast, system, sound, bell), messaging limits, permissions, per-agent launch commands, and plugins. Plugins are any commands started with `SHEPHERD_SOCKET` set.
+`Ctrl+B s` opens the settings page; `shepherd config edit` (or "Edit config.toml" in the command palette) opens `~/.config/shepherd/config.toml` itself; changes apply live. It covers the prefix key, theme, sidebar, which notifications fire (toast, system, sound, bell), messaging limits, permissions, per-agent launch commands, `remote_command` for `--remote`, and `[[plugin]]` programs.
 
 ## Build
 
@@ -154,14 +232,14 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 ```
 
 - `test/unit/` — pure logic: layout math, chrome geometry, config, detection against captured screens, mailbox, connections
-- `test/e2e/` — one file per feature, each with its own sandboxed session: sessions, panes, cli, agents, messaging, permissions, mcp, integrations, plugins, remote, reconnect
+- `test/e2e/` — one file per feature, each with its own sandboxed session: sessions, panes, cli, agents, messaging, permissions, integrations, plugins, remote, reconnect
 - `test/e2e/ui/` — keyboard, mouse, spaces, chrome, read back through `libghostty-vt`
 - `test/support/` — the harness (`sandbox`, `Screen`, `startServer`), a fake agent, and mouse encoders
 - `test/fixtures/` — captured agent screens used by the detection tests
 
 ## Layout
 
-- `src/main.ts` — entry point; dispatches to the CLI, server, client, MCP or integrations
+- `src/main.ts` — entry point; dispatches to the CLI, server, client or integrations
 - `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart)
 - `src/core/` — paths and the split-tree layout math
 - `src/protocol/` — shared types, the Zod JSON-RPC schema, connections and transports
@@ -180,10 +258,11 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
   - `sound/` — cuelume's sound recipes, rendered to WAV and played through OpenTUI's audio engine
   - `input/` — prefix bindings, keyboard handler, copy mode
 - `src/platform/` — controlling-terminal exec (`bun:ffi`) and the embedded libghostty libraries
-- `src/mcp/` — the MCP server
+- `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `shepherd hook`
+- `src/skills/` — the shepherd skill (`shepherd/SKILL.md`), installed by the integrations
+- `examples/plugins/` — how to write a plugin, and a working one (covered by `test/e2e/plugins.test.ts`)
 - `site/` — the docs site: `build.ts` (a dependency-free static generator), `content/` (the landing page and docs), `assets/` (CSS, JS, icons)
 - `.github/` — CI, the release workflow and its scripts; `install.sh` is the installer
-- `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `shepherd hook`
 
 ## License
 

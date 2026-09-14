@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Entry point: route a command line to the session commands, the server, MCP, or the API CLI.
+// Entry point: route a command line to the session commands, the server, the integrations, or the API CLI.
 import { execWithTty } from "./platform/ctty";
 import { parseArgs } from "./cli/args";
 import { HELP } from "./cli/help";
@@ -39,9 +39,6 @@ switch (cmd) {
     break;
   case "kill":
     await killSession(rest[0] ?? session);
-    break;
-  case "mcp":
-    await (await import("./mcp/server")).runMcp(flag("session"));
     break;
   case "integration":
     await (await import("./integrations")).runIntegration(rest[0], rest[1]);

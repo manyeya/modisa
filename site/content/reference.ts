@@ -56,7 +56,7 @@ regex = ['(?i)esc to interrupt']`) + p(`${c("shepherd debug detect <pane>")} sho
       { id: "install", title: "Install", html: code("sh", `shepherd integration status          # installed, update available, available, not found
 shepherd integration install all     # everything recommended for the agents on this machine
 shepherd integration install codex   # or one
-shepherd integration uninstall codex # takes out only shepherd's entries`) + p(`Or ${kbd("Ctrl+B")} ${kbd("s")} → integrations. Each one goes into the agent's own config, in its own format, next to your settings; an agent's config directory has to exist (run it once). Installs happen where the server runs, which is where the agents are. Claude Code and Codex also get the shepherd MCP server.`) },
+shepherd integration uninstall codex # takes out only shepherd's entries`) + p(`Or ${kbd("Ctrl+B")} ${kbd("s")} → integrations. Each one goes into the agent's own config, in its own format, next to your settings; an agent's config directory has to exist (run it once). Installs happen where the server runs, which is where the agents are.`) },
       { id: "yours", title: "Report from your own tools", html: code("sh", `shepherd report --source my-tool --agent my-agent --state working
 shepherd report --source my-tool --state blocked --seq 42   # stale seqs are ignored
 shepherd report --source my-tool --session-id abc123        # resume this session after a restart
@@ -102,17 +102,47 @@ shepherd events --follow`) },
     ],
   },
   {
-    slug: "mcp", group: "Automation", title: "MCP",
-    description: "The same operations as MCP tools, for agents that prefer tools to shell commands.",
+    slug: "skill", group: "Automation", title: "Skill",
+    description: "A SKILL.md that teaches an agent the CLI, so it drives the session on its own.",
     sections: [
-      { id: "run", title: "Run it", html: code("sh", "shepherd mcp") + p(`A stdio MCP server exposing list_panes, list_agents, split_pane, run_in_pane, read_pane, send_keys, close_pane, spawn_agent, wait, send_message, read_inbox, create_tab and create_workspace. Installing the Claude Code or Codex integration registers it for you.`) },
+      { id: "what", title: "What it is", html: p(`Installing an integration also drops in the shepherd skill: a ${c("SKILL.md")} covering splitting panes, running commands in them, reading output, spawning and messaging other agents, and waiting on them. The agent loads it only when the task calls for it, so it costs nothing the rest of the time, and it works through the same ${c("shepherd")} binary that is already on every pane's PATH — there is no server to run and no tool slots to spend.`) },
+      { id: "install", title: "Install it", html: p(`There's no separate command — the skill comes with the integration:`) + code("sh", `shepherd integration install claude     # hooks + the skill, for one agent
+shepherd integration install all        # …for every agent on this machine
+shepherd integration status             # "↻ update available" when a newer skill ships
+shepherd integration uninstall claude   # takes the skill back out too`) + p(`Restart a running agent to pick it up.`) },
+      { id: "where", title: "Where it goes", html: code("text", `~/.agents/skills/shepherd/SKILL.md          the one copy
+~/.claude/skills/shepherd  -> …/.agents/skills/shepherd
+~/.codex/skills/shepherd   -> …/.agents/skills/shepherd`) + p(`One copy, symlinked into each agent that reads skills from a directory of its own. Every agent with an integration gets it except MastraCode and OMP, whose skills directories aren't established; Kimi Code reads ${c("~/.agents/skills")} itself, so it needs no link.`) },
     ],
   },
   {
     slug: "plugins", group: "Automation", title: "Plugins",
     description: "Any program, started with the session and given its socket.",
     sections: [
-      { id: "config", title: "Configure", html: code("toml", `[[plugin]]\nrun = "my-plugin --socket $SHEPHERD_SOCKET"`) + p("Plugins start with the session server and get SHEPHERD_SOCKET, so they can use the whole API: watch events, react to agents, open panes.") },
+      { id: "config", title: "Declare one", html: code("toml", `[[plugin]]\nrun = "bun ~/code/watcher/plugin.ts"`) + p(
+        `Plugins start with the session server and get ${c("SHEPHERD_SOCKET")} — the session's unix socket, which is the whole API — plus ${c("SHEPHERD_SESSION")}. No SDK and no manifest: anything that speaks newline-delimited JSON-RPC qualifies. Edit the config, then ${c("shepherd restart")}.`,
+        `${c("run")} goes through a <strong>login</strong> shell, so your profile is sourced first and can rewrite ${c("PATH")}. Use absolute paths.`,
+      ) },
+      { id: "not-a-pane", title: "A plugin is not a pane", html: p(
+        `${c("SHEPHERD_PANE_ID")} is deliberately unset, so commands that default to "the calling pane" have no default — always pass a ${c("target")}. And you act with the <strong>user's</strong> authority: the permission prompts that gate an agent typing into or closing a pane it didn't create do not apply to you.`,
+      ) },
+      { id: "events", title: "Events", html: p(`Call ${c("events.subscribe")} once, then read notifications. Every event carries ${c("type")} and ${c("at")}.`) + table(["type", "Extra fields"], [
+        [c("pane.created"), `${c("pane")}, ${c("name")}, ${c("command")}`],
+        [c("process.exited"), `${c("pane")}, ${c("name")}, ${c("exitCode")}`],
+        [c("agent.state"), `${c("pane")}, ${c("name")}, ${c("harness")}, ${c("from")}, ${c("to")}`],
+        [c("message.sent"), `${c("id")}, ${c("from")}, ${c("to")}, ${c("hops")}`],
+        [c("message.delivered"), `${c("id")}, ${c("from")}, ${c("to")}`],
+        [c("client.attached"), "—"],
+        [c("pane.output"), `${c("pane")}, ${c("text")} — opt in with ${c("{ output: true }")}; it is every byte of every pane`],
+      ]) + p(`<strong>Events are not replayed.</strong> You get what happens after your subscription lands. Plugins start while the server is still booting, so subscribe first and then call ${c("list")} if you need the state of the world.`) },
+      { id: "shell", title: "The cheap way", html: p("No socket client needed — the CLI reads the same variable:") + code("sh", `#!/bin/sh
+shepherd events --follow | while read -r line; do
+  echo "$line" | grep -q '"type":"agent.state".*"to":"blocked"' && say "an agent needs you"
+done`) },
+      { id: "example", title: "A worked example", html: p(
+        `<a href="https://github.com/manyeya/shepherd/tree/main/examples/plugins">examples/plugins/</a> is the full guide: the method list, the JSON-RPC error codes, and the rules that will bite you. <code>blocked-notifier/plugin.ts</code> there is a complete plugin — it announces any agent that gets blocked, with the question it is stuck on.`,
+        `Remember that plugins run where the <em>server</em> runs. With ${c("--remote")} that is the remote machine, so a desktop notification pops up there.`,
+      ) },
     ],
   },
   {

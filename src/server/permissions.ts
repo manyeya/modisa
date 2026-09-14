@@ -9,9 +9,11 @@ export function installPermissions(ctx: ServerContext) {
     if (!caller || !ctx.s.panes.has(caller) || target.id === caller || target.info.createdBy === caller) return;
     const policy = ctx.cfg.permissions[`${action}_foreign`];
     if (policy === "allow" || always.has(`${caller}:${action}:${target.id}`)) return;
-    if (policy === "deny") throw new Error(`permission denied: ${action} on ${ctx.name(target.id)}`);
+    // Typing at another agent is what the mailbox is for: say so, or every exchange interrupts the user.
+    const instead = action !== "close" && (target.info.agent || target.info.harness) ? `; to talk to it use: shepherd send @${ctx.name(target.id)} "…"` : "";
+    if (policy === "deny") throw new Error(`permission denied: ${action} on ${ctx.name(target.id)}${instead}`);
     const to = ctx.attached();
-    if (!to.length) throw new Error(`permission needed for ${action} on ${ctx.name(target.id)}, but no one is attached to approve it`);
+    if (!to.length) throw new Error(`permission needed for ${action} on ${ctx.name(target.id)}, but no one is attached to approve it${instead}`);
     const id = ++promptSeq;
     const answer = await new Promise<string>((resolve) => {
       ctx.prompts.set(id, resolve);
@@ -21,6 +23,6 @@ export function installPermissions(ctx: ServerContext) {
     ctx.prompts.delete(id);
     ctx.broadcast("prompt.done", { id });
     if (answer === "always") always.add(`${caller}:${action}:${target.id}`);
-    else if (answer !== "allow") throw new Error(`denied by user: ${action} on ${ctx.name(target.id)}`);
+    else if (answer !== "allow") throw new Error(`denied by user: ${action} on ${ctx.name(target.id)}${instead}`);
   };
 }

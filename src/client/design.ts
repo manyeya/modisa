@@ -39,3 +39,31 @@ export function tabWindow(count: number, active: number, width: number) {
   const start = Math.max(0, Math.min(active - Math.floor(visible / 2), count - visible));
   return { start, end: start + visible, width: Math.max(1, Math.floor(width / visible)) };
 }
+
+// Reserve the footer before assigning list rows. Agent rows always occupy exactly
+// two lines; overflow controls are part of the budget rather than drawn over it.
+export function sidebarBudget(height: number, spaces: number, agents: number) {
+  const content = Math.max(0, height - 5);
+  const spaceRows = Math.min(spaces, 6, Math.max(1, Math.floor(height / 5)), Math.max(0, content - 9));
+  const moreSpaces = spaces > spaceRows;
+  const remaining = Math.max(0, content - 6 - spaceRows - Number(moreSpaces));
+  const moreAgents = agents * 2 > remaining;
+  const agentRows = Math.min(agents, Math.max(0, Math.floor((remaining - Number(moreAgents)) / 2)));
+  return { spaceRows, moreSpaces, agentRows, moreAgents: agents > agentRows };
+}
+
+// Keep priority order, but never strand the focused agent behind an overflow row.
+export function sidebarAgents<T extends { id: string }>(agents: T[], focused: string, budget: number): T[] {
+  if (budget <= 0) return [];
+  const visible = agents.slice(0, budget);
+  const active = agents.find((agent) => agent.id === focused);
+  if (active && !visible.includes(active)) visible[visible.length - 1] = active;
+  return visible;
+}
+
+// Right-hand state labels keep their cell budget; Unicode names fit the remainder.
+export function sidebarColumns(left: string, right: string, width: number) {
+  const tail = fit(right, Math.max(0, width));
+  const head = fit(left, Math.max(0, width - Bun.stringWidth(tail) - Number(Boolean(tail))));
+  return { left: head + " ".repeat(Math.max(0, width - Bun.stringWidth(head + tail))), right: tail };
+}

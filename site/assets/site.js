@@ -49,6 +49,13 @@
     const open = side.classList.toggle("open");
     sideToggle.setAttribute("aria-expanded", String(open));
   });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && side?.classList.contains("open")) {
+      side.classList.remove("open");
+      sideToggle?.setAttribute("aria-expanded", "false");
+      sideToggle?.focus();
+    }
+  });
 
   // ---------- on this page ----------
   const tocLinks = $$(".toc a[href^='#']");

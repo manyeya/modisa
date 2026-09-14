@@ -17,12 +17,12 @@ const version = (Bun.env.SHEPHERD_VERSION || tag || "0.1.0").replace(/^v/, "");
 const fonts = `<link rel="preload" href="__BASE__assets/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>`;
 
 function shell(o: { title: string; description: string; body: string; base: string; path: string; landing?: boolean }) {
-  return `<!doctype html><html lang="en" data-theme="night"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="en" data-theme="day"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(o.title)}</title><meta name="description" content="${escape(o.description)}">
 <meta property="og:title" content="${escape(o.title)}"><meta property="og:description" content="${escape(o.description)}"><meta property="og:type" content="website"><meta property="og:image" content="${site}assets/social.png"><meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="${site}${o.path}"><link rel="icon" type="image/png" href="${o.base}assets/shepherd-mark.png"><meta name="theme-color" content="#0b0b0d">
-<script>try{var t=localStorage.getItem("shepherd-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
-${fonts.replace("__BASE__", o.base)}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/terminal.css"><link rel="stylesheet" href="${o.base}assets/landing.css"><link rel="stylesheet" href="${o.base}assets/motion.css"><script type="module" src="${o.base}assets/motion.js"></script>` : ""}<script defer src="${o.base}assets/site.js"></script>
+<link rel="canonical" href="${site}${o.path}"><link rel="icon" type="image/png" href="${o.base}assets/shepherd-mark.png"><meta name="theme-color" content="#f6f6f9">
+<script>try{var t=localStorage.getItem("shepherd-theme");if(t==="day"||t==="night")document.documentElement.dataset.theme=t}catch(e){}</script>
+${fonts.replace("__BASE__", o.base)}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/terminal.css"><link rel="stylesheet" href="${o.base}assets/landing.css"><script type="module" src="${o.base}assets/motion.js"></script>` : ""}<script defer src="${o.base}assets/site.js"></script>
 </head><body class="${o.landing ? "is-landing" : "is-docs"}" data-base="${o.base}"><a class="skip" href="#main">Skip to content</a>
 ${o.body}
 ${footer(o.base)}
@@ -30,15 +30,15 @@ ${search()}</body></html>`;
 }
 
 function footer(base: string) {
-  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>shepherd.</span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
+  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>shepherd<span class="brand-period">.</span></span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
 }
 
 function search() {
-  return `<dialog class="search" id="search" aria-label="Search the docs"><div class="search-bar"><span aria-hidden="true">/</span><input type="search" id="search-input" placeholder="Search the docs" autocomplete="off" aria-controls="search-results"><button type="button" data-search-close>esc</button></div><div id="search-results" role="listbox"><p class="search-empty">Commands, keys, agents, settings…</p></div></dialog>`;
+  return `<dialog class="search" id="search" aria-label="Search the docs"><div class="search-bar"><span aria-hidden="true">/</span><input type="search" id="search-input" aria-label="Search documentation" placeholder="Search the docs" autocomplete="off" aria-controls="search-results"><button type="button" data-search-close>esc</button></div><div id="search-results" role="listbox"><p class="search-empty">Commands, keys, agents, settings…</p></div></dialog>`;
 }
 
 function docsHeader(base: string) {
-  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="shepherd home">${mark(base)}<span>shepherd.</span></a><span class="top-tag">docs</span><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search</span><kbd>/</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
+  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="shepherd home">${mark(base)}<span>shepherd<span class="brand-period">.</span></span></a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
 }
 
 function docsPage(page: Page, index: number) {
@@ -50,9 +50,9 @@ function docsPage(page: Page, index: number) {
   const body = `${docsHeader(base)}
 <div class="docs-bar"><button type="button" data-side-toggle aria-expanded="false" aria-controls="side">☰ ${escape(page.group)}</button><span>${escape(page.title)}</span></div>
 <div class="docs">
-  <aside class="side" id="side" aria-label="Documentation">${nav}</aside>
+  <aside class="side" id="side" aria-label="Documentation"><a class="side-home" href="${base}">← Back to shepherd</a>${nav}<a class="side-start" href="../quick-start/"><span>YOUR FIRST SESSION</span><strong>Get up and running ↗</strong></a></aside>
   <main id="main" class="doc">
-    <p class="crumb">${escape(page.group)}</p>
+    <p class="crumb">DOCUMENTATION <span>/</span> ${escape(page.group)}</p>
     <h1>${escape(page.title)}</h1>
     <p class="doc-lede">${escape(page.description)}</p>
     ${page.sections.map((s) => `<section id="${s.id}"><h2><a href="#${s.id}">${s.title}</a></h2>${s.html}</section>`).join("\n")}
@@ -71,7 +71,7 @@ const motion = await Bun.build({ entrypoints: [`${root}/client/motion.js`], outd
 if (!motion.success) throw new AggregateError(motion.logs, "Site animation bundle failed");
 await Bun.write(`${out}/install.sh`, Bun.file(`${root}/../install.sh`));
 await Bun.write(`${out}/.nojekyll`, "");
-await Bun.write(`${out}/index.html`, shell({ title: "Shepherd — your agents, under control", description: "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.", body: landing({ version, repo }), base: "./", path: "", landing: true }));
+await Bun.write(`${out}/index.html`, shell({ title: "Shepherd — Run a crew. Keep your flow.", description: "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.", body: landing({ version, repo }), base: "./", path: "", landing: true }));
 for (const [i, page] of pages.entries()) await Bun.write(`${out}/docs/${page.slug}/index.html`, docsPage(page, i));
 await Bun.write(`${out}/docs/index.html`, `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=introduction/"><link rel="canonical" href="${site}docs/introduction/"><a href="introduction/">Documentation</a>`);
 await Bun.write(`${out}/search.json`, JSON.stringify(pages.flatMap((p) => [

@@ -9,6 +9,7 @@ const home = `${sb.root}/home`;
 const run = (...args: string[]) => sb.cli("x", args, { HOME: home, PATH: `${Bun.which("bun")!.replace(/\/bun$/, "")}:/usr/bin:/bin` });
 const json = (path: string) => Bun.file(`${home}/${path}`).json();
 const text = (path: string) => Bun.file(`${home}/${path}`).text();
+const linkOf = (path: string) => Bun.$`readlink ${`${home}/${path}`}`.quiet().nothrow().then((r) => r.stdout.toString().trim());
 const status = async () => Object.fromEntries((await run("integration", "status")).split("\n").map((l) => [l.slice(0, 16).trim(), l.slice(17, 37).trim()]));
 
 afterAll(() => sb.cleanup());
@@ -71,11 +72,30 @@ test("install all, status, and uninstall across every agent's config format", as
   expect(await text(".pi/agent/extensions/shepherd-agent-state.ts")).toContain('pi.on("agent_settled"');
   expect(await text(".omp/agent/extensions/shepherd-omp-agent-state.ts")).toContain('pi.on("tool_approval_requested"');
 
+  // one skill in the shared directory, symlinked into each agent that reads skills of its own
+  expect(await text(".agents/skills/shepherd/SKILL.md")).toContain("shepherd pane split");
+  for (const link of [".claude/skills/shepherd", ".codex/skills/shepherd", ".config/opencode/skills/shepherd", ".pi/agent/skills/shepherd"]) {
+    expect(await linkOf(link)).toBe(`${home}/.agents/skills/shepherd`);
+  }
+  // these two don't keep skills in their config directory, and Kimi reads the shared one directly
+  expect(await linkOf(".kilo/skills/shepherd")).toBe(`${home}/.agents/skills/shepherd`);
+  expect(await linkOf(".gemini/antigravity-cli/skills/shepherd")).toBe(`${home}/.agents/skills/shepherd`);
+  expect(await linkOf(".kimi-code/skills/shepherd")).toBe("");
+  // and the two agents whose skills directory we can't confirm get none
+  expect(await linkOf(".mastracode/skills/shepherd")).toBe("");
+  expect(await linkOf(".omp/agent/skills/shepherd")).toBe("");
+
   // reinstalling changes nothing; an edited file is outdated
   await run("integration", "install", "claude");
   expect((await json(".claude/settings.json")).hooks.SessionStart).toHaveLength(1);
   await Bun.write(`${home}/.pi/agent/extensions/shepherd-agent-state.ts`, "// edited");
   expect((await status()).Pi).toBe("↻ update available");
+
+  // a stale skill is an update too, even when the hooks are current
+  await Bun.write(`${home}/.agents/skills/shepherd/SKILL.md`, "# old");
+  expect((await status())["Claude Code"]).toBe("↻ update available");
+  await run("integration", "install", "claude");
+  expect((await status())["Claude Code"]).toBe("✓ installed");
 
   // uninstall takes out only shepherd's parts
   await run("integration", "uninstall", "all");
@@ -88,6 +108,9 @@ test("install all, status, and uninstall across every agent's config format", as
   expect(await text(".hermes/config.yaml")).toBe("model: x\nplugins:\n  enabled:\n");
   expect(await Bun.file(`${home}/.config/opencode/plugins/shepherd-agent-state.js`).exists()).toBe(false);
   expect(await Bun.file(`${home}/.grok/hooks/shepherd.json`).exists()).toBe(false);
+  // the skill goes with the last agent that wanted it
+  expect(await linkOf(".claude/skills/shepherd")).toBe("");
+  expect(await Bun.file(`${home}/.agents/skills/shepherd/SKILL.md`).exists()).toBe(false);
 }, 60000);
 
 test("installing for an agent that isn't set up says so", async () => {

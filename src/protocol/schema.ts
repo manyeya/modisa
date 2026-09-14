@@ -11,7 +11,7 @@ export type Msg = {
   error?: { code: number; message: string };
 };
 
-// The public API: the server validates params with these; the CLI and MCP build params from them.
+// The public API: the server validates params with these; the CLI builds params from them.
 const target = z.string().min(1);
 const caller = z.string().optional();
 const dir = z.enum(["right", "down"]).default("right");

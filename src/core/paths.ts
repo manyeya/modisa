@@ -6,7 +6,7 @@ export const MAIN = `${SRC}/main.ts`;
 export const socketPath = (session: string) => `${DIR}/${session}.sock`;
 export const cwd = () => Bun.env.PWD ?? HOME;
 
-// The command that re-runs this program (server spawn, hooks, MCP config).
+// The command that re-runs this program (server spawn, hooks, plugins).
 // Inside a compiled binary Bun.argv[0] is just "bun", so ask the OS where the executable lives.
 let selfCmd: string[] | undefined;
 export function self(): string[] {
@@ -29,7 +29,7 @@ export function codeVersion(): Promise<string> {
       const exe = Bun.file(self()[0]!);
       return `bin-${exe.size}-${exe.lastModified}`;
     }
-    const files = (await Array.fromAsync(new Bun.Glob("**/*.{ts,toml}").scan({ cwd: SRC }))).filter((f) => !f.endsWith(".test.ts")).sort();
+    const files = (await Array.fromAsync(new Bun.Glob("**/*.{ts,toml,md}").scan({ cwd: SRC }))).filter((f) => !f.endsWith(".test.ts")).sort();
     let text = "";
     for (const f of files) text += f + (await Bun.file(`${SRC}/${f}`).text());
     return `src-${Bun.hash(text).toString(36)}`;

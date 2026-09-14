@@ -1,45 +1,44 @@
-// The sidebar: spaces (switch, rename in place, delete), agents by what needs you first, shortcuts.
-// Three looks that never get confused: labels are dim text that ignores the mouse; clickable rows lift
-// to a neutral tint under the pointer; the current space and the focused agent sit on a focus tint in
-// bold. Actions stay dim until hovered, so color at rest means state, not "click me".
+// A compact navigator: selection is a slim rail, attention is a warning signal,
+// and every list owns a measured amount of space above the pinned shortcuts.
 import { BoxRenderable, InputRenderable, InputRenderableEvents, TextAttributes, TextRenderable, bold, fg, t, type MouseEvent } from "@opentui/core";
 import type { App } from "../context";
-import { fit, mix } from "../design";
+import { fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
 import { render } from "../render";
 import { deleteSpace, spaceMenu } from "../spaces";
 
 type RowOptions = { selected?: boolean; height?: number; run: () => any; context?: (e: MouseEvent) => void; hover?: (on: boolean) => void };
+const selectedBg = (app: App) => mix(app.th.bar, app.th.focus, 0.12);
+const contentWidth = (app: App) => Math.max(0, app.sideWidth() - 4);
 
-const selectedBg = (app: App) => mix(app.th.bar, app.th.focus, 0.25);
-
-// A clickable row with a body the caller fills. Hover tints the
-// whole row whichever child the pointer is on, since mouse events bubble up to it.
 function row(app: App, parent: BoxRenderable, o: RowOptions) {
   const { r, th } = app;
   const height = o.height ?? 1;
   const rest = o.selected ? selectedBg(app) : th.bar;
   const box: BoxRenderable = new BoxRenderable(r, {
-    width: app.sideWidth(), height, flexDirection: "row", flexShrink: 0, paddingLeft: 1, backgroundColor: rest,
+    width: app.sideWidth() - 1, height, flexDirection: "row", flexShrink: 0, paddingRight: 1, backgroundColor: rest,
     onMouseDown: (e) => {
       e.stopPropagation();
       if (app.modal) return;
       if (e.button === 2) o.context?.(e);
       else if (e.button === 0) o.run();
     },
-    onMouseOver: () => { box.backgroundColor = mix(rest, th.fg, 0.12); o.hover?.(true); },
+    onMouseOver: () => { box.backgroundColor = mix(rest, th.fg, 0.07); o.hover?.(true); },
     onMouseOut: () => { box.backgroundColor = rest; o.hover?.(false); },
   });
-  const body = new BoxRenderable(r, { flexGrow: 1, height, flexDirection: "row" });
+  box.add(new BoxRenderable(r, { width: 2, height, flexShrink: 0 })); // left gutter; selection reads from the row tint alone
+  const body = new BoxRenderable(r, { width: contentWidth(app), height, flexDirection: "row", flexShrink: 0, overflow: "hidden" });
   box.add(body);
   parent.add(box);
   app.clickable.add(box);
   return body;
 }
 
-// A row that does something ("+ new space", shortcuts): dim, accent under the pointer.
-function action(app: App, parent: BoxRenderable, text: string, run: () => any) {
-  const label = new TextRenderable(app.r, { content: fit(` ${text}`, app.sideWidth() - 1), height: 1, fg: app.th.dim });
-  row(app, parent, { run, hover: (on) => { label.fg = on ? app.th.accent : app.th.dim; } }).add(label);
+function action(app: App, parent: BoxRenderable, text: string, hint: string, run: () => any) {
+  const columns = sidebarColumns(text, hint, contentWidth(app));
+  const label = new TextRenderable(app.r, { content: columns.left, width: Bun.stringWidth(columns.left), height: 1, flexShrink: 0, fg: app.th.dim });
+  const body = row(app, parent, { run, hover: (on) => { label.fg = on ? app.th.fg : app.th.dim; } });
+  body.add(label);
+  body.add(new TextRenderable(app.r, { content: columns.right, width: Bun.stringWidth(columns.right), height: 1, fg: app.th.dim }));
 }
 
 export function drawSidebar(app: App) {
@@ -50,42 +49,50 @@ export function drawSidebar(app: App) {
   if (!w) return;
   const height = app.area().h;
   Object.assign(side, { top: app.metrics().top, width: w, height, backgroundColor: th.bar, paddingLeft: 0, paddingRight: 0, overflow: "hidden" });
-  let used = 0;
-  const room = (lines = 1) => used + lines <= height - 4 && (used += lines) > 0;
-  const text = (s: string, attributes = 0) => room() && side.add(new TextRenderable(r, { content: fit(`  ${s}`, w), height: 1, flexShrink: 0, fg: th.dim, attributes }));
-  const label = (s: string) => text(s, TextAttributes.BOLD);
-  label("");
-  label("SPACES");
+  side.add(new TextRenderable(r, { position: "absolute", right: 0, top: 0, width: 1, height, content: Array(height).fill("│").join("\n"), fg: mix(th.bar, th.border, 0.65) }));
+  const blank = () => side.add(new BoxRenderable(r, { width: w - 1, height: 1, flexShrink: 0 }));
+  const heading = (name: string, count: number) => {
+    const columns = sidebarColumns(name, String(count), contentWidth(app));
+    side.add(new TextRenderable(r, { content: t`  ${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
+  };
   const view = app.view!;
-  const spaceLimit = Math.min(view.workspaces.length, Math.max(2, Math.floor(height / 5)));
-  const start = Math.max(0, Math.min(view.active - 1, view.workspaces.length - spaceLimit));
-  view.workspaces.slice(start, start + spaceLimit).forEach((_x, j) => room() && spaceRow(app, start + j));
-  if (room()) action(app, side, "+ new space", () => app.actions["new-workspace"]!.run());
-  label("");
   const agents = app.sortedAgents();
-  label(`AGENTS / ${agents.length}`);
-  if (!agents.length) {
-    text("No agents in this space");
-    if (room()) action(app, side, "+ launch an agent", () => app.actions["new-agent"]!.run());
-  }
-  const budget = Math.max(0, Math.floor((height - used - 7) / 2));
+  const budget = sidebarBudget(height, view.workspaces.length, agents.length);
+  blank();
+  heading("SPACES", view.workspaces.length);
+  const start = Math.max(0, Math.min(view.active - 1, view.workspaces.length - budget.spaceRows));
+  view.workspaces.slice(start, start + budget.spaceRows).forEach((_space, index) => spaceRow(app, start + index));
+  if (budget.moreSpaces) action(app, side, "More spaces…", "", () => app.actions["workspace-picker"]!.run());
+  action(app, side, "New space", "+", () => app.actions["new-workspace"]!.run());
+  blank();
+  heading("AGENTS", agents.length);
+  blank();
   const focused = app.tab().focused;
-  for (const p of agents.slice(0, budget)) {
-    if (!room(2)) break;
-    const st = p.agent!.state, selected = p.id === focused;
-    const name = fit(p.name ? "@" + p.name : p.title, w - 4);
-    row(app, side, { height: 2, selected, run: () => app.call("focusPane", { pane: p.id }) }).add(new TextRenderable(r, {
-      content: t` ${app.cfg.indicators.sidebar ? fg(th[st])(app.icon(st) + " ") : ""}${selected ? bold(name) : name}\n   ${fg(th.dim)(fit(`${p.agent!.harness} · ${st}`, w - 4))}`,
-      height: 2, flexGrow: 1, fg: th.fg,
+  const visible = sidebarAgents(agents, focused, budget.agentRows);
+  const labels = { blocked: "Needs you", working: "Working", done: "Done", idle: "Idle" };
+  for (const pane of visible) {
+    const state = pane.agent!.state;
+    const selected = pane.id === focused;
+    const color = state === "blocked" ? th.warn : state === "working" ? th.focus : th.dim;
+    const name = sidebarColumns(pane.name ? "@" + pane.name : pane.title, app.cfg.indicators.sidebar ? app.icon(state) : "", contentWidth(app));
+    const meta = sidebarColumns(pane.agent!.harness, labels[state], contentWidth(app));
+    const body = row(app, side, { height: 2, selected, run: () => app.call("focusPane", { pane: pane.id }) });
+    body.add(new TextRenderable(r, {
+      content: t`${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
+      width: contentWidth(app), height: 2, flexShrink: 0, fg: state === "done" || state === "idle" ? th.dim : th.fg,
     }));
   }
-  if (agents.length > budget && room()) action(app, side, `+ ${agents.length - budget} more · all panes`, () => app.actions["pane-picker"]!.run());
-  // shortcuts pinned to the bottom
-  const footer = new BoxRenderable(r, { position: "absolute", left: 0, bottom: 1, width: w, height: 3 });
+  if (!agents.length) {
+    side.add(new TextRenderable(r, { content: "  " + fit("No agents here", contentWidth(app)), width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
+    action(app, side, "Launch an agent", "+", () => app.actions["new-agent"]!.run());
+  }
+  if (budget.moreAgents) action(app, side, `${agents.length - visible.length} more agents`, "›", () => app.actions["pane-picker"]!.run());
+  const footer = new BoxRenderable(r, { position: "absolute", left: 0, bottom: 1, width: w - 1, height: 4, flexDirection: "column" });
   side.add(footer);
-  action(app, footer, ": command palette", () => app.actions.palette!.run());
-  action(app, footer, "? keyboard guide", () => app.actions.help!.run());
-  action(app, footer, "⚙ settings", () => app.actions.settings!.run());
+  footer.add(new TextRenderable(r, { content: "  " + "─".repeat(contentWidth(app)), height: 1, width: w - 1, flexShrink: 0, fg: th.border }));
+  action(app, footer, "Commands", ":", () => app.actions.palette!.run());
+  action(app, footer, "Keyboard guide", "?", () => app.actions.help!.run());
+  action(app, footer, "Settings", "⚙", () => app.actions.settings!.run());
 }
 
 // ---------- spaces ----------
@@ -98,9 +105,9 @@ function spaceRow(app: App, i: number) {
   const active = i === app.view!.active;
   const width = app.sideWidth();
   if (app.editing?.index === i) {
-    const box = new BoxRenderable(r, { width, height: 1, flexDirection: "row", flexShrink: 0, paddingLeft: 1, backgroundColor: selectedBg(app) });
+    const box = new BoxRenderable(r, { width: width - 1, height: 1, flexDirection: "row", flexShrink: 0, paddingLeft: 2, paddingRight: 1, backgroundColor: selectedBg(app) });
     const input = new InputRenderable(r, {
-      value: app.editing.draft, flexGrow: 1,
+      value: app.editing.draft, flexGrow: 1, minWidth: 0,
       textColor: th.fg, backgroundColor: th.bg, focusedBackgroundColor: th.bg, focusedTextColor: th.fg,
     });
     input.on(InputRenderableEvents.INPUT, () => { if (app.editing) app.editing.draft = input.value; });
@@ -126,7 +133,7 @@ function spaceRow(app: App, i: number) {
     hover: (on) => { for (const [node, glyph] of icons) node.content = on ? glyph : "  "; },
   });
   body.add(new TextRenderable(r, {
-    content: fit(` ${space.name}`, Math.max(1, width - 5)), flexGrow: 1, height: 1,
+    content: fit(space.name, Math.max(1, contentWidth(app) - 4)), width: Math.max(1, contentWidth(app) - 4), flexShrink: 0, height: 1,
     fg: th.fg, attributes: active ? TextAttributes.BOLD : 0,
   }));
   const icon = (glyph: string, color: string, run: () => void) => {
@@ -139,7 +146,7 @@ function spaceRow(app: App, i: number) {
     icons.push([node, glyph]);
     body.add(node);
   };
-  icon("✎", th.accent, () => startRename(app, i));
+  icon("✎", th.focus, () => startRename(app, i));
   icon("✕", th.blocked, () => deleteSpace(app, i));
 }
 

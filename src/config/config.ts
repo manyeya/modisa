@@ -44,7 +44,7 @@ export const DEFAULTS: Config = {
 
 export const SAMPLE = `# shepherd config — changes apply live (Ctrl+B s opens the settings page)
 prefix = "C-b"              # C-<key>
-theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, dracula
+theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, dracula, bearded-* (see settings)
 
 [sidebar]
 visible = true
@@ -87,8 +87,13 @@ run_foreign = "ask"
 # [agents.claude-code]
 # launch = "claude --model opus"
 
+# Programs started with the session server, with $SHEPHERD_SOCKET set. See examples/plugins.
 # [[plugin]]
 # run = "my-plugin --socket $SHEPHERD_SOCKET"
+
+# How --remote starts shepherd on the far side of ssh. Set an absolute path when it isn't on the
+# PATH of a non-interactive ssh shell (~/.local/bin often isn't).
+# remote_command = "shepherd"
 `;
 
 export async function loadConfig(): Promise<Config> {

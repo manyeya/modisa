@@ -19,10 +19,22 @@ export type Target = {
   kind: "lifecycle" | "session";
   dir: () => string; // the agent's config directory; it must exist (the agent is set up) unless `create`
   create?: boolean;
+  // Where this agent reads skills from, for the ones that do. Not derived from dir(): several agents
+  // keep skills somewhere else entirely (see antigravity, kilo), and writing a skill into the wrong
+  // directory is worse than shipping none, so every target opts in by hand.
+  skills?: () => string;
   install: () => Promise<void>;
   uninstall: () => Promise<void>;
   status: () => Promise<Status>;
 };
+
+// The shepherd skill lives here once; every agent that reads skills somewhere else gets a symlink to
+// it. This is also the directory Kimi and its family read natively, so they need no link.
+export const skillsHome = () => `${home()}/.agents/skills`;
+export const skillDir = () => `${skillsHome()}/shepherd`;
+
+// The common case: the agent reads skills from its own config directory.
+const skillsIn = (dir: () => string) => () => `${dir()}/skills`;
 
 const env = (name: string) => Bun.env[name] || undefined;
 const home = () => Bun.env.HOME ?? "/tmp";
@@ -92,15 +104,25 @@ function pluginFiles(files: () => [path: string, content: () => string][], after
   };
 }
 
-// The shepherd MCP server, registered through the agent's own CLI when it's installed.
-const mcp = (cli: string, add: string[], remove: string[]) => async (install: boolean) => {
-  if (!Bun.which(cli)) return;
-  await Bun.$`${cli} ${remove}`.quiet().nothrow();
-  if (install) await Bun.$`${cli} ${add} -- ${self()} mcp`.quiet().nothrow();
+// Older shepherds registered an MCP server here; the skill replaced it. Take the stale registration
+// out on install and on uninstall, so an upgrade doesn't leave a server behind that no longer exists.
+// Deletable once 0.1.x is gone.
+const dropMcp = (cli: string, remove: string[]) => async () => {
+  if (Bun.which(cli)) await Bun.$`${cli} ${remove}`.quiet().nothrow();
 };
 
 const claudeDir = () => env("CLAUDE_CONFIG_DIR") ?? `${home()}/.claude`;
 const codexDir = () => env("CODEX_HOME") ?? `${home()}/.codex`;
+const copilotDir = () => env("COPILOT_HOME") ?? `${home()}/.copilot`;
+const cursorDir = () => env("CURSOR_CONFIG_DIR") ?? `${home()}/.cursor`;
+const devinDir = () => `${env("XDG_CONFIG_HOME") ?? `${home()}/.config`}/devin`;
+const droidDir = () => `${home()}/.factory`;
+const qoderDir = () => env("QODER_CONFIG_DIR") ?? `${home()}/.qoder`;
+const qwenDir = () => env("QWEN_HOME") ?? `${home()}/.qwen`;
+const grokDir = () => env("GROK_CONFIG_DIR") ?? env("GROK_HOME") ?? `${home()}/.grok`;
+const antigravityDir = () => env("ANTIGRAVITY_CLI_CONFIG_DIR") ?? `${home()}/.gemini/config`;
+const opencodeDir = () => `${home()}/.config/opencode`;
+const kimiDir = () => env("KIMI_CODE_HOME") ?? `${home()}/.kimi-code`;
 const piDir = () => env("PI_CODING_AGENT_DIR") ?? `${home()}/.pi/agent`;
 const ompDir = () => env("PI_CODING_AGENT_DIR") ?? `${home()}/${env("PI_CONFIG_DIR") ?? ".omp"}/agent`;
 const hermesDir = () => env("HERMES_HOME") ?? `${home()}/.hermes`;
@@ -122,16 +144,16 @@ const session = (agent: string, ...events: string[]): [string, string][] => even
 
 export const TARGETS: Target[] = [
   {
-    id: "claude-code", name: "Claude Code", binaries: ["claude"], kind: "session", dir: claudeDir,
+    id: "claude-code", name: "Claude Code", binaries: ["claude"], kind: "session", dir: claudeDir, skills: skillsIn(claudeDir),
     ...jsonHooks({
       file: () => `${claudeDir()}/settings.json`,
       entries: () => session("claude-code", "SessionStart"),
       add: (h, e, c) => addNested(h, e, c, { matcher: "*" }),
-      after: mcp("claude", ["mcp", "add", "--scope", "user", "shepherd"], ["mcp", "remove", "--scope", "user", "shepherd"]),
+      after: dropMcp("claude", ["mcp", "remove", "--scope", "user", "shepherd"]),
     }),
   },
   {
-    id: "codex", name: "Codex", binaries: ["codex"], kind: "session", dir: codexDir,
+    id: "codex", name: "Codex", binaries: ["codex"], kind: "session", dir: codexDir, skills: skillsIn(codexDir),
     ...jsonHooks({
       file: () => `${codexDir()}/hooks.json`,
       entries: () => session("codex", "SessionStart"),
@@ -142,57 +164,58 @@ export const TARGETS: Target[] = [
         const kept = text.split("\n").filter((l) => !l.includes(MARK)).join("\n"); // our old notify line
         const next = install ? withCodexHooksFeature(kept) : kept;
         if (next !== text) await Bun.write(path, next);
-        await mcp("codex", ["mcp", "add", "shepherd"], ["mcp", "remove", "shepherd"])(install);
+        await dropMcp("codex", ["mcp", "remove", "shepherd"])();
       },
     }),
   },
   {
-    id: "copilot", name: "Copilot CLI", binaries: ["copilot"], kind: "session", dir: () => env("COPILOT_HOME") ?? `${home()}/.copilot`,
+    id: "copilot", name: "Copilot CLI", binaries: ["copilot"], kind: "session", dir: copilotDir, skills: skillsIn(copilotDir),
     ...jsonHooks({
-      file: () => `${env("COPILOT_HOME") ?? `${home()}/.copilot`}/settings.json`,
+      file: () => `${copilotDir()}/settings.json`,
       entries: () => session("copilot", "SessionStart"),
       add: (h, e, c) => addFlat(h, e, c, { timeoutSec: 10 }, "bash"),
     }),
   },
   {
-    id: "cursor-agent", name: "Cursor Agent", binaries: ["cursor-agent"], kind: "session", dir: () => env("CURSOR_CONFIG_DIR") ?? `${home()}/.cursor`,
+    id: "cursor-agent", name: "Cursor Agent", binaries: ["cursor-agent"], kind: "session", dir: cursorDir, skills: skillsIn(cursorDir),
     ...jsonHooks({
-      file: () => `${env("CURSOR_CONFIG_DIR") ?? `${home()}/.cursor`}/hooks.json`,
+      file: () => `${cursorDir()}/hooks.json`,
       entries: () => session("cursor-agent", "sessionStart"),
       prepare: (root) => void (root.version ??= 1),
       add: (h, e, c) => void (h[e] ??= []).push({ command: c }),
     }),
   },
   {
-    id: "devin", name: "Devin CLI", binaries: ["devin"], kind: "session", dir: () => `${env("XDG_CONFIG_HOME") ?? `${home()}/.config`}/devin`,
+    id: "devin", name: "Devin CLI", binaries: ["devin"], kind: "session", dir: devinDir, skills: skillsIn(devinDir),
     ...jsonHooks({
-      file: () => `${env("XDG_CONFIG_HOME") ?? `${home()}/.config`}/devin/config.json`,
+      file: () => `${devinDir()}/config.json`,
       entries: () => session("devin", "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"),
       add: (h, e, c) => addNested(h, e, c),
     }),
   },
   {
-    id: "droid", name: "Droid", binaries: ["droid"], kind: "session", dir: () => `${home()}/.factory`,
-    ...jsonHooks({ file: () => `${home()}/.factory/settings.json`, entries: () => session("droid", "SessionStart"), add: (h, e, c) => addNested(h, e, c) }),
+    id: "droid", name: "Droid", binaries: ["droid"], kind: "session", dir: droidDir, skills: skillsIn(droidDir),
+    ...jsonHooks({ file: () => `${droidDir()}/settings.json`, entries: () => session("droid", "SessionStart"), add: (h, e, c) => addNested(h, e, c) }),
   },
   {
-    id: "qodercli", name: "Qoder CLI", binaries: ["qodercli"], kind: "session", dir: () => env("QODER_CONFIG_DIR") ?? `${home()}/.qoder`,
-    ...jsonHooks({ file: () => `${env("QODER_CONFIG_DIR") ?? `${home()}/.qoder`}/settings.json`, entries: () => session("qodercli", "SessionStart"), add: (h, e, c) => addNested(h, e, c, { matcher: "*" }) }),
+    id: "qodercli", name: "Qoder CLI", binaries: ["qodercli"], kind: "session", dir: qoderDir, skills: skillsIn(qoderDir),
+    ...jsonHooks({ file: () => `${qoderDir()}/settings.json`, entries: () => session("qodercli", "SessionStart"), add: (h, e, c) => addNested(h, e, c, { matcher: "*" }) }),
   },
   {
-    id: "qwen", name: "Qwen Code", binaries: ["qwen"], kind: "session", dir: () => env("QWEN_HOME") ?? `${home()}/.qwen`,
-    ...jsonHooks({ file: () => `${env("QWEN_HOME") ?? `${home()}/.qwen`}/settings.json`, entries: () => session("qwen", "SessionStart"), add: (h, e, c) => addNested(h, e, c, { matcher: "*", timeout: 10_000 }) }),
+    id: "qwen", name: "Qwen Code", binaries: ["qwen"], kind: "session", dir: qwenDir, skills: skillsIn(qwenDir),
+    ...jsonHooks({ file: () => `${qwenDir()}/settings.json`, entries: () => session("qwen", "SessionStart"), add: (h, e, c) => addNested(h, e, c, { matcher: "*", timeout: 10_000 }) }),
   },
   {
     // Grok merges every hooks/*.json, so ours is a file of its own
-    id: "grok", name: "Grok CLI", binaries: ["grok"], kind: "session", dir: () => env("GROK_CONFIG_DIR") ?? env("GROK_HOME") ?? `${home()}/.grok`,
-    ...pluginFiles(() => [[`${env("GROK_CONFIG_DIR") ?? env("GROK_HOME") ?? `${home()}/.grok`}/hooks/shepherd.json`, () => JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: hookCommand("grok", "session"), timeout: 10 }] }] } }, null, 2) + "\n"]]),
+    id: "grok", name: "Grok CLI", binaries: ["grok"], kind: "session", dir: grokDir, skills: skillsIn(grokDir),
+    ...pluginFiles(() => [[`${grokDir()}/hooks/shepherd.json`, () => JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: hookCommand("grok", "session"), timeout: 10 }] }] } }, null, 2) + "\n"]]),
   },
   {
-    // Antigravity keys hooks.json by hook name: the "shepherd" block is ours
-    id: "antigravity", name: "Antigravity CLI", binaries: ["agy"], kind: "session", dir: () => env("ANTIGRAVITY_CLI_CONFIG_DIR") ?? `${home()}/.gemini/config`,
+    // Antigravity keys hooks.json by hook name: the "shepherd" block is ours. Its skills live beside
+    // its config directory, not inside it.
+    id: "antigravity", name: "Antigravity CLI", binaries: ["agy"], kind: "session", dir: antigravityDir, skills: () => `${home()}/.gemini/antigravity-cli/skills`,
     ...jsonHooks({
-      file: () => `${env("ANTIGRAVITY_CLI_CONFIG_DIR") ?? `${home()}/.gemini/config`}/hooks.json`,
+      file: () => `${antigravityDir()}/hooks.json`,
       key: "shepherd",
       owned: true,
       entries: () => session("antigravity", "PreInvocation"),
@@ -200,7 +223,7 @@ export const TARGETS: Target[] = [
     }),
   },
   {
-    id: "hermes", name: "Hermes Agent", binaries: ["hermes"], kind: "session", dir: hermesDir,
+    id: "hermes", name: "Hermes Agent", binaries: ["hermes"], kind: "session", dir: hermesDir, skills: skillsIn(hermesDir),
     ...pluginFiles(
       () => [[`${hermesDir()}/plugins/shepherd-agent-state/plugin.yaml`, () => hermesPlugin(self()).yaml], [`${hermesDir()}/plugins/shepherd-agent-state/__init__.py`, () => hermesPlugin(self()).py]],
       async (install) => {
@@ -213,9 +236,11 @@ export const TARGETS: Target[] = [
     ),
   },
   {
-    id: "kimi", name: "Kimi Code", binaries: ["kimi"], kind: "lifecycle", dir: () => env("KIMI_CODE_HOME") ?? `${home()}/.kimi-code`,
+    // Kimi reads the shared skills directory, which is where shepherd keeps the skill anyway: nothing
+    // to link, the skill is simply there.
+    id: "kimi", name: "Kimi Code", binaries: ["kimi"], kind: "lifecycle", dir: kimiDir, skills: skillsHome,
     ...(() => {
-      const path = () => `${env("KIMI_CODE_HOME") ?? `${home()}/.kimi-code`}/config.toml`;
+      const path = () => `${kimiDir()}/config.toml`;
       const q = (s: string) => JSON.stringify(s);
       const body = () => KIMI_EVENTS.map(([event, action, matcher]) => `[[hooks]]\nevent = ${q(event)}\n${matcher ? `matcher = ${q(matcher)}\n` : ""}command = ${q(hookCommand("kimi", action))}\ntimeout = 10\n\n`).join("");
       const read = async () => ((await exists(path())) ? await Bun.file(path()).text() : "");
@@ -239,9 +264,10 @@ export const TARGETS: Target[] = [
       add: (h, e, c) => addFlat(h, e, c, { timeout: 10_000, description: "Report MastraCode state to shepherd" }),
     }),
   },
-  { id: "opencode", name: "OpenCode", binaries: ["opencode"], kind: "lifecycle", dir: () => `${home()}/.config/opencode`, ...pluginFiles(() => [[`${home()}/.config/opencode/plugins/shepherd-agent-state.js`, () => opencodePlugin("opencode", self())]]) },
-  { id: "kilo", name: "Kilo Code", binaries: ["kilo", "kilo-code"], kind: "lifecycle", dir: () => `${home()}/.config/kilo`, ...pluginFiles(() => [[`${home()}/.config/kilo/plugin/shepherd-agent-state.js`, () => opencodePlugin("kilo", self())]]) },
-  { id: "pi", name: "Pi", binaries: ["pi"], kind: "lifecycle", dir: piDir, ...pluginFiles(() => [[`${piDir()}/extensions/shepherd-agent-state.ts`, () => piExtension("pi", self())]]) },
+  { id: "opencode", name: "OpenCode", binaries: ["opencode"], kind: "lifecycle", dir: opencodeDir, skills: skillsIn(opencodeDir), ...pluginFiles(() => [[`${opencodeDir()}/plugins/shepherd-agent-state.js`, () => opencodePlugin("opencode", self())]]) },
+  // Kilo's plugin lives under ~/.config/kilo but it reads skills from ~/.kilo
+  { id: "kilo", name: "Kilo Code", binaries: ["kilo", "kilo-code"], kind: "lifecycle", dir: () => `${home()}/.config/kilo`, skills: () => `${home()}/.kilo/skills`, ...pluginFiles(() => [[`${home()}/.config/kilo/plugin/shepherd-agent-state.js`, () => opencodePlugin("kilo", self())]]) },
+  { id: "pi", name: "Pi", binaries: ["pi"], kind: "lifecycle", dir: piDir, skills: skillsIn(piDir), ...pluginFiles(() => [[`${piDir()}/extensions/shepherd-agent-state.ts`, () => piExtension("pi", self())]]) },
   {
     id: "omp", name: "OMP", binaries: ["omp"], kind: "lifecycle", dir: ompDir,
     ...(() => {

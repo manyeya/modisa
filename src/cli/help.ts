@@ -31,8 +31,7 @@ workspace
 setup
   shepherd update                            install the newest release (then shepherd restart)
   shepherd version | --version               this version, and whether a newer one is out
-  shepherd integration status | install|uninstall <agent|all>
-  shepherd mcp                               MCP server (stdio) exposing the same API
+  shepherd integration status | install|uninstall <agent|all>   (hooks + the shepherd skill)
   shepherd config [path|edit]
   shepherd debug detect <target>
 

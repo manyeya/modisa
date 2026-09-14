@@ -71,9 +71,9 @@ test("the sidebar lists agents and toggles", async () => {
 
 test("the sidebar and status row only count the current space's agents", async () => {
   await cli("workspace", "create", "empty");
-  await ui.until("empty space has no agents", (s) => s.includes("◈ empty") && s.includes("AGENTS / 0") && s.includes("◆ 0 working"));
+  await ui.until("empty space has no agents", (s) => s.includes("◈ empty") && /AGENTS +0/.test(s) && s.includes("◆ 0 working"));
   await cli("workspace", "close", "empty");
-  await ui.until("back to the agents' space", (s) => s.includes("◈ proj") && s.includes("@coder") && !s.includes("AGENTS / 0"));
+  await ui.until("back to the agents' space", (s) => s.includes("◈ proj") && s.includes("@coder") && !/AGENTS +0/.test(s));
 }, 15000);
 
 test("closing a pane while detection is reading the process table doesn't crash the server", async () => {

@@ -1,4 +1,4 @@
-// The public API (CLI, MCP, plugins). Params are validated against protocol/schema before they get
+// The public API (CLI, plugins, integrations). Params are validated against protocol/schema before they get
 // here. `caller` is the pane id of the agent calling, if any.
 import { codeVersion, cwd } from "../../core/paths";
 import type { AgentState } from "../../protocol/types";

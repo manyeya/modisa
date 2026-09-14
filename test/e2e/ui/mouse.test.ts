@@ -37,6 +37,12 @@ afterAll(async () => {
   await sb.cleanup();
 });
 
+// Skip the sidebar's new divider and the outer edge of the first pane.
+function verticalDivider(y: number) {
+  const paneLeft = ui.lines().find(line => line.includes("╭"))!.indexOf("╭");
+  return ui.lines()[y]!.indexOf("││", paneLeft + 1);
+}
+
 test("right-click opens actions; keyboard activates split; outside click dismisses", async () => {
   click(ui, 2, 80, 15);
   await ui.until("context menu", (s) => s.includes("Copy visible output") && s.includes("Change theme"));
@@ -69,7 +75,7 @@ test("drag the border between panes to resize them, side by side and stacked, ev
   await freshTab("v");
   const [left, right] = Object.keys(await sizes()).slice(-2); // this tab's panes are the newest
   const y = 10;
-  const divider = ui.lines()[y]!.indexOf("││");
+  const divider = verticalDivider(y);
   const before = await sizes();
   // slow drag to the left
   ui.write(sgr(0, divider, y));
@@ -80,7 +86,7 @@ test("drag the border between panes to resize them, side by side and stacked, ev
   expect(after[left!]![0]).toBeLessThan(before[left!]![0] - 10);
   expect(after[right!]![0]).toBeGreaterThan(before[right!]![0] + 10);
   // fast drag back: press, moves and release in one burst
-  const d2 = ui.lines()[y]!.indexOf("││");
+  const d2 = verticalDivider(y);
   ui.write(sgr(0, d2, y) + sgr(32, d2 + 4, y) + sgr(32, d2 + 12, y) + sgr(0, d2 + 12, y, true));
   await Bun.sleep(700);
   expect((await sizes())[left!]![0]).toBeGreaterThan(after[left!]![0] + 8);
@@ -116,7 +122,7 @@ test("drag the border between panes to resize them, side by side and stacked, ev
 test("resizing works whichever way the terminal encodes mouse motion", async () => {
   await freshTab("v");
   const y = 10;
-  const divider = () => ui.lines()[y]!.indexOf("││");
+  const divider = () => verticalDivider(y);
   // X10 (legacy) encoding: every motion is "move"; held = 32, nothing held = 35
   let d = divider();
   let before = await sizes();
@@ -149,7 +155,7 @@ test("pane resize releases on a fresh click, focus loss, and release outside the
   await freshTab("v");
   const all = async () => JSON.parse(await cli("pane", "list", "--json")).map((p: any) => [p.id, p.cols, p.rows]);
   for (const cancel of ["click", "blur", "outside", "escape"] as const) {
-    const d = ui.lines()[10]!.indexOf("││");
+    const d = verticalDivider(10);
     expect(d).toBeGreaterThan(0);
     const before = await all();
     ui.write(sgr(0, d, 10));

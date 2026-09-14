@@ -15,7 +15,7 @@ export const guide: Page[] = [
       { id: "shape", title: "How it's shaped", html: ul([
         "<strong>Sessions</strong> are owned by a background server, so closing your terminal only detaches. Reattach from anywhere, including over ssh.",
         "<strong>Spaces</strong> group tabs; <strong>tabs</strong> hold splits of <strong>panes</strong>. Everything works with the keyboard and the mouse.",
-        "<strong>Agents talk to each other.</strong> Any pane can split panes, spawn agents, wait on them and message them through the CLI or MCP.",
+        "<strong>Agents talk to each other.</strong> Any pane can split panes, spawn agents, wait on them and message them through the CLI, which the shepherd skill teaches them.",
         "<strong>Restarts are cheap.</strong> Layouts, names and agents are saved; agents come back in the exact conversation they were in.",
       ]) },
       { id: "next", title: "Where to go next", html: p(`<a href="../install/">Install shepherd</a>, then take the <a href="../quick-start/">five-minute tour</a>.`) },
@@ -108,7 +108,25 @@ shepherd kill api`) },
       { id: "restore", title: "Surviving restarts", html: p(
         `Layouts, pane names, working directories and agents are saved in ${c("~/.local/state/shepherd/shepherd.db")}. After a reboot, attaching restores the session: shells come back in their directories, and agents are relaunched — into the <strong>exact conversation</strong> they were in when their integration reported it (${c("claude --resume <id>")}, ${c("codex resume <id>")}, …), otherwise into their latest one. Plain commands are typed back in but not run.`,
       ) },
-      { id: "remote", title: "Remote", html: code("sh", "shepherd --remote ssh://devbox\nshepherd --remote myserver   # an alias from ~/.ssh/config") + p("The server runs on the remote machine; the client runs here with your keys, theme and notifications. Shepherd needs to be on the remote machine's PATH.") },
+      { id: "remote", title: "Remote over ssh", html: code("sh", `shepherd --remote ssh://devbox              # host
+shepherd --remote ssh://me@build-01:2222    # user and port
+shepherd --remote devbox                    # a Host alias from ~/.ssh/config
+shepherd -s api --remote ssh://devbox       # a named session on that machine`) + p(
+        `The TUI runs here with your keybindings, theme, sounds and notifications; the server and every pane run on the far side. No daemon to install and no port to open — shepherd shells out to your own ${c("ssh")}, so agent forwarding, jump hosts and ${c("~/.ssh/config")} all apply.`,
+      ) + code("sh", `ssh -T devbox shepherd proxy -s default             # what ssh://devbox runs
+ssh -T -p 2222 me@build-01 shepherd proxy -s api    # …and ssh://me@build-01:2222 with -s api`) + p(
+        `${c("shepherd proxy")} starts the remote server if it isn't running, then bridges its socket to stdio. ${c("-T")} means no pty: the protocol is JSON, not a terminal.`,
+      ) },
+      { id: "remote-path", title: "When the remote can't find shepherd", html: p(
+        `Shepherd has to be installed on the remote machine, and on the ${c("PATH")} of a <em>non-interactive</em> ssh shell — which often excludes ${c("~/.local/bin")}, where the installer puts it. Check with ${c("ssh devbox 'command -v shepherd'")}. If it comes back empty, set an absolute path in your <strong>local</strong> config:`,
+      ) + code("toml", `remote_command = "/home/me/.local/bin/shepherd"`) },
+      { id: "remote-notes", title: "What runs where", html: ul([
+        `Panes, agents, integrations and ${c("[[plugin]]")} programs all run on the remote machine. A plugin that raises a desktop notification raises it there.`,
+        `Sessions are per machine: ${c("shepherd ls")} lists local ones, ${c("ssh devbox shepherd ls")} the remote ones.`,
+        `${kbd("Ctrl+B")} ${kbd("d")} drops the ssh connection; the remote session and its agents keep running. Reattach from any machine.`,
+        `Copying uses OSC 52, so it reaches your local clipboard through ssh in terminals that support it.`,
+        `Updates are per machine — ${c("shepherd update")} here doesn't touch the remote install.`,
+      ]) },
     ],
   },
   {

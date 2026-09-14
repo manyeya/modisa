@@ -1,9 +1,44 @@
 // `shepherd integration status | install | uninstall <agent|all>`: connect agents to shepherd through
 // their own hooks or plugins (see ./targets.ts for what each one does).
+import { lstat, readlink } from "node:fs/promises"; // no Bun equivalent, and status must not spawn a process per agent
 import type { IntegrationStatus } from "../protocol/types";
-import { TARGETS, type Target } from "./targets";
+import { SKILL } from "../skills";
+import { skillDir, skillsHome, TARGETS, type Status, type Target } from "./targets";
 
 export { TARGETS };
+
+// The skill: one copy in the shared skills directory, symlinked into every agent that reads skills
+// somewhere else. Agents whose skills directory *is* the shared one just find it there.
+// ponytail: symlinks only. An agent that doesn't follow them gets nothing; add a copy fallback if one
+// turns up.
+const linkPath = (t: Target) => (t.skills && t.skills() !== skillsHome() ? `${t.skills()}/shepherd` : undefined);
+// A directory of their own, as opposed to our symlink (lstat, so a link to a directory is not one).
+const isDir = (path: string) => lstat(path).then((s) => s.isDirectory()).catch(() => false);
+
+// Status runs for every target on every settings refresh, so this stays free of subprocesses.
+async function skillStatus(t: Target): Promise<Status | undefined> {
+  if (!t.skills) return undefined;
+  if ((await Bun.file(`${skillDir()}/SKILL.md`).text().catch(() => "")) !== SKILL) return "none";
+  const link = linkPath(t);
+  if (!link) return "current";
+  return (await readlink(link).catch(() => "")) === skillDir() ? "current" : "none";
+}
+
+async function setSkill(t: Target, install: boolean) {
+  if (!t.skills) return;
+  const link = linkPath(t);
+  if (install) {
+    await Bun.write(`${skillDir()}/SKILL.md`, SKILL);
+    // A real directory there is someone's own copy of the skill, not ours: leave it be rather than
+    // link inside it. Status keeps saying "update available" until they take it out.
+    if (link && !(await isDir(link))) await Bun.$`mkdir -p ${t.skills()} && ln -sfn ${skillDir()} ${link}`.quiet().nothrow();
+    return;
+  }
+  if (link && !(await isDir(link))) await Bun.$`rm -f ${link}`.quiet().nothrow();
+  // The shared copy goes when the last agent that wanted it does.
+  const others = await Promise.all(TARGETS.filter((o) => o.skills && o.id !== t.id).map((o) => o.status().catch(() => "none" as Status)));
+  if (!others.includes("current") && !others.includes("outdated")) await Bun.$`rm -rf ${skillDir()}`.quiet().nothrow();
+}
 
 // Names people type for an agent, besides its id.
 const ALIASES: Record<string, string> = { claude: "claude-code", cursor: "cursor-agent", agy: "antigravity", "antigravity-cli": "antigravity", "kilo-code": "kilo", qoder: "qodercli" };
@@ -11,10 +46,13 @@ const find = (name: string) => TARGETS.find((t) => t.id === (ALIASES[name] ?? na
 
 async function statusOf(t: Target): Promise<IntegrationStatus> {
   const configured = await Bun.$`test -d ${t.dir()}`.quiet().nothrow().then((r) => r.exitCode === 0);
+  const hooks = await t.status().catch(() => "outdated" as const);
+  // A missing or stale skill makes an otherwise-installed integration an update, not a fresh install.
+  const skill = await skillStatus(t).catch(() => "none" as const);
   return {
     id: t.id, name: t.name, kind: t.kind, configured,
     available: configured || t.binaries.some((b) => Bun.which(b)),
-    status: await t.status().catch(() => "outdated" as const),
+    status: hooks === "current" && skill === "none" ? "outdated" : hooks,
   };
 }
 
@@ -28,7 +66,8 @@ export async function setIntegration(id: string, install: boolean): Promise<stri
   if (!t) throw new Error(`no integration for ${id}`);
   if (install && !t.create && !(await statusOf(t)).configured) throw new Error(`${t.name} isn't set up here (no ${t.dir()}); run it once, then install`);
   await (install ? t.install() : t.uninstall());
-  const what = t.kind === "lifecycle" ? "state and session reports" : "session reports";
+  await setSkill(t, install);
+  const what = (t.kind === "lifecycle" ? "state and session reports" : "session reports") + (t.skills ? " and the shepherd skill" : "");
   return install ? `${t.name}: installed ${what} (restart running ${t.name} sessions to load it)` : `${t.name}: removed`;
 }
 
