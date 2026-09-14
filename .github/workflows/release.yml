@@ -115,6 +115,9 @@ jobs:
                 goreleaser/nfpm:v2.47.0 package --config .github/nfpm.yaml --packager "$packager" --target dist/
             done
           done
+          # GitHub turns the "~" of a prerelease version (0.2.0~staging.3) into "." when it uploads a file,
+          # so name the files that way first, or SHA256SUMS lists names the release doesn't have
+          for f in dist/*~*; do [ -e "$f" ] && mv "$f" "${f//\~/.}"; done
           (cd dist && sha256sum ./*.deb ./*.rpm | sed 's| \./| |' >> SHA256SUMS)
           ls -l dist
       - name: Build provenance
