@@ -174,6 +174,17 @@ shepherd restart     # load it into running sessions`) },
       { id: "stale", title: "Something changed but nothing's different", html: p(`A running session keeps the shepherd it started with. ${c("shepherd restart")} loads the new one (agents resume), then detach and reattach to refresh the client too.`) },
       { id: "logs", title: "Logs", html: p(`Each session's server logs to ${c("~/.local/state/shepherd/<session>.log")}.`) },
       { id: "outdated", title: "An integration says “update available”", html: p(`It was installed by an older shepherd, or shepherd has moved. ${c("shepherd integration install all")} brings every one up to date.`) },
+      { id: "sandbox", title: "An agent in a sandbox can't reach shepherd", html:
+        p(`Some agents run their commands in a sandbox that blocks shepherd's socket. Their ${c("shepherd")} commands then fail with “can't connect to its socket: a sandbox is blocking it”. You can still message that agent, but it can't ${c("send")}, read panes or spawn agents.`) +
+        p(`<strong>Codex on macOS</strong> blocks Unix sockets unless its commands have network access. Give them a permissions profile that allows it in ${c("~/.codex/config.toml")}, then restart Codex:`) +
+        code("toml", `default_permissions = "shepherd"
+
+[permissions.shepherd]
+extends = ":workspace"
+
+[permissions.shepherd.network]
+enabled = true`) +
+        p(`This also lets Codex's commands reach the internet. Codex rejects a config that sets both this and ${c("sandbox_mode")}, so use one or the other.`) },
       { id: "sound", title: "No sound", html: p("Check the sound section of the settings page and your output device. Sounds are generated and played by shepherd itself, so nothing else needs installing.") },
     ],
   },

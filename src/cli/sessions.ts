@@ -1,6 +1,6 @@
 // Session commands: attach (locally or over ssh), the ssh proxy, ls, restart, kill, config.
 import { DIR, cwd, socketPath } from "../core/paths";
-import { connectStdio, connectUnix, ensureServer } from "../protocol/transport";
+import { connectStdio, connectUnix, ensureServer, runningPid } from "../protocol/transport";
 import { loadConfig, ensureConfigFile, CONFIG_PATH } from "../config/config";
 
 export async function attach(name: string, dir = cwd(), remote?: string) {
@@ -46,7 +46,11 @@ export async function listSessions() {
       names.add(n);
       rows.push(`${n}\t${i.panes} panes, ${i.workspaces} workspaces${i.clients ? ` (${i.clients} attached)` : ""}`);
     } catch {
-      await Bun.file(socketPath(n)).delete().catch(() => {}); // dead server
+      const pid = await runningPid(socketPath(n));
+      if (pid) {
+        names.add(n);
+        rows.push(`${n}\trunning (pid ${pid}), but this process can't connect to it: a sandbox is blocking it`);
+      } else await Bun.file(socketPath(n)).delete().catch(() => {}); // dead server
     }
   }
   for (const s of await saved()) if (!names.has(s.name)) rows.push(`${s.name}\tsaved ${new Date(s.saved_at).toLocaleString()} — attach to restore`);

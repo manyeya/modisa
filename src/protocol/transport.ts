@@ -36,12 +36,36 @@ export function connectStdio(cmd: string[]): Conn {
   return conn;
 }
 
+// A server that's running but can't be reached, from the pid file next to its socket. Inside an agent's
+// sandbox (Codex's on macOS) connecting fails with ENOENT, just like a dead server's socket, but
+// signalling the process still says it exists (EPERM). So its socket must stay and no second server
+// start. Outside a sandbox, ps also checks the pid still belongs to a shepherd server.
+export async function runningPid(sock: string): Promise<number | undefined> {
+  const pid = Number(await Bun.file(sock.replace(/\.sock$/, ".pid")).text().catch(() => ""));
+  if (!pid) return;
+  try {
+    process.kill(pid, 0);
+  } catch (e) {
+    if ((e as { code?: string }).code !== "EPERM") return; // no such process: a dead server
+  }
+  try {
+    const ps = Bun.spawnSync(["ps", "-p", String(pid), "-o", "args="]);
+    if (ps.success && !ps.stdout.toString().includes(" server ")) return; // the pid now belongs to something else
+  } catch {} // spawning is blocked too: trust the signal
+  return pid;
+}
+
+export const unreachable = (pid: number) =>
+  `shepherd's server is running (pid ${pid}) but this process can't connect to its socket: a sandbox is blocking it. See https://manyeya.github.io/shepherd/docs/troubleshooting/#sandbox`;
+
 // Connect to a session's server, starting it if needed.
 export async function ensureServer(session: string, dir = cwd()): Promise<Conn> {
   const path = socketPath(session);
   try {
     return await connectUnix(path);
   } catch {
+    const pid = await runningPid(path);
+    if (pid) throw new Error(unreachable(pid));
     await Bun.file(path).delete().catch(() => {}); // stale socket from a dead server
   }
   await Bun.$`mkdir -p ${DIR}`.quiet();
@@ -64,6 +88,7 @@ export async function connectExisting(session?: string): Promise<Conn> {
   try {
     return await connectUnix(path);
   } catch {
-    throw new Error(`no shepherd server for session "${session ?? "default"}"`);
+    const pid = await runningPid(path);
+    throw new Error(pid ? unreachable(pid) : `no shepherd server for session "${session ?? "default"}"`);
   }
 }

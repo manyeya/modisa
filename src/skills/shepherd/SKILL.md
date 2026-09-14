@@ -94,6 +94,11 @@ pane with its own context. Give it a `--prompt` that stands alone — it can't s
 prompts them, so ask before you do it. Reading (`pane read`, `pane list`, `wait`) and messaging
 (`send`, `inbox`) never prompt — prefer those.
 
+**If a `shepherd` command says a sandbox is blocking its socket,** your own command sandbox stops you
+reaching the session: `send`, `inbox` and the rest won't work from here. Tell the user, and point
+them at https://manyeya.github.io/shepherd/docs/troubleshooting/#sandbox. `$SHEPHERD_SOCKET` is set
+correctly; don't restart anything or ask for it to be passed in.
+
 ## Writing a plugin
 
 If the user wants shepherd to react to something on its own — announce a blocked agent, log state

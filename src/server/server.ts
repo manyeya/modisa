@@ -2,7 +2,7 @@
 // This file is the startup/shutdown order; the pieces live in context, rpc/, agents/, persist/.
 import { DIR, codeVersion, cwd, socketPath } from "../core/paths";
 import { socketConn } from "../protocol/conn";
-import { connectUnix } from "../protocol/transport";
+import { connectUnix, runningPid, unreachable } from "../protocol/transport";
 import { loadConfig, watchConfig } from "../config/config";
 import { loadAdapters } from "../config/adapters";
 import { prepareNative } from "../platform/native";
@@ -21,11 +21,18 @@ import { applyTemplate } from "./persist/template";
 export async function runServer(session: string) {
   await prepareNative();
   const sock = socketPath(session);
+  const pidFile = sock.replace(/\.sock$/, ".pid");
   // Two clients reconnecting after a restart can both start a server; the second one bows out.
   const other = await connectUnix(sock).catch(() => undefined);
   if (other) {
     other.close();
     console.log(`shepherd server "${session}" is already running`);
+    return;
+  }
+  // Running but unreachable from here (a sandbox): taking its socket over would orphan every pane in it.
+  const running = await runningPid(sock);
+  if (running) {
+    console.error(unreachable(running));
     return;
   }
   preparePaneEnv(session, sock);
@@ -68,6 +75,7 @@ export async function runServer(session: string) {
     },
   });
 
+  await Bun.write(pidFile, String(process.pid)); // lets clients tell "running but unreachable" from "dead"
   const plugins = startPlugins(ctx.cfg);
 
   ctx.shutdown = async (empty, why = "exit") => {
@@ -79,9 +87,16 @@ export async function runServer(session: string) {
     for (const c of ctx.clients) c.conn.notify(why, {});
     plugins.stop();
     ctx.s.destroy();
-    server.stop(true);
+    // The pid file goes first, so nothing mistakes this exiting server for a running one it can't reach.
+    // Then the socket file, while it's still ours: once the listener stops, `shepherd restart` starts the
+    // next server at this same path, and deleting it after that would cut the new server off.
+    if ((await Bun.file(pidFile).text().catch(() => "")) === String(process.pid)) await Bun.file(pidFile).delete().catch(() => {});
     await Bun.file(sock).delete().catch(() => {});
-    monitor.stop(); // nothing left holding the event loop: the process ends here
+    server.stop(true);
+    monitor.stop();
+    // A client connection closing mid-shutdown (the restart command's own) can keep the event loop alive
+    // for good, leaving a server that holds nothing, so exit instead of waiting for the loop to drain.
+    setTimeout(() => process.exit(0), 200);
   };
 
   // ---------- initial contents: saved session, else shepherd.toml, else a shell ----------
