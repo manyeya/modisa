@@ -1,8 +1,9 @@
 // `shepherd plugin link <dir>` / `unlink <name>`: linking is a symlink under ~/.config/shepherd/plugins, so it
 // needs no server. The plugin starts with the next session server (shepherd restart).
 import { PLUGINS_DIR, readManifest } from "../config/plugins";
+import { connectExisting } from "../protocol/transport";
 
-export async function runPluginLink(verb: "link" | "unlink", arg?: string): Promise<number> {
+export async function runPluginLink(verb: "link" | "unlink", arg?: string, session?: string): Promise<number> {
   if (!arg) {
     console.error(verb === "link" ? "usage: shepherd plugin link <dir>" : "usage: shepherd plugin unlink <name>");
     return 2;
@@ -35,6 +36,13 @@ export async function runPluginLink(verb: "link" | "unlink", arg?: string): Prom
     return 1;
   }
   await Bun.$`rm ${link}`.quiet(); // the link only, never the plugin's directory
-  console.log(`unlinked ${arg}; a running copy stops with the session server (shepherd restart)`);
+  console.log(`unlinked ${arg}`);
+  // and stop it in the session, if one is running it
+  const conn = await connectExisting(session).catch(() => undefined);
+  if (conn) {
+    const stopped = await conn.request("plugin.stop", { name: arg }).then(() => true, () => false);
+    conn.close();
+    if (stopped) console.log(`stopped ${arg} in session ${session ?? Bun.env.SHEPHERD_SESSION ?? "default"}`);
+  }
   return 0;
 }

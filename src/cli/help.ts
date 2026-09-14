@@ -24,7 +24,8 @@ agents
 
 plugins (examples/plugins/README.md)
   shepherd plugin list [--json] | logs <name> [--lines 50]
-  shepherd plugin link <dir> | unlink <name>   a directory with a plugin.json; it starts with the server (shepherd restart)
+  shepherd plugin link <dir> | unlink <name>   a directory with a plugin.json; it starts with the server (shepherd restart);
+                                              unlink also stops it in the session
   shepherd plugin run <name> <action> [json]   call an action a running plugin offers
 
 workspace

@@ -1,7 +1,7 @@
 // Wire protocol: JSON-RPC 2.0, newline-delimited, over a unix socket (or ssh stdio for --remote).
 // Requests get responses; the server pushes events as notifications ({method, params}, no id).
 import { z } from "zod";
-import type { ErrorCode } from "./types";
+import { ERROR_CODES, type ErrorCode } from "./types";
 
 export type Msg = {
   jsonrpc: "2.0";
@@ -45,7 +45,7 @@ const paneRef = { pane: z.string(), instance: z.string() };
 export const events = {
   "pane.created": ev("pane.created", { ...paneRef, name: z.string().optional(), command: z.string().optional() }),
   "pane.output": ev("pane.output", { ...paneRef, text: z.string() }), // only with events.subscribe { output: true }
-  "process.exited": ev("process.exited", { ...paneRef, name: z.string().optional(), exitCode: z.number().int().optional() }), // no exitCode: killed by a signal
+  "process.exited": ev("process.exited", { ...paneRef, name: z.string().optional(), exitCode: z.number().int() }), // killed by signal n: 128+n
   // A detected agent's state changed. It's what detection observed (its screen, or an integration's report), not
   // the agent's own account; no harness means no agent is detected in the pane any more.
   "agent.state": ev("agent.state", { ...paneRef, name: z.string().optional(), harness: z.string().optional(), from: state.optional(), to: state }),
@@ -53,6 +53,38 @@ export const events = {
   "message.delivered": ev("message.delivered", { id: z.number(), from: z.string(), to: z.string() }),
   "client.attached": ev("client.attached", {}),
 };
+
+// ---------- results: what the supported requests return (an e2e test checks real replies against these) ----------
+// A pane's agent is what detection observed (its screen, or an integration's report). Absent means no agent is
+// detected in the pane, not that it's known to have none.
+const agentInfo = z.strictObject({ harness: z.string(), state, source: z.enum(["hook", "screen"]) });
+export const paneInfo = z.strictObject({
+  id: z.string(), instance: z.string(), // the same pair events call `pane` and `instance`
+  name: z.string().optional(), title: z.string(), cwd: z.string(), command: z.string().optional(), harness: z.string().optional(), createdBy: z.string(),
+  status: z.enum(["running", "exited"]), exitCode: z.number().int().optional(), // set once exited; signal n: 128+n
+  agent: agentInfo.optional(),
+  session: z.strictObject({ agent: z.string(), id: z.string(), source: z.string() }).optional(), // the agent's own session, reported by its integration
+  cols: z.number().int(), rows: z.number().int(),
+});
+const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string().optional() });
+const pluginStatus = z.strictObject({
+  name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["running", "exited", "failed", "stopped"]),
+  pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
+  connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(),
+});
+export const results = {
+  list: z.array(listedPane),
+  "events.subscribe": z.strictObject({ protocol: z.number().int(), epoch: z.string(), seq: z.number().int().nonnegative(), panes: z.array(listedPane).optional() }),
+  "pane.read": paneInfo.extend({ screen: z.string(), recentOutput: z.string() }),
+  "agent.list": z.array(z.strictObject({ id: z.string(), name: z.string().optional(), title: z.string(), harness: z.string(), state, source: z.enum(["hook", "screen"]), workspace: z.string().optional() })),
+  wait: z.union([z.strictObject({ exitCode: z.number().int() }), z.strictObject({ state }), z.strictObject({ match: z.string() })]),
+  send: z.strictObject({ id: z.number(), queued: z.literal(true), delivered: z.literal(false), recipientState: state.optional() }),
+  "plugin.list": z.array(pluginStatus),
+  "plugin.hello": z.strictObject({ name: z.string(), protocol: z.number().int(), session: z.string(), epoch: z.string() }),
+};
+// A failed request's `error`: code is JSON-RPC's (-32601 unknown method, -32602 invalid params, -32000 the request
+// failed); data.code is shepherd's stable reason
+export const errorReply = z.strictObject({ code: z.number().int(), message: z.string(), data: z.strictObject({ code: z.enum(ERROR_CODES) }).optional() });
 
 export const api = {
   list: z.object({ caller }),
@@ -76,6 +108,7 @@ export const api = {
   "events.subscribe": z.object({ caller, output: z.boolean().optional(), snapshot: z.boolean().optional() }),
   "protocol.describe": z.object({ caller }),
   "plugin.list": z.object({ caller }),
+  "plugin.stop": z.object({ caller, name: z.string().min(1) }),
   // a plugin's own connection says which plugin it is (the token it was started with) and what actions it offers
   "plugin.hello": z.object({ caller, token: z.string().min(1), actions: z.array(z.string().min(1)).optional() }),
   // call an action a connected plugin offers; shepherd sends it a plugin.action request ({ action, params })

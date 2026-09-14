@@ -89,20 +89,42 @@ export class Conn {
   }
 }
 
-// Bun socket → Conn, with a write queue for backpressure. Used on both ends.
-export function socketConn(s: { write(d: Uint8Array): number; end(): void }) {
+// A peer that stops reading can't make this side buffer without limit: past this many queued bytes the connection is
+// closed. For a subscriber that's a gap in its history; it reconnects and takes a new snapshot.
+export const WRITE_QUEUE_LIMIT = Number(Bun.env.SHEPHERD_WRITE_QUEUE_LIMIT) || 16 * 1024 * 1024;
+
+// Bun socket → Conn, with a bounded write queue for backpressure. Used on both ends.
+export function socketConn(s: { write(d: Uint8Array): number; end(): void; terminate?(): void }) {
   const enc = new TextEncoder();
   const queue: Uint8Array[] = [];
+  let queued = 0;
   const flush = () => {
     while (queue.length) {
-      const n = s.write(queue[0]!);
-      if (n < queue[0]!.length) {
-        queue[0] = queue[0]!.subarray(n);
+      const chunk = queue[0]!;
+      const n = Math.max(0, s.write(chunk));
+      queued -= n;
+      if (n < chunk.length) {
+        queue[0] = chunk.subarray(n);
         return;
       }
       queue.shift();
     }
   };
-  const conn = new Conn((str) => { queue.push(enc.encode(str)); flush(); }, () => s.end());
+  const conn: Conn = new Conn((str) => {
+    const bytes = enc.encode(str);
+    if (queued + bytes.length > WRITE_QUEUE_LIMIT) {
+      const message = `more than ${WRITE_QUEUE_LIMIT} bytes waiting to be written: the peer isn't reading`;
+      console.error(`shepherd: closing a connection: ${message}`); // in the server's log
+      queue.length = 0;
+      queued = 0;
+      // abruptly: a graceful end() waits on a peer that isn't reading, and it would never see the close
+      s.terminate?.();
+      conn.close();
+      throw new Error(message);
+    }
+    queue.push(bytes);
+    queued += bytes.length;
+    flush();
+  }, () => s.end());
   return { conn, flush };
 }

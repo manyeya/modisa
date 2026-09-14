@@ -14,6 +14,7 @@ import type { Handlers } from "./rpc/dispatch";
 
 const STOP_MS = 2000;
 const INVOKE_MS = 30_000;
+const LOG_LIMIT = 5 * 1024 * 1024; // per start; past it the rest is read and dropped, so the plugin never blocks on output
 
 type Plugin = PluginStatus & { token: string; client?: Client; stopping?: boolean };
 
@@ -49,9 +50,12 @@ export function createPluginHost(ctx: ServerContext) {
       Object.assign(pl, { status: "running", pid: proc.pid, error: undefined });
       // both streams into one log, in the order they arrive
       const sink = Bun.file(pl.log).writer();
+      let written = 0;
       const pump = async (stream: ReadableStream<Uint8Array>) => {
         for await (const chunk of stream) {
-          sink.write(chunk);
+          if (written > LOG_LIMIT) continue;
+          written += chunk.length;
+          sink.write(written > LOG_LIMIT ? `\n[shepherd: log truncated at ${LOG_LIMIT / 1024 / 1024} MB]\n` : chunk);
           sink.flush();
         }
       };
@@ -78,10 +82,11 @@ export function createPluginHost(ctx: ServerContext) {
     for (const [i, c] of ctx.cfg.plugin.entries()) await launch(add(`config-${i + 1}`, "config"), [Bun.env.SHELL || "/bin/sh", "-lc", c.run]);
   };
 
-  const stop = async () => {
-    const live = [...plugins.values()].filter((p) => p.pid && groupAlive(p.pid));
+  const stop = async (only?: Plugin) => {
+    const live = (only ? [only] : [...plugins.values()]).filter((p) => p.pid && groupAlive(p.pid));
     for (const p of live) {
       p.stopping = true;
+      p.client?.conn.close(); // its connection no longer speaks for it
       signalGroup(p.pid!, "SIGTERM");
     }
     for (const end = Date.now() + STOP_MS; Date.now() < end && live.some((p) => groupAlive(p.pid!)); ) await Bun.sleep(50);
@@ -96,10 +101,21 @@ export function createPluginHost(ctx: ServerContext) {
 
   const methods: Handlers = {
     "plugin.list": () => [...plugins.values()].map(view),
+    // stop one plugin (its whole group) until the next server start; `shepherd plugin unlink` calls it
+    "plugin.stop": async (p) => {
+      const pl = plugins.get(p.name);
+      if (!pl) throw fail("no_such_plugin", `no plugin named ${p.name} (see shepherd plugin list)`);
+      await stop(pl);
+      return view(pl);
+    },
+    // The token says which plugin this server started is talking. It tells plugins apart; it isn't a permission
+    // boundary against other code running as the user, which can reach the socket too.
     "plugin.hello": (p, c) => {
       const pl = [...plugins.values()].find((x) => x.token === p.token);
       if (!pl) throw fail("no_such_plugin", "that token doesn't belong to a plugin this server started");
+      if (pl.client && pl.client !== c) pl.client.conn.close(); // one live connection per plugin
       pl.client = c;
+      c.plugin = pl.name;
       pl.actions = p.actions ?? [];
       return { name: pl.name, protocol: PROTOCOL, session: ctx.session, epoch: ctx.epoch };
     },

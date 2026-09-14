@@ -10,6 +10,10 @@ export function createDispatcher(handlers: Handlers) {
   return async function dispatch(c: Client, m: Msg) {
     if (!m.method) return;
     const reply = (x: Partial<Msg>) => m.id !== undefined && c.conn.send({ jsonrpc: "2.0", id: m.id, ...x });
+    // A plugin's bound connection acts as that plugin. It can't claim to be a pane: `caller` is how panes (agents) are
+    // told apart, and permission prompts depend on it. (Other local clients are trusted as the user; this isn't a
+    // sandbox.)
+    if (c.plugin && m.params?.caller !== undefined) return reply({ error: { code: -32602, message: `invalid params: caller: plugin ${c.plugin} acts as itself, not as a pane`, data: { code: "invalid_params" } } });
     const h = handlers[m.method];
     if (!h) return reply({ error: { code: -32601, message: `unknown method ${m.method}`, data: { code: "unknown_method" } } });
     const schema = api[m.method as keyof typeof api];

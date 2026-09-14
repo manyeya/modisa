@@ -11,7 +11,8 @@ import { Mailbox } from "./agents/mailbox";
 import { save } from "./persist/store";
 import { quote } from "./persist/template";
 
-export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean };
+// plugin: set once a plugin's connection has said plugin.hello; it then acts as that plugin, never as a pane
+export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean; plugin?: string };
 
 export type ServerContext = {
   session: string;

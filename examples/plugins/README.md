@@ -46,6 +46,11 @@ Shepherd then sends `plugin.action` requests (`{"action":"summary","params":{...
 connection. Reply with a result or an error on the request's `id`; the caller gets it, or
 `plugin_error`, `plugin_unavailable`, `no_such_action` or `timeout` (30s) as its error code.
 
+Once bound, that connection acts as your plugin: a request on it that passes `caller` (claiming to be
+a pane) is rejected. The token tells plugins apart; **it isn't a security boundary.** Anything running
+as you can reach the socket, and a plugin is not sandboxed. Each plugin's log keeps the first 5 MB of
+output per start. `shepherd plugin unlink` also stops the plugin in the session.
+
 ## Declare it in config.toml instead
 
 `~/.config/shepherd/config.toml`:
@@ -120,17 +125,30 @@ that moment in the same reply:
 
 **The snapshot and the stream don't overlap and don't leave a gap.** The server takes the snapshot in
 the same step that turns your events on, so every later change arrives as an event with a `seq`
-greater than the snapshot's, and nothing is in both. An event can reach you before the reply does;
-order by `seq`. Use this to tell "already blocked when I started" from "just became blocked".
+greater than the snapshot's, and nothing is in both. Starting up, precisely:
+
+1. Send `events.subscribe` with `snapshot: true`, and buffer any events that arrive before its reply.
+2. Build your state from the reply's `panes`. Remember its `epoch` and `seq`.
+3. Apply the buffered events, then each new one, if its `epoch` matches and its `seq` is greater than
+   the snapshot's `seq`. Ignore anything else.
+
+That's how you tell "already blocked when I started" from "just became blocked".
 
 **Events are not replayed.** Within one connection they arrive in `seq` order and none are dropped.
-After a disconnect, or when `epoch` changes (the server restarted: pane ids and seqs from the old
-epoch mean nothing now), subscribe again with `snapshot: true`. `seq` rises with every event the
+A connection that stops reading doesn't make the server buffer without limit: once more than 16 MB is
+waiting to be written to it, the server closes it (other clients aren't affected). After a disconnect,
+or when `epoch` changes (the server restarted: pane ids and seqs from the old epoch mean nothing
+now), subscribe again with `snapshot: true`. **A disconnect is a gap in history.** The new snapshot
+has the current state, but a transition that started and ended during the gap (blocked, then
+unblocked) is gone for good, so a plugin can't promise a complete record of everything that happened. `seq` rises with every event the
 server emits, including ones you didn't ask for, so the seqs you see can skip: a skip is not a lost
 event.
 
-`protocol.describe` returns the protocol version and a JSON Schema for every request, every event and
-the envelope, generated from the same schemas the server validates with.
+`protocol.describe` returns the protocol version and JSON Schemas generated from the schemas the
+server uses: every request (`requests`), the results of the supported ones (`results`: `list`,
+`events.subscribe`, `pane.read`, `agent.list`, `wait`, `send`, `plugin.list`, `plugin.hello`), every
+event (`events`), the envelope, and the error reply (`error`). The e2e suite checks real replies and
+events against them.
 
 ### The cheap way
 
@@ -158,7 +176,7 @@ suite (`protocol.describe` has them as JSON Schema):
 | `type` | Fires when | Extra fields |
 |---|---|---|
 | `pane.created` | a pane opens | `pane`, `instance`, `name`, `command` |
-| `process.exited` | a pane's process ends (the pane stays) | `pane`, `instance`, `name`, `exitCode` (absent: killed by a signal) |
+| `process.exited` | a pane's process ends (the pane stays) | `pane`, `instance`, `name`, `exitCode` (killed by signal n: 128+n) |
 | `agent.state` | a detected agent changes state | `pane`, `instance`, `name`, `harness`, `from`, `to` |
 | `message.sent` | one agent messages another | `id`, `from`, `to`, `hops` |
 | `message.delivered` | that message is typed into the recipient | `id`, `from`, `to` |
