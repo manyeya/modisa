@@ -5,12 +5,19 @@ import { Mailbox } from "./mailbox";
 
 export function startMonitor(ctx: ServerContext): { stop(): void } {
   const cooldown = new Map<string, number>();
-  let ticking = false;
+  // One tick at a time, but a tick that never finishes must not stop detection for good: after 10s the
+  // next one starts anyway. Failures go to the server log, each distinct one once.
+  let running = 0; // id of the tick in progress, 0 when none
+  let startedAt = 0;
+  let lastError = "";
   const focused = (id: string) => ctx.attached().length > 0 && ctx.s.focusedId === id && ctx.s.isVisible(id);
 
+  let ids = 0;
   ctx.tick = async () => {
-    if (ticking) return;
-    ticking = true;
+    if (running && Date.now() - startedAt < 10_000) return;
+    if (running) console.error(`shepherd: agent detection was stuck for ${Math.round((Date.now() - startedAt) / 1000)}s; starting over`);
+    const id = (running = ++ids);
+    startedAt = Date.now();
     try {
       const changes = await ctx.detector.tick([...ctx.s.panes.values()], focused);
       for (const { pane, from, to } of changes) {
@@ -34,8 +41,13 @@ export function startMonitor(ctx: ServerContext): { stop(): void } {
         }
       }
       if (changes.length) ctx.changed();
+      lastError = "";
+    } catch (e) {
+      const message = e instanceof Error ? e.stack ?? e.message : String(e);
+      if (message !== lastError) console.error(`shepherd: agent detection failed: ${message}`);
+      lastError = message;
     } finally {
-      ticking = false;
+      if (running === id) running = 0; // a stuck tick that finishes late leaves the newer one alone
     }
   };
   const ticker = setInterval(() => ctx.tick(), 500);

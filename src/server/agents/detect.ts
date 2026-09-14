@@ -9,8 +9,10 @@ import { compileRules, evaluate, type Rule, type Verdict } from "./manifest";
 type Proc = { pid: number; ppid: number; tpgid: number; args: string };
 type Raw = "working" | "blocked" | "idle";
 
+// ps is killed after 5s: a snapshot that never arrives would otherwise stall every tick after it.
 export async function processTable(): Promise<Map<number, Proc>> {
-  const out = await Bun.$`ps -A -o pid=,ppid=,tpgid=,args=`.quiet().nothrow().text();
+  const ps = Bun.spawn(["ps", "-A", "-o", "pid=,ppid=,tpgid=,args="], { stdout: "pipe", stderr: "ignore", timeout: 5000 });
+  const out = await new Response(ps.stdout).text();
   const m = new Map<number, Proc>();
   for (const line of out.split("\n")) {
     const r = /^\s*(\d+)\s+(\d+)\s+(-?\d+)\s+(.*)$/.exec(line);
