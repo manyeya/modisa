@@ -164,7 +164,9 @@ That's how you tell "already blocked when I started" from "just became blocked".
 A connection that stops reading doesn't make the server buffer without limit: once more than 16 MB is
 waiting to be written to it, the server closes it (other clients aren't affected). The same 16 MB is
 also the most one message can be: a single reply bigger than that (a huge `pane.read`) closes the
-connection too, even when nothing else is waiting. After a disconnect,
+connection too, even when nothing else is waiting. That cap is on what the server sends. What it
+reads has no per-message cap: a local client can send one enormous line and make the server buffer
+it, which is in line with trusting local clients as the user (see below). After a disconnect,
 or when `epoch` changes (the server restarted: pane ids and seqs from the old epoch mean nothing
 now), subscribe again with `snapshot: true`. **A disconnect is a gap in history.** The new snapshot
 has the current state, but a transition that started and ended during the gap (blocked, then
