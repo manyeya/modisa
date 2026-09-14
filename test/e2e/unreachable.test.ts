@@ -18,8 +18,12 @@ test("a running server whose socket can't be reached is left alone, and the CLI 
   const server = await startServer(sb, S);
   // stands in for a sandbox: connecting to the socket path fails while the server keeps running
   await Bun.$`mv ${sock} ${sock}.real && touch ${sock}`;
-  expect(await cli("pane", "list")).toContain("a sandbox is blocking it");
-  expect(await cli("ls")).toContain(`${S}\trunning (pid ${server.pid})`);
+  const blocked = await sb.run(S, ["pane", "list"]);
+  expect(blocked.out).toContain("a sandbox is blocking it");
+  expect(blocked.code).toBe(3);
+  const ls = await sb.run(S, ["ls"]);
+  expect(ls.out).toContain(`${S}\trunning (pid ${server.pid})`);
+  expect(ls.code).toBe(3);
   expect(await Bun.file(sock).exists()).toBe(true); // not deleted as a dead server's
   expect(await servers()).toEqual([String(server.pid)]); // and no second server started
   await Bun.$`mv ${sock}.real ${sock}`;

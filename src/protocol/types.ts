@@ -10,8 +10,12 @@ export type NotifyEvent = Exclude<AgentState, "idle">;
 // agent is there at all (on PATH, or its config directory exists).
 export type IntegrationStatus = { id: string; name: string; kind: "lifecycle" | "session"; status: "current" | "outdated" | "none"; available: boolean; configured: boolean };
 
+// A failed request's stable code (JSON-RPC error.data.code); the CLI maps some to exit statuses.
+export type ErrorCode = "error" | "usage" | "unreachable" | "timeout" | "invalid_params" | "unknown_method" | "no_such_pane" | "pane_gone";
+
 export type PaneInfo = {
   id: string;
+  instance: string; // random per spawned process: tells a pane apart from a later one given the same id or name
   name?: string;
   title: string;
   cwd: string;

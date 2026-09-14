@@ -69,7 +69,7 @@ shepherd report --source my-tool --release                  # hand the pane back
     sections: [
       { id: "send", title: "Send and read", html: code("sh", `shepherd send @reviewer "fixed, please re-check"   # typed into the agent once it's idle
 shepherd inbox                                     # messages sent to you
-shepherd messages --follow                          # every message, live`) + p("A message waits until its recipient is idle, then is typed in, tagged with the sender so it can reply.") },
+shepherd messages --follow                          # every message, live`) + p(`A message waits until its recipient is idle, then is typed in with a reply hint naming the sender pane, like ${c('shepherd send p3:1a2b3c4d "..."')}. That target survives a rename and fails, rather than reaching another pane, once the sender has closed or restarted.`) },
       { id: "safety", title: "Guard rails", html: ul([
         `Every message carries a hop count; chains stop after ${c("max_hops")} (10).`,
         `Each sender → recipient pair is rate-limited (${c("per_minute")}, 5).`,
@@ -98,7 +98,7 @@ shepherd events --follow`) },
         [c("events [--follow] [--output]"), "The session's event stream."],
         [c("report"), "State and session reports from integrations."],
         [c("debug detect <target>"), "What detection sees for a pane."],
-      ]) + p(`Targets are a pane id (${c("p3")}), ${c("@name")} or a name. ${c("shepherd help")} lists everything. Under the hood it's JSON-RPC 2.0 over the session's unix socket.`) },
+      ]) + p(`Targets are a pane id (${c("p3")}), ${c("@name")} or a name. ${c("shepherd help")} lists everything.`) + p(`Exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 ${c("wait")} timed out, and ${c("wait --exited")} exits with the pane's code. With ${c("--json")}, a failure prints ${c('{"error":{"code","message"}}')} to stderr, with a stable code such as ${c("no_such_pane")}, ${c("pane_gone")} or ${c("timeout")}. Under the hood it's JSON-RPC 2.0 over the session's unix socket.`) },
     ],
   },
   {

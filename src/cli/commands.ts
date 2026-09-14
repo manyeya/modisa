@@ -1,9 +1,18 @@
 // `shepherd <noun> <verb>` — the socket API as shell commands, so any agent can drive panes with zero integration.
 import { connectExisting } from "../protocol/transport";
-import type { Conn } from "../protocol/conn";
+import { ConnectionClosedError, type Conn } from "../protocol/conn";
+import type { ErrorCode } from "../protocol/types";
 import { str, num, type Args } from "./args";
 import { HELP } from "./help";
 
+// Exit statuses scripts can branch on; every other failure exits 1. Listed in `shepherd help`.
+const EXIT: Partial<Record<ErrorCode, number>> = { usage: 2, invalid_params: 2, unreachable: 3, timeout: 124 };
+
+// Print a failure (as {"error":{code,message}} with --json) and return its exit status.
+function failed(code: ErrorCode, message: string, json: boolean) {
+  console.error(json ? JSON.stringify({ error: { code, message } }) : message);
+  return EXIT[code] ?? 1;
+}
 
 function print(x: unknown, json: boolean) {
   if (json || typeof x !== "object" || x === null) return console.log(typeof x === "string" ? x : JSON.stringify(x, null, 2));
@@ -29,8 +38,7 @@ export async function runCli(a: Args): Promise<number> {
     conn = await connectExisting(str(f.session));
   } catch (e: any) {
     if (noun === "report") return 0; // hooks fire outside shepherd too; stay quiet
-    console.error(e.message);
-    return 1;
+    return failed("unreachable", e.message, json);
   }
   const call = <T = any>(method: string, params: any = {}) => conn.request<T>(method, { caller, ...params });
   const target = (t?: string) => t ?? str(f.target);
@@ -92,7 +100,8 @@ export async function runCli(a: Args): Promise<number> {
       }
       case `send ${verb}`: {
         const r = await call("send", { to: verb, body: rest.join(" ") });
-        console.log(`queued for ${verb}${r.recipientState ? ` (${r.recipientState})` : ""}`);
+        if (json) print(r, true);
+        else console.log(`queued for ${verb}${r.recipientState ? ` (${r.recipientState})` : ""}: message ${r.id}, not delivered yet`);
         break;
       }
       case "inbox": {
@@ -149,12 +158,10 @@ export async function runCli(a: Args): Promise<number> {
         await call("detach-all");
         break;
       default:
-        console.error(`unknown command: ${a._.join(" ")}\n\n${HELP}`);
-        return 2;
+        return failed("usage", `unknown command: ${a._.join(" ")}${json ? "" : `\n\n${HELP}`}`, json);
     }
   } catch (e: any) {
-    console.error(`shepherd: ${e.message}`);
-    return 1;
+    return failed(e instanceof ConnectionClosedError ? "unreachable" : e.code ?? "error", `shepherd: ${e.message}`, json);
   } finally {
     if (!f.follow) conn.close();
   }

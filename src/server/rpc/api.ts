@@ -6,6 +6,7 @@ import type { ServerContext } from "../context";
 import { integrationStatus, setIntegration } from "../../integrations";
 import { keyBytes } from "../keys";
 import type { Handlers } from "./dispatch";
+import { fail } from "../../protocol/conn";
 
 export function apiMethods(ctx: ServerContext): Handlers {
   const { s, mail, detector } = ctx;
@@ -68,7 +69,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
           const m = re.exec(pane.text().split("\n").slice(-500).join("\n"));
           if (m) return { match: m[0] };
         }
-        if (Date.now() > deadline) throw new Error("timeout");
+        if (Date.now() > deadline) throw fail("timeout", "timeout");
         await Bun.sleep(200);
       }
     },
@@ -105,10 +106,12 @@ export function apiMethods(ctx: ServerContext): Handlers {
       const from = p.caller && s.panes.has(p.caller) ? p.caller : "user";
       const to = ctx.need(p.to);
       if (!to.info.agent && !to.info.harness) throw new Error(`${ctx.name(to.id)} is not an agent pane`);
-      const m = mail.send(from, ctx.name(from), to.id, ctx.name(to.id), p.body);
+      const replyTo = from === "user" ? undefined : `${from}:${s.panes.get(from)!.info.instance}`;
+      const m = mail.send(from, ctx.name(from), to.id, ctx.name(to.id), p.body, replyTo);
       ctx.emit("message.sent", { id: m.id, from: m.fromName, to: m.toName, hops: m.hops });
       ctx.changed();
-      return { id: m.id, queued: true, recipientState: to.info.agent?.state };
+      // queued, not delivered: it's typed in when the recipient is idle (see `messages`)
+      return { id: m.id, queued: true, delivered: false, recipientState: to.info.agent?.state };
     },
     inbox: (p) => mail.take(ctx.need(undefined, p.caller).id).map((m) => ({ from: m.fromName, body: m.body, at: m.at })),
     messages: () => mail.log,

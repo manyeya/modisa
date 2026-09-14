@@ -37,6 +37,7 @@ export class PtyPane {
     const cols = Math.max(opts.cols, 2), rows = Math.max(opts.rows, 1);
     this.info = {
       id: opts.id,
+      instance: crypto.randomUUID().slice(0, 8),
       name: opts.name,
       title: opts.name ?? (opts.command ? opts.command.split(" ")[0]! : shell.split("/").pop()!),
       cwd: opts.cwd,

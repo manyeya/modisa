@@ -38,6 +38,7 @@ export async function listSessions() {
   // Bun.Glob skips unix sockets, so list the directory with the shell
   const socks = (await Bun.$`ls -1 ${DIR}`.quiet().nothrow().text()).split("\n").filter((f) => f.endsWith(".sock"));
   const rows: string[] = [];
+  let blocked = false;
   for (const n of socks.map((f) => f.replace(/\.sock$/, "")).sort()) {
     try {
       const c = await connectUnix(socketPath(n));
@@ -49,12 +50,14 @@ export async function listSessions() {
       const pid = await runningPid(socketPath(n));
       if (pid) {
         names.add(n);
+        blocked = true;
         rows.push(`${n}\trunning (pid ${pid}), but this process can't connect to it: a sandbox is blocking it`);
       } else await Bun.file(socketPath(n)).delete().catch(() => {}); // dead server
     }
   }
   for (const s of await saved()) if (!names.has(s.name)) rows.push(`${s.name}\tsaved ${new Date(s.saved_at).toLocaleString()} — attach to restore`);
   console.log(rows.length ? rows.join("\n") : "no sessions");
+  return blocked ? 3 : 0; // same status as any other command that can't reach its server
 }
 
 // Save the session, stop its server, start a fresh one on the current code (it restores everything).

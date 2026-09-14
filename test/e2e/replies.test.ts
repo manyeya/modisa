@@ -1,0 +1,59 @@
+// A message's reply hint names its sender pane by id and instance: it still works after the sender is
+// renamed, and fails clearly (never reaching someone else) once the sender has gone.
+import { test, expect, beforeAll, afterAll } from "bun:test";
+import { sandbox, startServer } from "../support/harness";
+import { installFakeAgent } from "../support/fake-agent";
+
+const sb = sandbox("replies");
+const S = "rep";
+const cli = (...args: string[]) => sb.cli(S, args);
+let server: Bun.Subprocess;
+let fake: string;
+
+// an agent in its own tab (full width, so the hint isn't wrapped), idle at its prompt
+async function spawn(...flags: string[]) {
+  const id = await cli("agent", "spawn", "fakeagent", "--tab", ...flags);
+  await cli("wait", id, "--state", "working", "--timeout", "10");
+  await cli("wait", id, "--state", "idle", "--timeout", "15");
+  return id;
+}
+
+// send from a pane, then read the reply target the recipient was shown
+async function sendFrom(from: string, label: string, body: string) {
+  expect(await sb.cli(S, ["send", "@fake", body], { SHEPHERD_PANE_ID: from })).toContain("queued for @fake");
+  const hint = await cli("wait", "@fake", "--match", `message from @${label} \\(reply: shepherd send \\S+`, "--timeout", "10");
+  return hint.split(" ").at(-1)!;
+}
+
+beforeAll(async () => {
+  await installFakeAgent(sb.root);
+  server = await startServer(sb, S);
+  fake = await spawn("--name", "fake");
+}, 40000);
+
+afterAll(async () => {
+  await cli("kill", S);
+  await server?.exited;
+  await sb.cleanup();
+});
+
+test("send → rename the sender → reply to the hinted target → delivered", async () => {
+  const a = await spawn();
+  const hint = await sendFrom(a, a, "hello-1");
+  expect(hint).toMatch(new RegExp(`^${a}:\\w+$`));
+  await cli("pane", "rename", a, "gary");
+  expect(await sb.cli(S, ["send", hint, "pong-1"], { SHEPHERD_PANE_ID: fake })).toContain(`queued for ${hint}`);
+  expect(await cli("wait", "@gary", "--match", "got: pong-1", "--timeout", "10")).toBe("got: pong-1");
+  expect(await cli("pane", "read", `@${a}`)).toContain("pong-1"); // and @<id> still resolves once it has a name
+}, 60000);
+
+test("send → close the sender → a new pane takes its name → the reply fails and isn't misdelivered", async () => {
+  const b = await spawn("--name", "bob");
+  const hint = await sendFrom(b, "bob", "hello-2");
+  await cli("pane", "close", b);
+  await spawn("--name", "bob");
+  const r = await sb.run(S, ["send", hint, "pong-2"], { SHEPHERD_PANE_ID: fake });
+  expect(r.code).toBe(1);
+  expect(r.out).toContain(`${b} has gone`);
+  expect(await cli("messages")).not.toContain("pong-2");
+}, 60000);

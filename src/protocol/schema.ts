@@ -1,6 +1,7 @@
 // Wire protocol: JSON-RPC 2.0, newline-delimited, over a unix socket (or ssh stdio for --remote).
 // Requests get responses; the server pushes events as notifications ({method, params}, no id).
 import { z } from "zod";
+import type { ErrorCode } from "./types";
 
 export type Msg = {
   jsonrpc: "2.0";
@@ -8,7 +9,7 @@ export type Msg = {
   method?: string;
   params?: any;
   result?: any;
-  error?: { code: number; message: string };
+  error?: { code: number; message: string; data?: { code: ErrorCode } };
 };
 
 // The public API: the server validates params with these; the CLI builds params from them.

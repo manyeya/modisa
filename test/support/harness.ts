@@ -23,17 +23,17 @@ export function sandbox(name: string) {
   delete env.SHEPHERD_PANE_ID;
   // agents' config-directory overrides would point integration tests at the real ones
   for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "CURSOR_CONFIG_DIR", "XDG_CONFIG_HOME", "QODER_CONFIG_DIR", "QWEN_HOME", "GROK_CONFIG_DIR", "GROK_HOME", "ANTIGRAVITY_CLI_CONFIG_DIR", "HERMES_HOME", "KIMI_CODE_HOME", "PI_CODING_AGENT_DIR", "PI_CONFIG_DIR"]) delete env[k];
-  // `shepherd -s <session> <args…>`: stdout and stderr together, trimmed
-  const cli = async (session: string, args: string[], extra: Record<string, string> = {}) => {
+  // `shepherd -s <session> <args…>`: stdout and stderr together, trimmed, and the exit status
+  const run = async (session: string, args: string[], extra: Record<string, string> = {}) => {
     const p = Bun.spawn(["bun", MAIN, "-s", session, ...args], { env: { ...env, ...extra }, cwd: root, stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-    await p.exited;
-    return (out + err).trim();
+    return { out: (out + err).trim(), code: await p.exited };
   };
+  const cli = async (session: string, args: string[], extra: Record<string, string> = {}) => (await run(session, args, extra)).out;
   const cleanup = async () => {
     await Bun.$`rm -rf ${root}`.nothrow().quiet();
   };
-  return { root, env, cli, cleanup };
+  return { root, env, cli, run, cleanup };
 }
 
 // A session server with no client attached; resolves once its first pane exists.

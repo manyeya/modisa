@@ -65,6 +65,8 @@ shepherd pane read tests --lines 100    # then read the result
 
 Also `--state idle|working|blocked|done` (`idle` also matches `done`), `--match <regex>` against new
 output, and `--timeout <seconds>`. Reading in a loop wastes tokens and misses output between reads.
+The exit status says what happened: `wait --exited` exits with the pane's code, a timeout exits 124,
+an unreachable server 3, bad usage 2, any other failure 1.
 
 **Panes outlive their process.** A pane stays open after its command exits, so the output is still
 there to read. Close it when you're done with it.
@@ -75,8 +77,9 @@ back-and-forth conducted that way interrupts them on every single message. `send
 permission and is the supported path. Keep `pane keys` and `pane run` for shells and plain commands.
 
 **Messages land only when the other agent is free.** `shepherd send` queues into the recipient's
-mailbox and is typed in when they go `idle` or `done` — never mid-turn. It carries your name, so
-they can reply with `shepherd send @you "…"`. Don't follow up with a second message because the
+mailbox and is typed in when they go `idle` or `done` — never mid-turn. It arrives with a reply
+hint like `shepherd send p3:1a2b3c4d "…"`: use that target, since it keeps working after a rename and
+fails (instead of reaching someone else) if the sender has gone. Don't follow up with a second message because the
 first hasn't been answered yet; `shepherd wait <them> --state idle` instead, then `shepherd inbox`.
 
 A full exchange, with no permission prompts anywhere:

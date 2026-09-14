@@ -3,7 +3,7 @@
 import type { Config } from "../config/config";
 import type { Adapter } from "../config/adapters";
 import type { Conn } from "../protocol/conn";
-import { b64 } from "../protocol/conn";
+import { b64, fail } from "../protocol/conn";
 import { Session, type SpawnOpts } from "./session/session";
 import type { PtyPane } from "./session/pane";
 import { Detector } from "./agents/detect";
@@ -81,8 +81,9 @@ export function createContext(session: string, version: string, cfg: Config, ada
   ctx.name = (id) => (id === "user" ? "user" : ctx.s.panes.get(id)?.info.name ?? id);
   ctx.need = (target, caller) => {
     const p = ctx.s.resolve(target, caller);
-    if (!p) throw new Error(`no such pane: ${target ?? "(none)"}`);
-    return p;
+    if (p) return p;
+    if (/^p\d+:\w+$/.test(target ?? "")) throw fail("pane_gone", `${target!.split(":")[0]} has gone: that pane was closed or restarted since its message was sent`);
+    throw fail("no_such_pane", `no such pane: ${target ?? "(none)"}`);
   };
   ctx.agentOpts = (harness, prompt, name, createdBy) => {
     const a = ctx.adapters.find((x) => x.id === harness);

@@ -43,12 +43,17 @@ export class Session {
     for (const ws of this.workspaces) for (const tab of ws.tabs) if (panes(tab.tree).includes(id)) return { ws, tab };
   }
 
-  // "p3", "@coder", "coder"
+  // "p3", "@coder", "coder", "@p3" (ids still work once a pane is named), "p3:1a2b3c4d" (only that instance of p3)
   resolve(target?: string, fallback?: string): PtyPane | undefined {
     const t = target ?? fallback;
     if (!t) return;
+    const inst = /^(p\d+):(\w+)$/.exec(t);
+    if (inst) {
+      const p = this.panes.get(inst[1]!);
+      return p?.info.instance === inst[2] ? p : undefined;
+    }
     const name = t.replace(/^@/, "");
-    return this.panes.get(t) ?? [...this.panes.values()].find((p) => p.info.name === name);
+    return this.panes.get(t) ?? [...this.panes.values()].find((p) => p.info.name === name) ?? this.panes.get(name);
   }
 
   isVisible(id: string) {

@@ -32,7 +32,7 @@ switch (cmd) {
     break;
   case "ls":
   case "list-sessions":
-    await listSessions();
+    process.exitCode = await listSessions();
     break;
   case "restart":
     await restartSession(rest[0] ?? session);
@@ -64,5 +64,5 @@ switch (cmd) {
     console.log(HELP);
     break;
   default:
-    await runCli(a);
+    process.exitCode = await runCli(a);
 }
