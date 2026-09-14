@@ -1,6 +1,6 @@
 // `shepherd <noun> <verb>` — the socket API as shell commands, so any agent can drive panes with zero integration.
 import { connectExisting } from "../protocol/transport";
-import { ConnectionClosedError, errorCode, type Conn } from "../protocol/conn";
+import { ConnectionClosedError, errorCode, fail, type Conn } from "../protocol/conn";
 import type { ErrorCode } from "../protocol/types";
 import { str, num, type Args } from "./args";
 import { HELP } from "./help";
@@ -125,6 +125,28 @@ export async function runCli(a: Args): Promise<number> {
       case `report ${verb}`:
         await call("report", { pane: verb, state: str(f.state), source: str(f.source), agent: str(f.agent), seq: num(f.seq), session: str(f["session-id"]), release: f.release === true || undefined });
         break;
+      case "plugin list": {
+        const ps = await call<any[]>("plugin.list");
+        if (json) print(ps, true);
+        else table(ps.map((p) => ({ name: p.name, status: p.exitCode !== undefined && p.status !== "running" ? `${p.status} ${p.exitCode}` : p.status, connected: p.connected ? "yes" : "no", actions: p.actions.join(","), error: p.error ?? "", log: p.log })), ["name", "status", "connected", "actions", "error", "log"]);
+        break;
+      }
+      case "plugin logs": {
+        const p = (await call<any[]>("plugin.list")).find((x) => x.name === rest[0]);
+        if (!p) throw fail("no_such_plugin", `no plugin named ${rest[0]} (see shepherd plugin list)`);
+        console.log((await Bun.file(p.log).text().catch(() => "")).trimEnd().split("\n").slice(-(num(f.lines) ?? 50)).join("\n"));
+        break;
+      }
+      case "plugin run": {
+        let params: unknown;
+        try {
+          params = rest[2] === undefined ? undefined : JSON.parse(rest[2]);
+        } catch {
+          throw fail("usage", `params must be JSON, like '{"key":"value"}': ${rest[2]}`);
+        }
+        print(await call("plugin.invoke", { plugin: rest[0], action: rest[1], params }), true);
+        break;
+      }
       case "workspace create":
         console.log((await call("workspace.create", { name: rest[0], cwd: str(f.cwd) })).id);
         break;

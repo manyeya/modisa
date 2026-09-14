@@ -8,7 +8,45 @@ speak newline-delimited JSON, it can be a plugin — Bun, Python, Go, a shell sc
 Everything below is verified against a running session; `blocked-notifier/plugin.ts` in this
 directory is a complete working example.
 
-## Declare it
+## Link it
+
+A plugin is a directory with a `plugin.json`:
+
+```json
+{ "name": "attention-log", "protocol": 1, "run": ["bun", "plugin.ts"] }
+```
+
+`run` is an argv list, started in the plugin's directory, with no shell in between. `protocol` is the
+protocol version the plugin speaks; one the server doesn't speak fails to start, and says so.
+
+```sh
+shepherd plugin link ./attention-log    # checks plugin.json, links it into ~/.config/shepherd/plugins
+shepherd restart                         # plugins start with the session server
+shepherd plugin list                     # status, exit code, connected or not, actions, log file
+shepherd plugin logs attention-log
+shepherd plugin run attention-log <action> '{"any":"params"}'
+shepherd plugin unlink attention-log     # removes the link, never the directory
+```
+
+**Shepherd owns the process.** Each plugin runs in its own process group. When the session stops,
+the whole group gets TERM, and whatever is still running 2 seconds later gets KILL, so children and
+grandchildren go too. stdout and stderr go to `~/.local/state/shepherd/plugins/<session>.<name>.log`.
+Nothing restarts a plugin that exits: `plugin list` shows it `exited` or `failed`, with the reason.
+If the server itself is killed outright, it can't stop anyone, which is why a plugin must still exit
+when its socket closes (rule 1 below).
+
+**Actions.** To be callable with `shepherd plugin run`, call `plugin.hello` on your connection with
+the token shepherd started you with and the actions you offer:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"plugin.hello","params":{"token":"<$SHEPHERD_PLUGIN_TOKEN>","actions":["summary"]}}
+```
+
+Shepherd then sends `plugin.action` requests (`{"action":"summary","params":{...}}`) on that
+connection. Reply with a result or an error on the request's `id`; the caller gets it, or
+`plugin_error`, `plugin_unavailable`, `no_such_action` or `timeout` (30s) as its error code.
+
+## Declare it in config.toml instead
 
 `~/.config/shepherd/config.toml`:
 
@@ -176,10 +214,10 @@ state.
 
 1. **Exit when the socket closes — don't reconnect in a loop.** The server starts plugins itself, so
    `shepherd restart` spawns a fresh copy of yours. A plugin that reconnects forever keeps the old
-   process running alongside the new one, and every restart adds another. Worse, `plugins.stop()`
-   kills the shell in `run`, not its grandchildren, so a wrapper script's child can outlive the
-   session — a retry loop inside one becomes a process leak that will quietly chew the machine and
-   make agent detection stall. Exit; let the next server start you.
+   process running alongside the new one, and every restart adds another. Shepherd ends your whole
+   process group when the session stops, but a server that's killed outright can't, and a retry loop
+   that outlives it is a process leak that quietly chews the machine. Exit; let the next server start
+   you.
 2. **Never die on bad input.** Wrap `JSON.parse` per line. One malformed line should not end the
    process.
 3. **Don't block the read loop.** Handle an event asynchronously, or you will stall behind your own

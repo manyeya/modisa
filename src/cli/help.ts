@@ -22,6 +22,11 @@ agents
   shepherd inbox | messages [--follow] | pause
   shepherd report [pane] [--state s] [--source id] [--agent id] [--seq n] [--session-id id] [--release]   (integrations)
 
+plugins (examples/plugins/README.md)
+  shepherd plugin list [--json] | logs <name> [--lines 50]
+  shepherd plugin link <dir> | unlink <name>   a directory with a plugin.json; it starts with the server (shepherd restart)
+  shepherd plugin run <name> <action> [json]   call an action a running plugin offers
+
 workspace
   shepherd workspace create [name] [--cwd dir] | workspace list
   shepherd workspace rename <space> <name> | workspace close <space>   (space: id or name)

@@ -12,6 +12,16 @@ export type Msg = {
   error?: { code: number; message: string; data?: { code: ErrorCode } };
 };
 
+// plugin.json: who the plugin is, the protocol version it speaks, and how to start it (argv, run in the plugin's
+// directory, no shell)
+export const pluginManifest = z.object({
+  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes"),
+  protocol: z.number().int().positive(),
+  run: z.array(z.string().min(1)).min(1),
+  description: z.string().optional(),
+});
+export type PluginManifest = z.infer<typeof pluginManifest>;
+
 // The public API: the server validates params with these; the CLI builds params from them.
 const target = z.string().min(1);
 const caller = z.string().optional();
@@ -65,6 +75,11 @@ export const api = {
   // snapshot: also return every pane as of the moment the subscription starts (see envelope)
   "events.subscribe": z.object({ caller, output: z.boolean().optional(), snapshot: z.boolean().optional() }),
   "protocol.describe": z.object({ caller }),
+  "plugin.list": z.object({ caller }),
+  // a plugin's own connection says which plugin it is (the token it was started with) and what actions it offers
+  "plugin.hello": z.object({ caller, token: z.string().min(1), actions: z.array(z.string().min(1)).optional() }),
+  // call an action a connected plugin offers; shepherd sends it a plugin.action request ({ action, params })
+  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional() }),
   // from integrations: lifecycle state (authoritative for the pane until released or the agent exits),
   // the agent's own session id (for exact resume), or both
   report: z.object({

@@ -10,7 +10,7 @@ import { createContext, type Client } from "./context";
 import { preparePaneEnv } from "./env";
 import { installPermissions } from "./permissions";
 import { startMonitor } from "./agents/monitor";
-import { startPlugins } from "./plugins";
+import { createPluginHost } from "./plugins";
 import { createDispatcher } from "./rpc/dispatch";
 import { clientMethods } from "./rpc/client";
 import { apiMethods } from "./rpc/api";
@@ -47,7 +47,8 @@ export async function runServer(session: string) {
   });
   installPermissions(ctx);
   const monitor = startMonitor(ctx);
-  const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx) });
+  const plugins = createPluginHost(ctx);
+  const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods });
 
   // ---------- socket ----------
   await Bun.file(sock).delete().catch(() => {});
@@ -61,6 +62,7 @@ export async function runServer(session: string) {
         conn.onMessage = (m) => dispatch(client, m);
         conn.onClose = () => {
           ctx.clients.delete(client);
+          plugins.disconnected(client);
           ctx.s.dragEnd(client);
           ctx.changed();
         };
@@ -76,7 +78,7 @@ export async function runServer(session: string) {
   });
 
   await Bun.write(pidFile, String(process.pid)); // lets clients tell "running but unreachable" from "dead"
-  const plugins = startPlugins(ctx.cfg);
+  await plugins.start();
 
   ctx.shutdown = async (empty, why = "exit") => {
     if (ctx.down) return;
@@ -85,7 +87,7 @@ export async function runServer(session: string) {
     if (empty) await forget(session);
     else await save(ctx.s, session).catch(() => {});
     for (const c of ctx.clients) c.conn.notify(why, {});
-    plugins.stop();
+    await plugins.stop(); // each plugin's whole process group, within its time limit
     ctx.s.destroy();
     // The pid file goes first, so nothing mistakes this exiting server for a running one it can't reach.
     // Then the socket file, while it's still ours: once the listener stops, `shepherd restart` starts the

@@ -11,8 +11,25 @@ export type NotifyEvent = Exclude<AgentState, "idle">;
 export type IntegrationStatus = { id: string; name: string; kind: "lifecycle" | "session"; status: "current" | "outdated" | "none"; available: boolean; configured: boolean };
 
 // A failed request's stable code (JSON-RPC error.data.code); the CLI maps some to exit statuses.
-export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone"] as const;
+export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error"] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
+
+// A plugin as its host sees it. status: running; exited (code 0), failed (nonzero, or it couldn't start: a bad
+// manifest, another protocol version, a missing program) or stopped (by shepherd, when the session stopped).
+export type PluginStatus = {
+  name: string;
+  source: "linked" | "config"; // a linked plugin.json, or a [[plugin]] run line in config.toml
+  dir?: string;
+  status: "running" | "exited" | "failed" | "stopped";
+  pid?: number;
+  exitCode?: number;
+  signal?: string;
+  error?: string;
+  log: string;
+  connected: boolean; // it has said plugin.hello on a connection that's still open
+  actions: string[]; // what `shepherd plugin run` can call
+  group?: "running" | "gone"; // its process group: children can outlive the process shepherd started
+};
 
 export type PaneInfo = {
   id: string;
