@@ -11,7 +11,7 @@ export type NotifyEvent = Exclude<AgentState, "idle">;
 export type IntegrationStatus = { id: string; name: string; kind: "lifecycle" | "session"; status: "current" | "outdated" | "none"; available: boolean; configured: boolean };
 
 // A failed request's stable code (JSON-RPC error.data.code); the CLI maps some to exit statuses.
-export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error", "already_running"] as const;
+export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error", "already_running", "rate_limited"] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 // A plugin as its host sees it. status: running; exited (code 0), failed (nonzero, or it couldn't start: a bad
@@ -52,5 +52,17 @@ export type PaneInfo = {
 export type TabView = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
 export type WorkspaceView = { id: string; name: string; cwd: string; active: number; tabs: TabView[] };
 
+// What a plugin's current run shows in the TUI, from its ui.* calls: drawn by shepherd, in the user's theme.
+export type Tone = "fg" | "dim" | "accent" | "warn";
+export type PluginUiView = {
+  plugin: string;
+  run: string; // the run that set it: an action taken from what it showed is refused once that run has ended
+  actions: { id: string; title: string; description?: string }[]; // offered by the connected run: palette entries
+  status: { id: string; text: string; tone: Tone; action?: string }[]; // status bar segments
+  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string }[] }; // a sidebar section
+  badges: { pane: string; instance: string; text: string; tone: Tone }[]; // labels on pane borders
+  menu: { id: string; title: string; action: string }[]; // pane context menu entries
+};
+
 // Everything a client needs to draw the session.
-export type View = { active: number; workspaces: WorkspaceView[]; panes: PaneInfo[] };
+export type View = { active: number; workspaces: WorkspaceView[]; panes: PaneInfo[]; plugins?: PluginUiView[] };

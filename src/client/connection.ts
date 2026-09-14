@@ -3,6 +3,7 @@ import { codeVersion } from "../core/paths";
 import { unb64 } from "../protocol/conn";
 import type { App, ServerView } from "./context";
 import { notify } from "./notify";
+import { pluginToast } from "./plugin-ui";
 import { permission } from "./modals/permission";
 import { render } from "./render";
 
@@ -35,6 +36,9 @@ async function attach(app: App, spawn: boolean) {
         break;
       case "notify":
         notify(app, d.state, d.text);
+        break;
+      case "plugin.toast":
+        pluginToast(app, d);
         break;
       case "prompt":
         permission(app, d.id, d.text);

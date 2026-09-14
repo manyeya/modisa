@@ -101,6 +101,10 @@ export async function checkPlugin(arg: string): Promise<number> {
       if (state?.pid) group = new OwnedGroup(state.pid);
     } else {
       ok("starts and connects", `actions: ${state.actions.join(", ") || "none"}`);
+      const declared = manifest.actions?.map((a) => a.id) ?? [];
+      const missing = declared.filter((id) => !state.actions.includes(id));
+      if (missing.length) pass = bad("offers its actions", `plugin.json declares ${missing.join(", ")}, but hello didn't offer ${missing.length === 1 ? "it" : "them"}: pass ${missing.length === 1 ? "it" : "them"} to shepherd.hello({ … })`);
+      else if (declared.length) ok("offers its actions", declared.join(", "));
       group = new OwnedGroup(state.pid);
       await Bun.sleep(1000);
       state = await me();

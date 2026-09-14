@@ -11,7 +11,7 @@ export function clientMethods(ctx: ServerContext): Handlers {
       c.attached = true;
       if (p.area) s.setArea(p.area);
       ctx.emit("client.attached", {});
-      return { ...s.view(), paused: ctx.mail.paused, session: ctx.session, prompts: [...ctx.prompts.keys()], version: ctx.version };
+      return { ...s.view(), paused: ctx.mail.paused, plugins: ctx.pluginUi(), session: ctx.session, prompts: [...ctx.prompts.keys()], version: ctx.version };
     },
     // Current screen of every pane as a VT stream; the client asks once its terminals exist.
     replay: () => [...s.panes.values()].map((p) => ({ pane: p.id, data: b64(new TextEncoder().encode(p.replay())) })),

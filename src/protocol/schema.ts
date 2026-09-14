@@ -13,13 +13,46 @@ export type Msg = {
 };
 
 // plugin.json: who the plugin is, the protocol version it speaks, and how to start it (argv, run in the plugin's
-// directory, no shell)
-export const pluginManifest = z.object({
-  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes"),
-  protocol: z.number().int().positive(),
-  run: z.array(z.string().min(1)).min(1),
-  description: z.string().optional(),
-});
+// directory, no shell). Optionally what it offers the TUI: actions (listed before it connects; hello must offer each),
+// panes it can open, keys under the prefix, and URL patterns that Ctrl+click hands to an action.
+const pluginId = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes");
+const cells = z.union([z.number().int().positive(), z.string().regex(/^\d{1,3}%$/, 'a number of cells, or a percentage like "80%"')]);
+export const pluginManifest = z
+  .object({
+    name: pluginId,
+    protocol: z.number().int().positive(),
+    run: z.array(z.string().min(1)).min(1),
+    description: z.string().optional(),
+    actions: z.array(z.strictObject({ id: pluginId, title: z.string().min(1).max(60), description: z.string().max(200).optional() })).optional(),
+    panes: z.array(z.strictObject({ id: pluginId, title: z.string().min(1).max(60), run: z.array(z.string().min(1)).min(1), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]).default("overlay"), width: cells.optional(), height: cells.optional() })).optional(),
+    keys: z.array(z.strictObject({ key: z.string().min(1).max(12), action: pluginId.optional(), pane: pluginId.optional(), description: z.string().min(1).max(80) })).optional(),
+    links: z.array(z.strictObject({ pattern: z.string().min(1).max(500), action: pluginId })).optional(),
+  })
+  .superRefine((m, issues) => {
+    const problem = (path: (string | number)[], message: string) => issues.addIssue({ code: "custom", path, message });
+    for (const [list, label] of [[m.actions, "action"], [m.panes, "pane"]] as const) {
+      const seen = new Set<string>();
+      list?.forEach((item, i) => (seen.has(item.id) ? problem([`${label}s`, i, "id"], `a second ${label} with id ${item.id}`) : seen.add(item.id)));
+    }
+    const actions = new Set(m.actions?.map((a) => a.id));
+    const panes = new Set(m.panes?.map((p) => p.id));
+    const keys = new Set<string>();
+    m.keys?.forEach((k, i) => {
+      if (keys.has(k.key)) problem(["keys", i, "key"], `key ${k.key} is bound twice`);
+      keys.add(k.key);
+      if (!!k.action === !!k.pane) problem(["keys", i], `key ${k.key} needs exactly one of action or pane`);
+      if (k.action && !actions.has(k.action)) problem(["keys", i, "action"], `key ${k.key} runs action ${k.action}, which isn't in actions`);
+      if (k.pane && !panes.has(k.pane)) problem(["keys", i, "pane"], `key ${k.key} opens pane ${k.pane}, which isn't in panes`);
+    });
+    m.links?.forEach((l, i) => {
+      try {
+        new RegExp(l.pattern);
+      } catch (e) {
+        problem(["links", i, "pattern"], `not a valid regular expression: ${(e as Error).message}`);
+      }
+      if (!actions.has(l.action)) problem(["links", i, "action"], `links to action ${l.action}, which isn't in actions`);
+    });
+  });
 export type PluginManifest = z.infer<typeof pluginManifest>;
 
 // The public API: the server validates params with these; the CLI builds params from them.
@@ -72,8 +105,19 @@ const pluginStatus = z.strictObject({
   pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
   connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
 });
+const tone = z.enum(["fg", "dim", "accent", "warn"]);
+export const pluginUiView = z.strictObject({
+  plugin: z.string(),
+  run: z.string(),
+  actions: z.array(z.strictObject({ id: z.string(), title: z.string(), description: z.string().optional() })),
+  status: z.array(z.strictObject({ id: z.string(), text: z.string(), tone, action: z.string().optional() })),
+  sidebar: z.strictObject({ title: z.string(), rows: z.array(z.strictObject({ text: z.string(), tone, action: z.string().optional(), pane: z.string().optional() })) }).optional(),
+  badges: z.array(z.strictObject({ pane: z.string(), instance: z.string(), text: z.string(), tone })),
+  menu: z.array(z.strictObject({ id: z.string(), title: z.string(), action: z.string() })),
+});
 export const results = {
   list: z.array(listedPane),
+  "ui.state": pluginUiView,
   "events.subscribe": z.strictObject({ protocol: z.number().int(), epoch: z.string(), seq: z.number().int().nonnegative(), panes: z.array(listedPane).optional() }),
   "pane.read": paneInfo.extend({ screen: z.string(), recentOutput: z.string() }),
   "agent.list": z.array(z.strictObject({ id: z.string(), name: z.string().optional(), title: z.string(), harness: z.string(), state, source: z.enum(["hook", "screen"]), workspace: z.string().optional() })),
@@ -128,7 +172,20 @@ export const api = {
   // a plugin's own connection says which plugin it is (the token it was started with) and what actions it offers
   "plugin.hello": z.object({ caller, token: z.string().min(1), actions: z.array(z.string().min(1)).optional() }),
   // call an action a connected plugin offers; shepherd sends it a plugin.action request ({ action, params })
-  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional() }),
+  // run: the run whose UI the action was taken from (ui.state's `run`); refused if that run has since ended
+  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional() }),
+  // A plugin's own TUI contributions, only on its bound connection (after plugin.hello). Text is cleaned of control
+  // characters and cut to length; actions must be ones the plugin offered in hello; updates are rate-limited.
+  "ui.status.set": z.object({ caller, id: z.string().min(1).max(40), text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional() }),
+  "ui.status.clear": z.object({ caller, id: z.string().min(1).max(40) }),
+  "ui.sidebar.set": z.object({ caller, title: z.string(), rows: z.array(z.object({ text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional(), pane: z.string().min(1).optional() })).max(50) }),
+  "ui.sidebar.clear": z.object({ caller }),
+  "ui.toast": z.object({ caller, text: z.string(), tone: tone.default("fg"), system: z.boolean().optional() }),
+  "ui.badge.set": z.object({ caller, pane: z.string().min(1), instance: z.string().min(1), text: z.string(), tone: tone.default("accent") }),
+  "ui.badge.clear": z.object({ caller, pane: z.string().min(1) }),
+  "ui.menu.set": z.object({ caller, items: z.array(z.object({ id: z.string().min(1).max(40), title: z.string(), action: z.string().min(1) })).max(20) }),
+  // what a plugin shows now (any client may read it: plugin tests, plugin check)
+  "ui.state": z.object({ caller, plugin: z.string().min(1) }),
   // from integrations: lifecycle state (authoritative for the pane until released or the agent exits),
   // the agent's own session id (for exact resume), or both
   report: z.object({

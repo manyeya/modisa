@@ -46,6 +46,7 @@ export class App {
   pointerShape: PointerShape = "default";
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
   readonly promptIds = new Map<number, BoxRenderable>(); // open permission prompts
+  readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded
   chromeSig = ""; // what the tab bar, sidebar and status row last drew
   quitting = false;
   update: Manifest | undefined; // a newer shepherd release, when one is out

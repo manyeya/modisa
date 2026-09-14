@@ -49,7 +49,9 @@ export function render(app: App) {
     const { indicators, pane_labels: labels } = app.cfg;
     const agentTag = i.agent ? [indicators.pane && app.icon(i.agent.state), labels.agent && `${i.agent.harness} ${i.agent.state}`].filter(Boolean).map((s) => " " + s).join("") : "";
     const exited = i.status === "exited" ? ` [exited ${i.exitCode ?? "?"}]` : "";
-    p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited} `, Math.max(0, rect.w - 4));
+    // plugins' badges, only for the process they were set for
+    const badges = (view.plugins ?? []).flatMap((plugin) => plugin.badges.filter((b) => b.pane === id && b.instance === i.instance).map((b) => ` [${b.text}]`)).join("");
+    p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited}${badges} `, Math.max(0, rect.w - 4));
     p.box.titleColor = focused ? th.focus : st ? th[st] : th.dim;
     p.box.bottomTitle = labels.status && rect.w >= 40 ? fit(` ${i.id} / ${i.agent?.state ?? i.status} ${focused ? "· active" : ""} `, rect.w - 4) : undefined;
     p.box.bottomTitleAlignment = "right";
@@ -60,7 +62,7 @@ export function render(app: App) {
   // Rebuild the tab bar, sidebar and status row only when what they show changed. Rebuilding
   // replaces their buttons, and a click that lands before the next frame would hit nothing.
   const sig = JSON.stringify([
-    view.active, view.paused, view.workspaces,
+    view.active, view.paused, view.workspaces, view.plugins,
     view.panes.map((p) => [p.id, p.name, p.title, p.status, p.agent?.state, p.agent?.harness]),
     r.width, r.height, app.sidebar, app.cfg.theme, app.cfg.sidebar.width, app.cfg.indicators, th,
   ]);

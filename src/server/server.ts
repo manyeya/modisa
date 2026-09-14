@@ -48,6 +48,7 @@ export async function runServer(session: string) {
   installPermissions(ctx);
   const monitor = startMonitor(ctx);
   const plugins = createPluginHost(ctx);
+  ctx.pluginUi = plugins.uiView;
   const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods });
 
   // ---------- socket ----------

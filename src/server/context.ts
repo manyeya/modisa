@@ -4,6 +4,7 @@ import type { Config } from "../config/config";
 import type { Adapter } from "../config/adapters";
 import type { Conn } from "../protocol/conn";
 import { b64, fail } from "../protocol/conn";
+import type { PluginUiView } from "../protocol/types";
 import { Session, type SpawnOpts } from "./session/session";
 import type { PtyPane } from "./session/pane";
 import { Detector } from "./agents/detect";
@@ -41,11 +42,13 @@ export type ServerContext = {
   need(target: string | undefined, caller?: string): PtyPane;
   agentOpts(harness: string, prompt?: string, name?: string, createdBy?: string): SpawnOpts;
   snapshot(p: PtyPane, lines?: number): PtyPane["info"] & { screen: string; recentOutput: string };
+  pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
 };
 
 export function createContext(session: string, version: string, cfg: Config, adapters: Adapter[]): ServerContext {
   const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), down: false, prompts: new Map() } as ServerContext;
 
+  ctx.pluginUi = () => [];
   ctx.attached = () => [...ctx.clients].filter((c) => c.attached);
   ctx.broadcast = (event, data, to = ctx.attached()) => to.forEach((c) => c.conn.notify(event, data));
   // shapes: `events` in protocol/schema.ts (an e2e test checks every emitted event against them)
@@ -62,7 +65,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
       viewQueued = true;
       queueMicrotask(() => {
         viewQueued = false;
-        ctx.broadcast("view", { ...ctx.s.view(), paused: ctx.mail.paused });
+        ctx.broadcast("view", { ...ctx.s.view(), paused: ctx.mail.paused, plugins: ctx.pluginUi() });
       });
     }
     clearTimeout(saveTimer);

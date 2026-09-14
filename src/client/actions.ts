@@ -17,6 +17,7 @@ import { reload } from "./notify";
 import { quit } from "./connection";
 import { render } from "./render";
 import { deleteSpace, renameSpace } from "./spaces";
+import { pluginUi, runPluginAction } from "./plugin-ui";
 
 export function createActions(app: App): Record<string, Action> {
   const { r } = app;
@@ -95,6 +96,7 @@ export function createActions(app: App): Record<string, Action> {
       run: async () => {
         const extra: Option[] = [
           ...(await agentList()).map((a) => ({ name: `New agent: ${a.name}`, description: a.value, value: `agent:${a.value}` })),
+          ...pluginUi(app).flatMap((plugin) => plugin.actions.map((a) => ({ name: `${plugin.plugin}: ${a.title}`, description: a.description ?? "plugin action", value: `plugin:${plugin.plugin}:${plugin.run}:${a.id}` }))),
           { name: "Kill session", description: "close every pane and stop the server", value: "kill" },
         ];
         const v = await pick(app, "commands", [
@@ -103,6 +105,11 @@ export function createActions(app: App): Record<string, Action> {
         ]);
         if (!v) return;
         if (v.startsWith("agent:")) return app.call("spawnAgent", { harness: v.slice(6) });
+        if (v.startsWith("plugin:")) {
+          const [, plugin, run, action] = v.split(":");
+          const focused = app.tab().focused; // the target is the pane focused now, not when the action finishes
+          return runPluginAction(app, { plugin: plugin!, run: run! }, action!, { pane: focused, instance: app.info(focused)?.instance });
+        }
         if (v === "kill") return app.conn.request("kill");
         actions[v]?.run();
       },

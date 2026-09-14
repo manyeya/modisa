@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 3;
+export const SDK_VERSION = 4;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -34,6 +34,20 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // running, the caller has already been told the outcome is unknown, and neither the abort nor a rejection proves
 // that effects already started were undone.
 export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal }) => unknown;
+
+// What a plugin shows in shepherd's TUI (see Client.ui). Tones map to the user's theme.
+export type Tone = "fg" | "dim" | "accent" | "warn";
+export type SidebarRow = { text: string; tone?: Tone; action?: string; pane?: string };
+export type MenuItem = { id: string; title: string; action: string };
+export type UiState = {
+  plugin: string;
+  run: string;
+  actions: { id: string; title: string; description?: string }[];
+  status: { id: string; text: string; tone: Tone; action?: string }[];
+  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string }[] };
+  badges: { pane: string; instance: string; text: string; tone: Tone }[];
+  menu: MenuItem[];
+};
 
 export class ShepherdError extends Error {
   constructor(message: string, readonly code: string) {
@@ -108,12 +122,43 @@ export class Client {
     });
   }
 
-  /** Bind this connection to the plugin shepherd started, offering actions to `shepherd plugin run <name> <action>`. */
-  hello(actions: Record<string, Action> = {}, token = Bun.env.SHEPHERD_PLUGIN_TOKEN) {
-    if (!token) throw new ShepherdError("no $SHEPHERD_PLUGIN_TOKEN: shepherd starts plugins (shepherd plugin link, then shepherd restart), not a shell", "usage");
+  /** This plugin's name, once hello has bound it. */
+  name?: string;
+
+  /**
+   * Bind this connection to the plugin shepherd started, offering actions to `shepherd plugin run <name> <action>`,
+   * the command palette, and the status segments, sidebar rows and menu entries that name them.
+   */
+  async hello(actions: Record<string, Action> = {}, token = Bun.env.SHEPHERD_PLUGIN_TOKEN) {
+    if (!token) throw new ShepherdError("no $SHEPHERD_PLUGIN_TOKEN: shepherd starts plugins (shepherd plugin link), not a shell", "usage");
     this.actions = actions;
-    return this.request<{ name: string; protocol: number; session: string; epoch: string }>("plugin.hello", { token, actions: Object.keys(actions) });
+    const bound = await this.request<{ name: string; protocol: number; session: string; epoch: string }>("plugin.hello", { token, actions: Object.keys(actions) });
+    this.name = bound.name;
+    return bound;
   }
+
+  /**
+   * What this plugin shows in shepherd's TUI, drawn by shepherd in the user's theme. Only after hello. Text is cleaned
+   * of control characters and cut to length; an `action` must be one offered in hello; updates are rate-limited
+   * (errors: rate_limited, no_such_action). Everything is cleared when the plugin stops.
+   */
+  readonly ui = {
+    /** A status bar segment (up to 4); clicking it runs `action`. */
+    status: (id: string, text: string, options: { tone?: Tone; action?: string } = {}) => this.request<UiState>("ui.status.set", { id, text, ...options }),
+    clearStatus: (id: string) => this.request<UiState>("ui.status.clear", { id }),
+    /** This plugin's sidebar section; a row runs its `action`, or focuses its `pane`. */
+    sidebar: (title: string, rows: SidebarRow[]) => this.request<UiState>("ui.sidebar.set", { title, rows }),
+    clearSidebar: () => this.request<UiState>("ui.sidebar.clear"),
+    /** A label on a pane's border, for that pane's current process (`instance`) only. */
+    badge: (pane: string, instance: string, text: string, tone?: Tone) => this.request<UiState>("ui.badge.set", { pane, instance, text, ...(tone && { tone }) }),
+    clearBadge: (pane: string) => this.request<UiState>("ui.badge.clear", { pane }),
+    /** Entries in the pane context menu; the action gets { pane, instance }. */
+    menu: (items: MenuItem[]) => this.request<UiState>("ui.menu.set", { items }),
+    /** A toast in every attached client (a system notification too, if the user has those on); a few per 10s. */
+    toast: (text: string, options: { tone?: Tone; system?: boolean } = {}) => this.request<true>("ui.toast", { text, ...options }),
+    /** What this plugin shows now. */
+    state: () => this.request<UiState>("ui.state", { plugin: this.name ?? "" }),
+  };
 
   /**
    * Start watching. `onSnapshot` gets every pane as of the moment the subscription starts. `onEvent` then gets each
@@ -300,5 +345,7 @@ export function checkSession() {
     for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(100)) if (await ok()) return;
     throw new Error(`timed out waiting for ${what}`);
   };
-  return { plugin, session, data, shepherd, json, until };
+  /** What the plugin shows in the TUI now (status, sidebar, badges, menu, palette actions). */
+  const ui = () => json<UiState>("plugin", "ui", plugin);
+  return { plugin, session, data, shepherd, json, until, ui };
 }

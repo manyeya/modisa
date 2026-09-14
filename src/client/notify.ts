@@ -6,14 +6,16 @@ import type { App } from "./context";
 import { render } from "./render";
 import { playSound } from "./sound/player";
 
+export function systemNotification(app: App, text: string) {
+  if (Bun.which("osascript")) Bun.spawn(["osascript", "-e", `display notification ${JSON.stringify(text)} with title "shepherd"`]);
+  else if (Bun.which("notify-send")) Bun.spawn(["notify-send", "shepherd", text]);
+  else app.r.triggerNotification(text, "shepherd");
+}
+
 export async function notify(app: App, state: NotifyEvent, text: string) {
   const kinds = app.cfg.notify[state] ?? [];
   if (kinds.includes("toast")) app.toast(text, app.th[state]);
-  if (kinds.includes("system")) {
-    if (Bun.which("osascript")) Bun.spawn(["osascript", "-e", `display notification ${JSON.stringify(text)} with title "shepherd"`]);
-    else if (Bun.which("notify-send")) Bun.spawn(["notify-send", "shepherd", text]);
-    else app.r.triggerNotification(text, "shepherd");
-  }
+  if (kinds.includes("system")) systemNotification(app, text);
   if (kinds.includes("sound")) playSound(app.cfg.sound[state], app.cfg.sound.volume);
   if (kinds.includes("bell")) Bun.write(Bun.stdout, "\x07");
 }

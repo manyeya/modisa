@@ -137,6 +137,9 @@ export async function runCli(a: Args): Promise<number> {
         json ? print(p, true) : console.log(`${p.name}: ${p.status}${p.error ? ` (${p.error})` : ""}`);
         break;
       }
+      case "plugin ui":
+        print(await call("ui.state", { plugin: rest[0] }), true);
+        break;
       case "plugin logs": {
         const p = (await call<any[]>("plugin.list")).find((x) => x.name === rest[0]);
         if (!p) throw fail("no_such_plugin", `no plugin named ${rest[0]} (see shepherd plugin list)`);

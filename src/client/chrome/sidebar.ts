@@ -5,6 +5,7 @@ import type { App } from "../context";
 import { fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
 import { render } from "../render";
 import { deleteSpace, spaceMenu } from "../spaces";
+import { pluginUi, runPluginAction, toneColor } from "../plugin-ui";
 
 type RowOptions = { selected?: boolean; height?: number; run: () => any; context?: (e: MouseEvent) => void; hover?: (on: boolean) => void };
 const selectedBg = (app: App) => mix(app.th.bar, app.th.focus, 0.12);
@@ -87,6 +88,28 @@ export function drawSidebar(app: App) {
     action(app, side, "Launch an agent", "+", () => app.actions["new-agent"]!.run());
   }
   if (budget.moreAgents) action(app, side, `${agents.length - visible.length} more agents`, "›", () => app.actions["pane-picker"]!.run());
+  // a section per plugin that has one: click its heading to fold it, a row to run its action or focus its pane
+  for (const plugin of pluginUi(app)) {
+    const section = plugin.sidebar;
+    if (!section) continue;
+    blank();
+    const folded = app.collapsedPlugins.has(plugin.plugin);
+    const head = row(app, side, {
+      run: () => {
+        if (folded) app.collapsedPlugins.delete(plugin.plugin);
+        else app.collapsedPlugins.add(plugin.plugin);
+        app.chromeSig = "";
+        render(app);
+      },
+    });
+    const columns = sidebarColumns(`${folded ? "▸" : "▾"} ${section.title.toUpperCase()}`, String(section.rows.length), contentWidth(app));
+    head.add(new TextRenderable(r, { content: t`${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: contentWidth(app), height: 1, flexShrink: 0, fg: th.dim }));
+    if (folded) continue;
+    for (const item of section.rows.slice(0, 8)) {
+      const body = row(app, side, { run: () => (item.pane ? app.call("focusPane", { pane: item.pane }) : item.action && runPluginAction(app, plugin, item.action)) });
+      body.add(new TextRenderable(r, { content: fit(item.text, contentWidth(app)), width: contentWidth(app), height: 1, flexShrink: 0, fg: toneColor(app, item.tone) }));
+    }
+  }
   const footer = new BoxRenderable(r, { position: "absolute", left: 0, bottom: 1, width: w - 1, height: 4, flexDirection: "column" });
   side.add(footer);
   footer.add(new TextRenderable(r, { content: "  " + "─".repeat(contentWidth(app)), height: 1, width: w - 1, flexShrink: 0, fg: th.border }));
