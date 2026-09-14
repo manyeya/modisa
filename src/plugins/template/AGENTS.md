@@ -28,7 +28,9 @@ shepherd plugin stop {{name}}    # and plugin start {{name}}
 - `runPlugin(async (shepherd) => …)` connects, runs your code, and exits when the session's connection closes.
   Don't reconnect or loop: the next server starts the plugin again.
 - `shepherd.hello({ name: (params) => result })` binds the plugin and offers actions to `shepherd plugin run`.
-  Throwing in an action returns an error to the caller.
+  Throwing in an action returns an error to the caller. An action's second argument is `{ invocation, signal }`:
+  `signal` aborts if shepherd stops waiting (30s). That's advisory. The caller has already been told the outcome is
+  unknown, stopping early can't undo what the action already did, and nothing retries it.
 - `shepherd.subscribe({ onSnapshot, onEvent })`: `onSnapshot` gets every pane as the subscription starts; `onEvent`
   gets each later event once, in order, one at a time. Whatever the snapshot shows was already true when the plugin
   started: don't treat it as news.

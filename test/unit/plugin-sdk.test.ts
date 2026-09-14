@@ -1,5 +1,103 @@
 import { test, expect } from "bun:test";
-import { Client } from "../../src/plugins/shepherd-plugin";
+import { Client, writeQueue } from "../../src/plugins/shepherd-plugin";
+
+test("the write queue keeps what a socket doesn't take, bytes in order across partial and zero-byte writes", () => {
+  const received: number[] = [];
+  let room = 1000;
+  const out = writeQueue((bytes) => {
+    const n = Math.min(room, bytes.length);
+    for (const b of bytes.subarray(0, n)) received.push(b);
+    room -= n;
+    return n;
+  });
+  const first = JSON.stringify({ result: "é✓ 日本 ".repeat(800) }) + "\n"; // multi-byte characters cut mid-sequence
+  const second = JSON.stringify({ id: 2, result: "after" }) + "\n";
+  out.push(first);
+  out.push(second);
+  expect(out.queued).toBe(new TextEncoder().encode(first + second).length - 1000);
+  for (let drain = 0; out.queued; drain++) {
+    room = drain % 3 === 0 ? 0 : 333; // some drains take nothing
+    out.flush();
+  }
+  expect(new TextDecoder().decode(new Uint8Array(received))).toBe(first + second);
+});
+
+test("the write queue refuses past its limit, and clear() empties it", () => {
+  const out = writeQueue(() => 0, 100);
+  out.push("x".repeat(60));
+  expect(() => out.push("x".repeat(60))).toThrow("more than 100 bytes");
+  out.clear();
+  expect(out.queued).toBe(0);
+});
+
+test("a write that fails drops the connection and rejects what's pending", async () => {
+  let closed = false;
+  let fail = false;
+  const client = new Client({ write: () => { if (fail) throw new Error("socket gone"); }, close: () => void (closed = true) });
+  const first = client.request("list");
+  fail = true;
+  await expect(client.request("list")).rejects.toThrow("socket gone");
+  await expect(first).rejects.toThrow("socket gone");
+  expect(closed).toBe(true);
+});
+
+test("a stalled event handler hit by a burst disconnects once the backlog passes its limit", async () => {
+  let closed = false;
+  const sent: any[] = [];
+  const client = new Client({ write: (l) => void sent.push(JSON.parse(l)), close: () => void (closed = true) });
+  const line = (m: object) => client.feed(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+  const subscribing = client.subscribe({ onEvent: () => new Promise(() => {}) }, { maxBacklog: 5 });
+  line({ id: sent[0].id, result: { protocol: 1, epoch: "e", seq: 0, panes: [] } });
+  await subscribing;
+  for (let seq = 1; seq <= 10; seq++) line({ method: "event", params: { type: "x", at: 1, seq, epoch: "e" } });
+  const why = await client.closed;
+  expect(why).toMatchObject({ code: "backlog" });
+  expect(closed).toBe(true);
+});
+
+test("cancel aborts only its own invocation; a disconnect aborts the rest; a late cancel is harmless", async () => {
+  const sent: any[] = [];
+  const client = new Client({ write: (l) => void sent.push(JSON.parse(l)), close() {} });
+  const line = (m: object) => client.feed(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+  const signals = new Map<string, AbortSignal>();
+  const waitForAbort = (_p: unknown, call: { invocation?: string; signal: AbortSignal }) => {
+    signals.set(call.invocation!, call.signal);
+    return new Promise((resolve) => call.signal.addEventListener("abort", () => resolve("aborted")));
+  };
+  const hello = client.hello({ wait: waitForAbort, quick: () => "done" }, "token");
+  line({ id: sent[0].id, result: {} });
+  await hello;
+  line({ id: 1, method: "plugin.action", params: { action: "wait", params: {}, invocation: "a" } });
+  line({ id: 2, method: "plugin.action", params: { action: "wait", params: {}, invocation: "b" } });
+  line({ id: 3, method: "plugin.action", params: { action: "quick", params: {}, invocation: "c" } });
+  await Bun.sleep(5);
+  line({ method: "plugin.cancel", params: { invocation: "a" } });
+  line({ method: "plugin.cancel", params: { invocation: "c" } }); // already finished
+  await Bun.sleep(5);
+  expect(signals.get("a")!.aborted).toBe(true);
+  expect(signals.get("b")!.aborted).toBe(false);
+  expect(sent.find((m) => m.id === 3)).toMatchObject({ result: "done" });
+  client.drop(new Error("gone"));
+  expect(signals.get("b")!.aborted).toBe(true);
+});
+
+test("an action gets its invocation, and plugin.cancel aborts its signal", async () => {
+  const sent: any[] = [];
+  const client = new Client({ write: (l) => void sent.push(JSON.parse(l)), close() {} });
+  const line = (m: object) => client.feed(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+  let seen: { invocation?: string; signal: AbortSignal } | undefined;
+  const hello = client.hello({ wait: (_p, call) => { seen = call; return new Promise((resolve) => call.signal.addEventListener("abort", () => resolve("stopped"))); } }, "token");
+  line({ id: sent[0].id, result: {} });
+  await hello;
+  line({ id: 7, method: "plugin.action", params: { action: "wait", params: {}, invocation: "demo-1" } });
+  await Bun.sleep(5);
+  expect(seen?.invocation).toBe("demo-1");
+  expect(seen?.signal.aborted).toBe(false);
+  line({ method: "plugin.cancel", params: { invocation: "demo-1", action: "wait" } });
+  await Bun.sleep(5);
+  expect(seen?.signal.aborted).toBe(true);
+  expect(sent.find((m) => m.id === 7)).toMatchObject({ result: "stopped" });
+});
 
 // a Client on a fake socket: what it sends, and ways to feed it replies and events
 function fake() {

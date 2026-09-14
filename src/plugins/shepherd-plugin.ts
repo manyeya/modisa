@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 1;
+export const SDK_VERSION = 2;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -29,7 +29,11 @@ export type Pane = {
 // Every event has type, at (epoch ms), seq and epoch; `shepherd plugin schema` has each type's fields.
 export type Event = { type: string; at: number; seq: number; epoch: string; pane?: string; instance?: string; name?: string; harness?: string; from?: AgentState; to?: AgentState; [field: string]: unknown };
 export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pane[] };
-export type Action = (params: Record<string, unknown>) => unknown;
+// An action gets its params and the call: `invocation` names it, and `signal` aborts if shepherd gives up waiting
+// (plugin.cancel, for that invocation only) or the connection goes. It's cooperative: an action that ignores it keeps
+// running, the caller has already been told the outcome is unknown, and neither the abort nor a rejection proves
+// that effects already started were undone.
+export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal }) => unknown;
 
 export class ShepherdError extends Error {
   constructor(message: string, readonly code: string) {
@@ -43,6 +47,7 @@ export class Client {
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   private buf = "";
   private actions: Record<string, Action> = {};
+  private running = new Map<string, AbortController>(); // invocation → its call's signal
   private listeners: ((e: Event) => void)[] = [];
   private cause?: Error;
   private onClosed!: (cause: Error) => void;
@@ -53,6 +58,7 @@ export class Client {
 
   /** Bytes from the socket. */
   feed(chunk: string) {
+    if (this.cause) return;
     this.buf += chunk;
     for (let nl; (nl = this.buf.indexOf("\n")) >= 0; ) {
       const line = this.buf.slice(0, nl);
@@ -72,6 +78,7 @@ export class Client {
         else p.resolve(m.result);
       } else if (m.method === "event" && m.params) for (const listen of this.listeners) listen(m.params);
       else if (m.method === "plugin.action" && m.id !== undefined) void this.answer(m.id, m.params ?? {});
+      else if (m.method === "plugin.cancel") this.running.get(m.params?.invocation)?.abort(new Error("shepherd stopped waiting for this action"));
     }
   }
 
@@ -79,8 +86,11 @@ export class Client {
   drop(cause = new Error("the session closed the connection")) {
     if (this.cause) return;
     this.cause = cause;
+    this.buf = "";
     for (const p of this.pending.values()) p.reject(cause);
     this.pending.clear();
+    for (const controller of this.running.values()) controller.abort(cause); // every action still running
+    this.running.clear();
     this.onClosed(cause);
   }
 
@@ -108,21 +118,35 @@ export class Client {
   /**
    * Start watching. `onSnapshot` gets every pane as of the moment the subscription starts. `onEvent` then gets each
    * later event once, in order, from the same server run, and never an event already reflected in the snapshot.
-   * Handlers run one at a time. A disconnect ends the stream (see `closed`); changes that came and went while
-   * disconnected are lost, so don't promise a complete history.
+   * Handlers run one at a time. Events waiting for them are capped at `maxBacklog`: past it the connection is dropped
+   * (a gap) rather than letting a stalled handler grow memory. A disconnect ends the stream (see `closed`); changes
+   * that came and went while disconnected are lost, so don't promise a complete history.
    */
-  async subscribe(handlers: { onSnapshot?: (snapshot: Snapshot) => unknown; onEvent: (event: Event) => unknown }, options: { output?: boolean } = {}) {
+  async subscribe(handlers: { onSnapshot?: (snapshot: Snapshot) => unknown; onEvent: (event: Event) => unknown }, options: { output?: boolean; maxBacklog?: number } = {}) {
+    const max = options.maxBacklog ?? 10_000;
     let ready = false;
     let epoch = "";
     let last = 0;
+    let waiting = 0; // events handed to the queue and not handled yet
     const early: Event[] = [];
     let queue: Promise<unknown> = Promise.resolve();
+    const overflow = () => {
+      this.transport.close();
+      this.drop(new ShepherdError(`more than ${max} events waiting for the plugin's handlers: disconnected, so everything after is a gap`, "backlog"));
+    };
     const deliver = (e: Event) => {
       if (e.epoch !== epoch || e.seq <= last) return; // another server run, in the snapshot already, or seen
       last = e.seq;
-      queue = queue.then(() => handlers.onEvent(e)).catch((error) => console.error(`plugin: onEvent failed: ${error instanceof Error ? error.stack : error}`));
+      if (++waiting > max) return overflow();
+      queue = queue
+        .then(() => handlers.onEvent(e))
+        .catch((error) => console.error(`plugin: onEvent failed: ${error instanceof Error ? error.stack : error}`))
+        .finally(() => waiting--);
     };
-    this.listeners.push((e) => (ready ? deliver(e) : early.push(e)));
+    this.listeners.push((e) => {
+      if (ready) deliver(e);
+      else if (early.push(e) > max) overflow();
+    });
     const snapshot = await this.request<Snapshot>("events.subscribe", { snapshot: true, output: !!options.output });
     epoch = snapshot.epoch;
     last = snapshot.seq;
@@ -133,34 +157,95 @@ export class Client {
   }
 
   private send(message: object) {
-    if (!this.cause) this.transport.write(JSON.stringify(message) + "\n");
+    if (this.cause) return;
+    try {
+      this.transport.write(JSON.stringify(message) + "\n");
+    } catch (error) {
+      this.transport.close();
+      this.drop(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
-  private async answer(id: number, { action, params }: { action?: string; params?: Record<string, unknown> }) {
+  private async answer(id: number, { action, params, invocation }: { action?: string; params?: Record<string, unknown>; invocation?: string }) {
     const reply = (x: object) => this.send({ jsonrpc: "2.0", id, ...x });
     const run = action ? this.actions[action] : undefined;
     if (!run) return reply({ error: { code: -32601, message: `no action ${action}` } });
+    const controller = new AbortController();
+    if (invocation) this.running.set(invocation, controller);
     try {
-      reply({ result: (await run(params ?? {})) ?? null });
+      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal })) ?? null });
     } catch (error) {
       reply({ error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
+    } finally {
+      if (invocation) this.running.delete(invocation);
     }
   }
+}
+
+/**
+ * Bytes waiting for the socket, in order. Bun's socket.write takes what fits (possibly nothing) and returns how many
+ * bytes; the rest is sent as the socket drains. Past `limit` queued bytes, push throws: the session isn't reading.
+ */
+export function writeQueue(write: (bytes: Uint8Array) => number, limit = 64 * 1024 * 1024) {
+  const queue: Uint8Array[] = [];
+  const encoder = new TextEncoder();
+  let queued = 0;
+  const flush = () => {
+    while (queue.length) {
+      const chunk = queue[0]!;
+      const n = Math.max(0, write(chunk));
+      queued -= n;
+      if (n < chunk.length) {
+        queue[0] = chunk.subarray(n);
+        return;
+      }
+      queue.shift();
+    }
+  };
+  return {
+    push(line: string) {
+      const bytes = encoder.encode(line);
+      if (queued + bytes.length > limit) throw new Error(`more than ${limit} bytes waiting to be sent: the session isn't reading`);
+      queue.push(bytes);
+      queued += bytes.length;
+      flush();
+    },
+    flush,
+    clear() {
+      queue.length = 0;
+      queued = 0;
+    },
+    get queued() {
+      return queued;
+    },
+  };
 }
 
 /** Connect to the session this plugin was started for ($SHEPHERD_SOCKET). */
 export async function connect(socket = Bun.env.SHEPHERD_SOCKET): Promise<Client> {
   if (!socket) throw new ShepherdError("no $SHEPHERD_SOCKET: shepherd starts plugins with it set", "usage");
-  let sock: { write(data: string): number; end(): void } | undefined;
-  const client = new Client({ write: (line) => void sock?.write(line), close: () => sock?.end() }); // ponytail: plugin writes are small, no write queue
+  let sock: { write(data: Uint8Array): number; end(): void } | undefined;
+  const out = writeQueue((bytes) => sock?.write(bytes) ?? 0);
+  const client = new Client({
+    write: (line) => out.push(line),
+    close: () => {
+      out.clear();
+      sock?.end();
+    },
+  });
+  const gone = (error?: Error) => {
+    out.clear();
+    client.drop(error);
+  };
   const decoder = new TextDecoder();
   sock = await Bun.connect({
     unix: socket,
     socket: {
+      drain: () => out.flush(),
       data: (_s, d) => client.feed(decoder.decode(d, { stream: true })),
-      end: () => client.drop(),
-      close: () => client.drop(),
-      error: (_s, error) => client.drop(error),
+      end: () => gone(),
+      close: () => gone(),
+      error: (_s, error) => gone(error),
     },
   });
   return client;

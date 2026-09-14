@@ -25,6 +25,8 @@ type Kill = { kill(pid: number, signal: NodeJS.Signals | 0): void };
 
 // A run's process group, signalled only while it's provably still ours. Once it's seen gone (or owned by someone
 // else) it's retired for good: the id can be reused by an unrelated group, which must never be signalled.
+// ponytail: a small window remains. If the group's last process exits and its id is reused before the next probe
+// (the 1s watch after the leader exits, or stop's own probe), that probe can't tell. Closing it needs pidfds.
 export class OwnedGroup {
   private retired = false;
   constructor(readonly pgid: number, private os: Kill = process as Kill) {}

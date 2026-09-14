@@ -60,6 +60,28 @@ test("check's failures say what to fix", async () => {
   expect(failing.stdout).toContain("the brief");
 }, 180000);
 
+test("a large action result (over 2 MB, non-ASCII) reaches the caller intact, and the connection keeps working", async () => {
+  const check = await variant("big-reply", async (dir) => {
+    const source = await Bun.file(`${dir}/plugin.ts`).text();
+    await Bun.write(`${dir}/plugin.ts`, source.replace("status: () =>", `big: () => ({ text: "é✓ 日本 ".repeat(400_000) }),\n    status: () =>`));
+    await Bun.write(
+      `${dir}/plugin.test.ts`,
+      `import { test, expect } from "bun:test";
+import { checkSession } from "./shepherd-plugin";
+const s = checkSession();
+test("big arrives whole, and the next action still works", async () => {
+  const r = await s.shepherd("plugin", "run", s.plugin, "big");
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).text).toBe("é✓ 日本 ".repeat(400_000));
+  expect((await s.shepherd("plugin", "run", s.plugin, "status")).code).toBe(0);
+});
+`,
+    );
+  });
+  expect(check.code, check.out).toBe(0);
+  expect(check.stdout).toContain("✓ its tests");
+}, 90000);
+
 test("the attention-log example passes plugin check, including its own behavioural tests", async () => {
   const check = await shepherd("plugin", "check", `${REPO}/examples/plugins/attention-log`);
   expect(check.code, check.out).toBe(0);

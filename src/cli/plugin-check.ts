@@ -7,6 +7,7 @@ import { PROTOCOL } from "../protocol/schema";
 import { connectUnix } from "../protocol/transport";
 import type { Conn } from "../protocol/conn";
 import { SDK_TEXT, sdkVersion } from "./plugin";
+import { OwnedGroup } from "../server/plugins";
 
 const SDK_VERSION = sdkVersion(SDK_TEXT);
 
@@ -77,8 +78,10 @@ export async function checkPlugin(arg: string): Promise<number> {
   const t = await throwaway(dir, manifest.name);
   const serverLog = `${t.root}/server.log`;
   const server = Bun.spawn([...self(), "server", "-s", t.session], { env: t.childEnv, cwd: t.root, stdout: "ignore", stderr: Bun.file(serverLog) });
+  // signal the server only while it hasn't exited, and the plugin's group only while it's provably still the plugin's
+  const serverRunning = () => server.exitCode === null && server.signalCode === null;
   let conn: Conn | undefined;
-  let group: number | undefined;
+  let group: OwnedGroup | undefined;
   let exited = false;
   try {
     for (let i = 0; i < 100 && !conn; i++) {
@@ -95,10 +98,10 @@ export async function checkPlugin(arg: string): Promise<number> {
     }
     if (!state?.connected) {
       pass = bad("starts and connects", `${state ? `status ${state.status}${state.error ? `: ${state.error}` : ""}` : "shepherd didn't find it"}. Within 10s it should connect and call hello (runPlugin and shepherd.hello do).\nits log:\n${await tail(state?.log)}`);
-      group = state?.pid;
+      if (state?.pid) group = new OwnedGroup(state.pid);
     } else {
       ok("starts and connects", `actions: ${state.actions.join(", ") || "none"}`);
-      group = state.pid;
+      group = new OwnedGroup(state.pid);
       await Bun.sleep(1000);
       state = await me();
       if (state?.connected && state.status === "running") ok("stays up");
@@ -115,30 +118,20 @@ export async function checkPlugin(arg: string): Promise<number> {
       }
 
       // The server dies outright, as in a crash: nothing stops the plugin but the plugin itself.
-      process.kill(server.pid, "SIGKILL");
+      if (serverRunning()) process.kill(server.pid, "SIGKILL");
       await server.exited;
       conn.close();
-      const gone = () => {
-        try {
-          process.kill(-group!, 0);
-          return false;
-        } catch {
-          return true;
-        }
-      };
-      for (const end = Date.now() + 5000; Date.now() < end && !(exited = gone()); ) await Bun.sleep(100);
+      for (const end = Date.now() + 5000; Date.now() < end && !(exited = !group.alive()); ) await Bun.sleep(100);
       if (exited) ok("exits when the session dies");
       else pass = bad("exits when the session dies", "it kept running after its session's server went away. Exit when the connection closes (runPlugin does); otherwise each restart leaves another copy running.");
     }
   } finally {
-    if (group && !exited) {
+    if (!exited) group?.signal("SIGKILL");
+    if (serverRunning()) {
       try {
-        process.kill(-group, "SIGKILL");
+        process.kill(server.pid, "SIGKILL");
       } catch {}
     }
-    try {
-      process.kill(server.pid, "SIGKILL");
-    } catch {}
     await Bun.$`rm -rf ${t.root}`.quiet().nothrow();
   }
   console.log(pass ? `\n${manifest.name} passes` : "\nfix the above, then run shepherd plugin check again");
@@ -155,6 +148,7 @@ export async function devPlugin(arg: string): Promise<number> {
   }
   const t = await throwaway(dir, manifest.name);
   console.log(`a throwaway session with ${manifest.name} running. It isn't a sandbox: the plugin runs as you, with your files and network.
+its files (removed when you exit): ${t.root}
 from another terminal:
   SHEPHERD_DIR=${t.env.SHEPHERD_DIR} SHEPHERD_CONFIG_DIR=${t.env.SHEPHERD_CONFIG_DIR} shepherd -s ${t.session} plugin logs ${manifest.name}`);
   await Bun.sleep(1500);
