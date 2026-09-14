@@ -1,5 +1,30 @@
 import { test, expect } from "bun:test";
-import { Client, writeQueue } from "../../src/plugins/shepherd-plugin";
+import { Client, connect, writeQueue } from "../../src/plugins/shepherd-plugin";
+
+test("a write that fails while draining drops the connection once, rejects what's pending, and doesn't escape", async () => {
+  let handlers: Record<string, (...args: any[]) => void> = {};
+  let draining = false;
+  let ends = 0;
+  const socket = {
+    write: () => {
+      if (!draining) return 0; // nothing fits: frames are queued
+      throw new Error("drain write failed");
+    },
+    end: () => void ends++,
+  };
+  const client = await connect("/fake.sock", async (options) => {
+    handlers = options.socket;
+    return socket;
+  });
+  const settled = [client.request("list"), client.request("agent.list")].map((request) => request.then(() => "resolved", (error: Error) => error.message));
+  draining = true;
+  expect(() => handlers.drain!(socket)).not.toThrow();
+  expect(await Promise.all(settled)).toEqual(["drain write failed", "drain write failed"]);
+  expect((await client.closed).message).toBe("drain write failed");
+  expect(ends).toBe(1);
+  handlers.close!(socket); // the socket's own close arrives afterwards
+  expect(ends).toBe(1);
+});
 
 test("the write queue keeps what a socket doesn't take, bytes in order across partial and zero-byte writes", () => {
   const received: number[] = [];

@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 2;
+export const SDK_VERSION = 3;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -221,27 +221,39 @@ export function writeQueue(write: (bytes: Uint8Array) => number, limit = 64 * 10
   };
 }
 
-/** Connect to the session this plugin was started for ($SHEPHERD_SOCKET). */
-export async function connect(socket = Bun.env.SHEPHERD_SOCKET): Promise<Client> {
+type Socket = { write(data: Uint8Array): number; end(): void };
+type Connector = (options: { unix: string; socket: Record<string, (...args: any[]) => void> }) => Promise<Socket>;
+
+/** Connect to the session this plugin was started for ($SHEPHERD_SOCKET). (`open` is for tests: a fake socket.) */
+export async function connect(socket = Bun.env.SHEPHERD_SOCKET, open: Connector = Bun.connect as unknown as Connector): Promise<Client> {
   if (!socket) throw new ShepherdError("no $SHEPHERD_SOCKET: shepherd starts plugins with it set", "usage");
-  let sock: { write(data: Uint8Array): number; end(): void } | undefined;
+  let sock: Socket | undefined;
+  let ended = false;
   const out = writeQueue((bytes) => sock?.write(bytes) ?? 0);
-  const client = new Client({
-    write: (line) => out.push(line),
-    close: () => {
-      out.clear();
-      sock?.end();
-    },
-  });
-  const gone = (error?: Error) => {
+  // buffers cleared and the socket ended, once, however the connection goes
+  const shut = () => {
     out.clear();
+    if (ended || !sock) return;
+    ended = true;
+    sock.end();
+  };
+  const client = new Client({ write: (line) => out.push(line), close: shut });
+  const gone = (error?: Error) => {
+    shut();
     client.drop(error);
   };
   const decoder = new TextDecoder();
-  sock = await Bun.connect({
+  sock = await open({
     unix: socket,
     socket: {
-      drain: () => out.flush(),
+      // a write that fails while draining ends the connection like one that fails when sent
+      drain: () => {
+        try {
+          out.flush();
+        } catch (error) {
+          gone(error instanceof Error ? error : new Error(String(error)));
+        }
+      },
       data: (_s, d) => client.feed(decoder.decode(d, { stream: true })),
       end: () => gone(),
       close: () => gone(),
