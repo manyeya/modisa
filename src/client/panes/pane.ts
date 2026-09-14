@@ -54,6 +54,14 @@ export class ClientPane {
       else hooks.click();
     };
   }
+  // The embedded terminal's default colours (OSC 10/11), so unstyled cells take the theme instead of black.
+  private shade = "";
+  colors(bg: string, fg: string) {
+    if (this.shade === bg + fg) return;
+    this.shade = bg + fg;
+    this.term.write(`\x1b]11;${bg}\x07\x1b]10;${fg}\x07`);
+    this.term.invalidate(); // rows only repaint when dirty, and a colour change alone doesn't mark them
+  }
   scroll(delta: number) {
     const t = this.term as any; // ponytail: OpenTUI exposes wheel scroll only internally
     t.lib.embeddedTerminalScroll(t.handle, delta);

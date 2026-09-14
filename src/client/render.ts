@@ -38,6 +38,7 @@ export function render(app: App) {
   for (const p of view.panes) if (!app.panes.has(p.id)) addPane(app, p);
   for (const [id, p] of app.panes) {
     p.box.visible = visible.has(id);
+    p.colors(th.bg, th.fg);
     if (!visible.has(id)) continue;
     const rect = rs.get(id)!;
     Object.assign(p.box, { left: rect.x, top: rect.y, width: rect.w, height: rect.h });

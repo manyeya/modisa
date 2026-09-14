@@ -18,6 +18,7 @@ export async function openSettings(app: App, start = "theme") {
   const all = sections(app, () => paint());
   let current = Math.max(0, all.findIndex((s) => s.name === start));
   let sel = 0;
+  let pointerAt = ""; // where the last hover that counted happened
   let close: (v: null) => void = () => {};
 
   const rows = () => all[current]!.rows();
@@ -93,7 +94,14 @@ export async function openSettings(app: App, start = "theme") {
       const selected = index === sel;
       const line = new BoxRenderable(r, {
         width: inner, height: 1, flexShrink: 0, flexDirection: "row", backgroundColor: selected ? mix(th.bar, th.focus, 0.25) : th.bar,
-        onMouseOver: () => { if (sel !== index) select(index); },
+        // Only a pointer that moved selects: every repaint rebuilds the rows, and the new row under a
+        // resting pointer gets a fresh mouseover that would undo the arrow key that caused the repaint.
+        onMouseOver: (e) => {
+          const at = `${e.x},${e.y}`;
+          if (at === pointerAt) return;
+          pointerAt = at;
+          if (sel !== index) select(index);
+        },
         onMouseDown: (e) => { e.stopPropagation(); if (e.button === 0) { sel = index; activate(row); } },
       });
       box.add(line);
