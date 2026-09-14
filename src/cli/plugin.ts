@@ -1,8 +1,10 @@
-// The `shepherd plugin` commands that need no session server: new, sdk, schema, check, dev, link, unlink.
+// The `shepherd plugin` commands that work without a session server (new, sdk, schema, check, dev), and link and
+// unlink, which change the global link and then act on the one running session they reach (the default, or -s).
 import { PLUGINS_DIR, readManifest } from "../config/plugins";
 import { connectExisting } from "../protocol/transport";
 import { PROTOCOL } from "../protocol/schema";
 import { describeProtocol } from "../protocol/describe";
+import type { Conn } from "../protocol/conn";
 import { str, type Args } from "./args";
 // @ts-ignore: embedded as text (it's a .ts file, which would otherwise be imported as a module)
 import SDK from "../plugins/shepherd-plugin.ts" with { type: "text" };
@@ -18,10 +20,13 @@ export const sdkVersion = (text: string) => Number(/SDK_VERSION = (\d+)/.exec(te
 const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink"];
 export const isLocalPluginCommand = (verb?: string) => !!verb && LOCAL.includes(verb);
 
+const HELLO_MS = 10_000;
+
 export async function runPluginLocal(verb: string, args: string[], flags: Args["flags"]): Promise<number> {
+  const json = !!flags.json;
   switch (verb) {
     case "sdk":
-      process.stdout.write(String(SDK));
+      process.stdout.write(SDK_TEXT);
       return 0;
     case "schema":
       console.log(JSON.stringify(describeProtocol(), null, 2));
@@ -33,7 +38,7 @@ export async function runPluginLocal(verb: string, args: string[], flags: Args["
     case "dev":
       return (await import("./plugin-check")).devPlugin(args[0] ?? ".");
     case "link":
-      return link(args[0]);
+      return link(args[0], str(flags.session), json);
     default:
       return unlink(args[0], str(flags.session));
   }
@@ -54,19 +59,68 @@ async function scaffold(name: string | undefined, dirFlag?: string) {
   await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: PROTOCOL, run: ["bun", "plugin.ts"], description: `${name}: a shepherd plugin` }, null, 2) + "\n");
   await Bun.write(`${dir}/plugin.ts`, fill(PLUGIN));
   await Bun.write(`${dir}/plugin.test.ts`, fill(TEST));
-  await Bun.write(`${dir}/shepherd-plugin.ts`, String(SDK));
+  await Bun.write(`${dir}/shepherd-plugin.ts`, SDK_TEXT);
   await Bun.write(`${dir}/AGENTS.md`, fill(GUIDE));
   await Bun.write(`${dir}/CLAUDE.md`, "Read AGENTS.md: it explains how to write, test and install this shepherd plugin.\n");
   console.log(`created ${dir}: plugin.json, plugin.ts, plugin.test.ts, shepherd-plugin.ts, AGENTS.md
 next: put the plugin's logic in plugin.ts (AGENTS.md explains how), then
   shepherd plugin check ${dir}
-  shepherd plugin link ${dir} && shepherd restart`);
+  shepherd plugin link ${dir}`);
   return 0;
 }
 
-async function link(arg?: string) {
+const sessionName = (session?: string) => session ?? Bun.env.SHEPHERD_SESSION ?? "default";
+
+// Start a linked plugin in the one running session this reaches, and wait for it to connect: a process that started
+// isn't a plugin that's ready. Never starts a session.
+export async function startIn(session: string | undefined, name: string) {
+  const where = sessionName(session);
+  const conn: Conn | undefined = await connectExisting(session).catch(() => undefined);
+  if (!conn) return { session: where, state: "not-started" as const, reason: `no running session ${where}; it starts with the next one` };
+  const listed = async () => (await conn.request<any[]>("plugin.list")).find((p) => p.name === name);
+  try {
+    let status: any;
+    try {
+      status = await conn.request("plugin.start", { name });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === "already_running") return { session: where, state: "already-running" as const, pid: (await listed())?.pid, log: (await listed())?.log };
+      return { session: where, state: "failed" as const, reason: (e as Error).message };
+    }
+    for (const end = Date.now() + HELLO_MS; ; await Bun.sleep(200)) {
+      const s = (await listed()) ?? status;
+      if (s.connected) return { session: where, state: "started" as const, pid: s.pid, log: s.log };
+      if (s.status !== "running") return { session: where, state: "failed" as const, reason: s.error ?? `it ${s.status}`, pid: s.pid, log: s.log };
+      if (Date.now() > end) return { session: where, state: "no-hello" as const, reason: `it started but didn't connect within ${HELLO_MS / 1000}s`, pid: s.pid, log: s.log };
+    }
+  } finally {
+    conn.close();
+  }
+}
+
+export type StartOutcome = Awaited<ReturnType<typeof startIn>>;
+
+export function describeStart(start: StartOutcome, what = "linked") {
+  switch (start.state) {
+    case "started":
+      return `started in session ${start.session}, connected (pid ${start.pid})`;
+    case "already-running":
+      return `already running in session ${start.session} (pid ${start.pid}); not started again`;
+    case "not-started":
+      return `not started: ${start.reason}`;
+    case "failed":
+      return `${what}, but failed to start in session ${start.session}: ${start.reason}${start.log ? `\n  log: ${start.log}` : ""}`;
+    case "no-hello":
+      return `${what} and started in session ${start.session}, but ${start.reason}${start.log ? `\n  log: ${start.log}` : ""}`;
+  }
+}
+
+// Registers the plugin for every session (they start it when they start), then starts it in the one running session
+// this reaches. Exit 0 when it's connected, already running or there's no session; 1 when it's linked but didn't
+// start or connect.
+async function link(arg: string | undefined, session: string | undefined, json: boolean) {
   if (!arg) {
-    console.error("usage: shepherd plugin link <dir>");
+    console.error("usage: shepherd plugin link <dir> [--json]");
     return 2;
   }
   const dir = (await Bun.$`realpath ${arg}`.quiet().nothrow().text()).trim();
@@ -85,15 +139,20 @@ async function link(arg?: string) {
     console.error(`shepherd: ${manifest.name} is already linked to ${existing}; shepherd plugin unlink ${manifest.name} first`);
     return 1;
   }
-  await Bun.$`mkdir -p ${PLUGINS_DIR}`.quiet();
-  await Bun.$`ln -sfn ${dir} ${target}`.quiet();
-  console.log(`linked ${manifest.name} → ${dir}\nit starts with the session server: shepherd restart`);
-  return 0;
+  if (!existing) {
+    await Bun.$`mkdir -p ${PLUGINS_DIR}`.quiet();
+    await Bun.$`ln -sfn ${dir} ${target}`.quiet();
+  }
+  const start = await startIn(session, manifest.name);
+  const result = { name: manifest.name, dir, linked: true as const, alreadyLinked: !!existing, start };
+  if (json) console.log(JSON.stringify(result, null, 2));
+  else console.log(`${existing ? "already linked" : "linked"} ${manifest.name} → ${dir} (every session starts it)\n${describeStart(start)}`);
+  return start.state === "failed" || start.state === "no-hello" ? 1 : 0;
 }
 
 // Removes the link, which every session reads at its next start. A running copy is stopped only in the one session
 // this reaches (the default, or -s); other running sessions keep theirs until they restart.
-async function unlink(name?: string, session?: string) {
+async function unlink(name: string | undefined, session: string | undefined) {
   if (!name) {
     console.error("usage: shepherd plugin unlink <name>");
     return 2;
@@ -105,7 +164,7 @@ async function unlink(name?: string, session?: string) {
   }
   await Bun.$`rm ${target}`.quiet(); // the link only, never the plugin's directory
   console.log(`unlinked ${name}`);
-  const where = session ?? Bun.env.SHEPHERD_SESSION ?? "default";
+  const where = sessionName(session);
   const conn = await connectExisting(session).catch(() => undefined);
   const stopped = conn ? await conn.request("plugin.stop", { name }).then(() => true, () => false) : false;
   conn?.close();

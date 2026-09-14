@@ -49,7 +49,7 @@ export class OwnedGroup {
 }
 
 type Run = { group: OwnedGroup; token: string; revoked: boolean; note(line: string): void };
-type Plugin = PluginStatus & { run?: Run; argv?: string[]; client?: Client; stopping?: boolean };
+type Plugin = PluginStatus & { run?: Run; argv?: string[]; client?: Client; stopping?: boolean; starting?: boolean };
 
 export function createPluginHost(ctx: ServerContext) {
   const plugins = new Map<string, Plugin>();
@@ -164,7 +164,7 @@ export function createPluginHost(ctx: ServerContext) {
     for (const p of live) p.run!.group.signal("SIGKILL");
   };
 
-  const view = ({ run, argv: _argv, client, stopping: _stopping, ...p }: Plugin): PluginStatus => ({
+  const view = ({ run, argv: _argv, client, stopping: _stopping, starting: _starting, ...p }: Plugin): PluginStatus => ({
     ...p,
     connected: !!client,
     group: run ? (run.group.alive() ? "running" : "gone") : undefined,
@@ -179,11 +179,28 @@ export function createPluginHost(ctx: ServerContext) {
       await stop(pl);
       return view(pl);
     },
-    // start a plugin that isn't running, as a new run with a new token
+    // Start a plugin that isn't running, as a new run with a new token. Linked plugins are looked up again, so one
+    // linked since this server started can be started too. Never a second run: a running or starting plugin is
+    // already_running.
     "plugin.start": async (p) => {
-      const pl = need(p.name);
-      if (pl.run?.group.alive()) throw fail("error", `${p.name} is already running (shepherd plugin stop ${p.name} first)`);
-      if (await prepare(pl)) await launch(pl);
+      let pl = plugins.get(p.name);
+      if (!pl || pl.source === "linked") {
+        const linked = (await linkedPlugins()).find((l) => l.name === p.name);
+        if (!linked) throw fail("no_such_plugin", `no plugin named ${p.name} is linked (shepherd plugin link <dir>)`);
+        pl = plugins.get(p.name) ?? add(linked.name, "linked", linked.dir);
+        pl.dir = linked.dir;
+        if (linked.error && !(pl.run?.group.alive() || pl.starting)) {
+          await failed(pl, linked.error);
+          return view(pl);
+        }
+      }
+      if (pl.run?.group.alive() || pl.starting) throw fail("already_running", `${p.name} is already running in this session (pid ${pl.pid}); not started again`);
+      pl.starting = true;
+      try {
+        if (await prepare(pl)) await launch(pl);
+      } finally {
+        pl.starting = false;
+      }
       return view(pl);
     },
     // The token says which run of which plugin is talking. It tells plugins apart; it isn't a permission boundary

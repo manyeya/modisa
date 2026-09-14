@@ -86,6 +86,21 @@ export const results = {
 // failed); data.code is shepherd's stable reason
 export const errorReply = z.strictObject({ code: z.number().int(), message: z.string(), data: z.strictObject({ code: z.enum(ERROR_CODES) }).optional() });
 
+// ---------- CLI results: what `shepherd plugin … --json` prints (an e2e test checks them) ----------
+// Starting a plugin in the one session a command reaches: started (and connected), already running, not started (no
+// session running), failed (it didn't start, or exited), or no-hello (started, but never connected in time).
+export const pluginStart = z.strictObject({
+  session: z.string(),
+  state: z.enum(["started", "already-running", "not-started", "failed", "no-hello"]),
+  reason: z.string().optional(),
+  pid: z.number().int().optional(),
+  log: z.string().optional(),
+});
+export const cliResults = {
+  // registering is global (every session starts it); starting is only in `start.session`
+  "plugin link": z.strictObject({ name: z.string(), dir: z.string(), linked: z.literal(true), alreadyLinked: z.boolean(), start: pluginStart }),
+};
+
 export const api = {
   list: z.object({ caller }),
   "session.info": z.object({ caller }),

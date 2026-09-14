@@ -27,8 +27,9 @@ plugins (examples/plugins/README.md)
   shepherd plugin check <dir> | dev <dir>     verify it in a throwaway session | try it in one (not a sandbox)
   shepherd plugin sdk | schema                the client library's source | every request, result and event (JSON Schema)
   shepherd plugin list [--json] | logs <name> [--lines 50] | stop <name> | start <name>
-  shepherd plugin link <dir> | unlink <name>   link: it starts with the server (shepherd restart). unlink removes the
-                                              link and stops it in this session only; other sessions keep theirs
+  shepherd plugin link <dir> [--json]         register it for every session, then start it in the running session
+                                              reached (the default, or -s) and wait for it to connect
+  shepherd plugin unlink <name>               remove the link; stops it in the session reached only, others keep theirs
   shepherd plugin run <name> <action> [json]   call an action a running plugin offers. A timeout means its outcome is
                                               unknown: running it again can repeat its effects
 

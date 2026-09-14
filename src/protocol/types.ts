@@ -11,7 +11,7 @@ export type NotifyEvent = Exclude<AgentState, "idle">;
 export type IntegrationStatus = { id: string; name: string; kind: "lifecycle" | "session"; status: "current" | "outdated" | "none"; available: boolean; configured: boolean };
 
 // A failed request's stable code (JSON-RPC error.data.code); the CLI maps some to exit statuses.
-export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error"] as const;
+export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error", "already_running"] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 // A plugin as its host sees it. status: running; exited (code 0), failed (nonzero, or it couldn't start: a bad
