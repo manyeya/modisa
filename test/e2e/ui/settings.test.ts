@@ -20,7 +20,8 @@ async function openSection(name: string) {
   await ui.until("settings page", (s) => SECTIONS.every((x) => s.includes(x)));
   ui.write("\t".repeat(SECTIONS.indexOf(name)));
 }
-const selectedRow = () => ui.lines().find((l) => l.includes(" ▸ ")) ?? "";
+// inside the page's border: the tab bar has its own " ▸ " after the space name
+const selectedRow = () => ui.lines().find((l) => l.includes("│ ▸ ")) ?? "";
 const close = async () => {
   ui.write("\x1b");
   await ui.until("settings closed", (s) => !s.includes("integrations"));
@@ -65,7 +66,7 @@ test("indicators: a glyph style shows everywhere; the tab badge can be turned of
   await openSection("indicators");
   await ui.until("styles", () => selectedRow().includes("symbols"));
   ui.write("\x1b[B\r"); // ↓ dots, ↵
-  await ui.until("dots applied", (s) => s.includes("● @asker") && s.split("\n")[0]!.includes("●"));
+  await ui.until("dots applied", (s) => /@asker\s+●/.test(s) && s.split("\n")[0]!.includes("●"));
   ui.write("\x1b[B\x1b[B"); // letters, then (past the heading) tab bar badge
   await ui.until("tab badge row", () => selectedRow().includes("tab bar badge"));
   ui.write("\r");
