@@ -61,8 +61,9 @@ export function apiMethods(ctx: ServerContext): Handlers {
       const want = p.state as AgentState | undefined;
       const deadline = p.timeout ? Date.now() + p.timeout * 1000 : Infinity;
       for (;;) {
-        // exited-then-closed (a shell pane closes itself on exit) still counts as exited; closed any other way fails
-        if (p.exited && pane.info.status === "exited") return { exitCode: pane.info.exitCode };
+        // exited-then-closed (a shell pane closes itself on exit) still counts as exited; an exit caused by the close
+        // (its SIGHUP) doesn't, so that fails like any other close
+        if (p.exited && pane.info.status === "exited" && !pane.closedWhileRunning) return { exitCode: pane.info.exitCode };
         if (!s.panes.has(pane.id)) throw fail("pane_gone", `${pane.id} closed before the wait was met`);
         const st = pane.info.agent?.state;
         if (want && (st === want || (want === "idle" && st === "done"))) return { state: st };

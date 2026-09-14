@@ -85,6 +85,19 @@ test("a wait whose pane closes before the condition is met exits 1 with pane_gon
   expect(JSON.parse(r.stderr).error.code).toBe("pane_gone");
 });
 
+test("wait --exited on a running pane that gets closed exits 1 with pane_gone, not the close's SIGHUP", async () => {
+  for (const json of [false, true]) {
+    await run("pane", "split", "--name", "doomed", "sleep 100");
+    const waiting = run("wait", "@doomed", "--exited", "--timeout", "10", ...(json ? ["--json"] : []));
+    await Bun.sleep(1000);
+    await run("pane", "close", "@doomed");
+    const r = await waiting;
+    expect(r).toMatchObject({ code: 1, stdout: "" });
+    if (json) expect(JSON.parse(r.stderr).error.code).toBe("pane_gone");
+    else expect(r.stderr).toContain("closed before the wait was met");
+  }
+}, 20000);
+
 test("a pane that exits and then closes still gives wait --exited its exit code", async () => {
   const shell = (await run("pane", "split")).stdout; // a shell pane closes itself when it exits
   const waiting = run("wait", shell, "--exited", "--timeout", "10");

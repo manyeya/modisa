@@ -27,6 +27,7 @@ export class PtyPane {
   oscTitle = ""; // the terminal title the program last set (OSC 0/2), e.g. an agent's spinner
   oscProgress = ""; // its last OSC 9;4 progress report, e.g. "4;3" busy, "4;0" cleared
   disposed = false; // its libghostty screen is freed; async work that held on to it must skip it
+  closedWhileRunning = false; // closed before its process exited, so the exit that follows was caused by the close
   private rs = new RenderState();
 
   constructor(
@@ -150,6 +151,7 @@ export class PtyPane {
   }
 
   dispose() {
+    this.closedWhileRunning = this.info.status !== "exited"; // any exit from here on is the kill below, not its own
     this.disposed = true;
     this.kill();
     this.rs.close();
