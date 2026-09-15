@@ -16,7 +16,8 @@ import { DIR } from "../core/paths";
 import { CONFIG_DIR } from "../config/config";
 import { shepherdKey } from "../config/keys";
 import { ConnectionClosedError, fail } from "../protocol/conn";
-import { PROTOCOL, urlMatches, type PluginManifest } from "../protocol/schema";
+import { PROTOCOL, type PluginManifest } from "../protocol/schema";
+import { linkMatches } from "../protocol/links";
 import type { PluginKey, PluginStatus, PluginUiView, Tone } from "../protocol/types";
 import { linkedPlugins, readManifest } from "../config/plugins";
 import type { Client, ServerContext } from "./context";
@@ -392,7 +393,7 @@ export function createPluginHost(ctx: ServerContext) {
       if (p.target && ctx.s.panes.get(p.target.pane)?.info.instance !== p.target.instance) throw fail("pane_gone", `pane ${p.target.pane} has closed or restarted since`);
       if (!pl.actions.includes(p.action)) throw fail("no_such_action", `${p.plugin} has no action ${p.action} (it offers: ${pl.actions.join(", ") || "none"})`);
       // a clicked URL reaches only an action whose link pattern matches it
-      if (p.link && !(pl.manifest?.links ?? []).some((l) => l.action === p.action && urlMatches(l.pattern, p.link!))) throw fail("invalid_params", `${p.plugin}'s ${p.action} doesn't handle that link`);
+      if (p.link && !(pl.manifest?.links ?? []).some((l) => l.action === p.action && linkMatches(l, p.link!))) throw fail("invalid_params", `${p.plugin}'s ${p.action} doesn't handle that link`);
       const invocation = `${pl.name}-${++invocations}`;
       try {
         return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation, ...(p.target && { target: p.target }), ...(p.link && { link: p.link }) }, { timeoutMs: INVOKE_MS })) ?? null;

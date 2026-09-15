@@ -39,12 +39,25 @@ shepherd plugin stop {{name}}    # and plugin start {{name}}
 
 ## Links
 
-`"links": [{ "pattern": "https://github.com/*/pull/*", "action": "open-pr" }]` in `plugin.json` hands a URL the user
-Ctrl+clicks in a pane to that action. When several plugins match, shepherd asks the user which to use.
+`"links"` in `plugin.json` hands a URL the user Ctrl+clicks in a pane to one of the plugin's actions. When several
+plugins' links match, shepherd asks the user which to use. Each link has exactly one of `pattern` or `regex`:
 
-- A pattern is a URL glob, not a regular expression: it starts with `http://` or `https://`, `*` matches any run of
-  characters (including `/`), and everything else is literal. It matches the whole URL; the scheme and host ignore
-  case, the path and query don't. There are no character classes or alternation: list one link per shape instead.
+```json
+"links": [
+  { "pattern": "https://github.com/*/pull/*", "action": "open-pr" },
+  { "regex": "^https://github\\.com/[^/]+/[^/]+/pull/\\d+$", "action": "open-pr" }
+]
+```
+
+- `pattern` is a URL glob: it starts with `http://` or `https://`, `*` matches any run of characters (including `/`),
+  and everything else is literal. It matches the whole URL; the scheme and host ignore case, the path and query don't.
+- `regex` is a regular expression in RE2 syntax (https://github.com/google/re2/wiki/Syntax), run by re2js 2.8.6, which
+  matches in linear time: there are no backreferences or lookaround. It's found anywhere in the URL unless you anchor
+  it with `^` and `$`, and it sees the URL exactly as shown, so write `(?i)` to ignore case in a host.
+- Limits, which `shepherd plugin check` reports: a pattern or regex is at most 500 characters; a regex nests groups at
+  most 16 deep, repeats at most 1000 times (and a repetition can't itself repeat), and compiles to at most 300
+  instructions; a plugin has at most 8 links. Matching a URL against a link takes time proportional to the URL's
+  length (at most 2048 characters) times the link's size, so no link can stall a click.
 - Only http and https URLs are ever handed over.
 - The action gets the URL as `call.link`, exactly as it appeared on screen (case, escapes and query kept), and never
   in `params`. It's data the user clicked, not a command: don't pass it to a shell.

@@ -27,6 +27,7 @@
   "dependencies": {
     "@opentui/core": "^0.5.11",
     "libghostty-vt": "^0.6.3",
+    "re2js": "2.8.6",
     "zod": "^4.6.1"
   }
 }

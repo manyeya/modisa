@@ -3,7 +3,7 @@
 // attributed to it by name, so none of it can pass for shepherd's own prompts.
 import { BoxRenderable } from "@opentui/core";
 import type { PluginUiView, Tone } from "../protocol/types";
-import { urlMatches } from "../protocol/schema";
+import { linkMatches } from "../protocol/links";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
 import { menu } from "./modals/menu";
@@ -50,7 +50,7 @@ export function pluginKey(app: App, key: string) {
 // several ask which; none says so. The URL goes as the invocation's link, never as params.
 export function pluginLink(app: App, pane: string, url: string, x: number, y: number) {
   if (app.modal) return;
-  const handlers = [...pluginUi(app)].sort((a, b) => a.plugin.localeCompare(b.plugin)).flatMap((plugin) => plugin.links.filter((l) => urlMatches(l.pattern, url)).map((l) => ({ plugin, action: l.action })));
+  const handlers = [...pluginUi(app)].sort((a, b) => a.plugin.localeCompare(b.plugin)).flatMap((plugin) => [...new Set(plugin.links.filter((l) => linkMatches(l, url)).map((l) => l.action))].map((action) => ({ plugin, action }))); // an action once, however many of its links match
   const instance = app.info(pane)?.instance;
   const go = (h: (typeof handlers)[number]) => runPluginAction(app, h.plugin, h.action, {}, instance ? { pane, instance } : undefined, url);
   if (!handlers.length) return app.toast(`No plugin handles ${short(url)}`, app.th.dim);

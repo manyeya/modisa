@@ -2,6 +2,7 @@
 // Requests get responses; the server pushes events as notifications ({method, params}, no id).
 import { z } from "zod";
 import { ERROR_CODES, type ErrorCode } from "./types";
+import { LINK, globProblem, regexProblem } from "./links";
 
 export type Msg = {
   jsonrpc: "2.0";
@@ -26,7 +27,7 @@ export const pluginManifest = z
     actions: z.array(z.strictObject({ id: pluginId, title: z.string().min(1).max(60), description: z.string().max(200).optional() })).optional(),
     panes: z.array(z.strictObject({ id: pluginId, title: z.string().min(1).max(60), run: z.array(z.string().min(1)).min(1), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]).default("overlay"), width: cells.optional(), height: cells.optional() })).optional(),
     keys: z.array(z.strictObject({ key: z.string().min(1).max(12), action: pluginId.optional(), pane: pluginId.optional(), description: z.string().min(1).max(80) })).optional(),
-    links: z.array(z.strictObject({ pattern: z.string().min(1).max(500), action: pluginId })).optional(),
+    links: z.array(z.strictObject({ pattern: z.string().min(1).max(LINK.source).optional(), regex: z.string().min(1).max(LINK.source).optional(), action: pluginId })).max(LINK.perPlugin).optional(),
   })
   .superRefine((m, issues) => {
     const problem = (path: (string | number)[], message: string) => issues.addIssue({ code: "custom", path, message });
@@ -45,29 +46,19 @@ export const pluginManifest = z
       if (k.pane && !panes.has(k.pane)) problem(["keys", i, "pane"], `key ${k.key} opens pane ${k.pane}, which isn't in panes`);
     });
     m.links?.forEach((l, i) => {
-      if (!/^https?:\/\//.test(l.pattern)) problem(["links", i, "pattern"], "a link pattern is a URL glob starting with http:// or https://, like https://github.com/*/pull/*");
+      if ((l.pattern === undefined) === (l.regex === undefined)) problem(["links", i], "a link needs exactly one of pattern (a URL glob) or regex");
+      else if (l.pattern !== undefined) {
+        const why = globProblem(l.pattern);
+        if (why) problem(["links", i, "pattern"], why);
+      } else {
+        const why = regexProblem(l.regex!);
+        if (why) problem(["links", i, "regex"], why);
+      }
       if (!actions.has(l.action)) problem(["links", i, "action"], `links to action ${l.action}, which isn't in actions`);
     });
   });
 export type PluginManifest = z.infer<typeof pluginManifest>;
 
-// A link pattern against a whole URL: `*` is any run of characters, everything else is literal; the scheme and host
-// ignore case, as URLs do, and the path and query don't. Plugin patterns are never regular expressions: this greedy
-// wildcard match takes at most pattern × URL steps (500 × 2048), so no pattern can stall the server or the TUI.
-const lowerOrigin = (s: string) => s.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, (origin) => origin.toLowerCase());
-export function urlMatches(glob: string, link: string) {
-  const pattern = lowerOrigin(glob);
-  const url = lowerOrigin(link);
-  let p = 0, u = 0, star = -1, resume = 0;
-  while (u < url.length) {
-    if (p < pattern.length && pattern[p] !== "*" && pattern[p] === url[u]) (p++, u++);
-    else if (p < pattern.length && pattern[p] === "*") (star = p++, resume = u);
-    else if (star >= 0) (p = star + 1, u = ++resume);
-    else return false;
-  }
-  while (pattern[p] === "*") p++;
-  return p === pattern.length;
-}
 
 // The public API: the server validates params with these; the CLI builds params from them.
 const target = z.string().min(1);
@@ -133,7 +124,7 @@ export const pluginUiView = z.strictObject({
   menu: z.array(z.strictObject({ id: z.string(), title: z.string(), action: z.string() })),
   keys: z.array(pluginKey),
   panes: z.array(z.strictObject({ id: z.string(), title: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]) })),
-  links: z.array(z.strictObject({ pattern: z.string(), action: z.string() })),
+  links: z.array(z.strictObject({ pattern: z.string().optional(), regex: z.string().optional(), action: z.string() })),
 });
 export const results = {
   list: z.array(listedPane),

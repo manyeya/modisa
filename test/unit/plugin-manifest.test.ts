@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { pluginManifest, urlMatches } from "../../src/protocol/schema";
+import { pluginManifest } from "../../src/protocol/schema";
+import { urlMatches } from "../../src/protocol/links";
 import { cleanText } from "../../src/server/plugins";
 import { urlAt } from "../../src/client/panes/pane";
 

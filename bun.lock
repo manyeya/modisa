@@ -7,6 +7,7 @@
       "dependencies": {
         "@opentui/core": "^0.5.11",
         "libghostty-vt": "^0.6.3",
+        "re2js": "2.8.6",
         "zod": "^4.6.1",
       },
       "devDependencies": {
@@ -72,6 +73,8 @@
     "libghostty-vt": ["libghostty-vt@0.6.3", "", {}, "sha512-kGWScMlGTx5BIzRymUtoQ5zfv32SO1MuO4fYB2WwFcclB0BqpzzIy3qnezUj7wUpMgH/QIbTwMPQc9NNDnEH2Q=="],
 
     "marked": ["marked@17.0.1", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-boeBdiS0ghpWcSwoNm/jJBwdpFaMnZWRzjA6SkUMYb40SVaN1x7mmfGKp0jvexGcx+7y2La5zRZsYFZI6Qpypg=="],
+
+    "re2js": ["re2js@2.8.6", "", {}, "sha512-xLgQil4kIUCrAzVk9fRSkxkFNwmygLFjVxXrLc65aE1F0+Zsb8rxumFBy4XKyvgMCTL6kilDq3EZ0piE2dP/Dg=="],
 
     "string-width": ["string-width@7.2.0", "", { "dependencies": { "emoji-regex": "^10.3.0", "get-east-asian-width": "^1.0.0", "strip-ansi": "^7.1.0" } }, "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ=="],
 
