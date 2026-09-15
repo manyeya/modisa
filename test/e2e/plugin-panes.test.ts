@@ -7,6 +7,8 @@
 // Every popup test has its own session and TUI clients, so each passes alone and in any order.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { Screen, sandbox, startServer, borders } from "../support/harness";
+import { connectUnix } from "../../src/protocol/transport";
+import { PLUGIN_UI } from "../../src/protocol/types";
 
 const sb = sandbox("plugin-panes");
 const S = "panes";
@@ -280,6 +282,22 @@ test("a popup always fits the terminal, through a resize below its minimum, and 
   await ui.until("the popup again", (s) => s.includes("in-popup"));
   whole();
 }, 60000);
+
+test("a client from before plugin UI is never given a popup; a current one is", async () => {
+  const session = "popup-older-client";
+  await fresh(session);
+  const sock = `${sb.root}/state/${session}.sock`;
+  const [older, current] = await Promise.all([connectUnix(sock), connectUnix(sock)]);
+  await older.request("attach", {});
+  await current.request("attach", { ui: PLUGIN_UI });
+  const open = (conn: typeof older) => conn.request<any>("plugin.pane.open", { plugin: "demo", pane: "pop" }).then((r) => r, (e) => e.code);
+  expect(await open(older)).toBe("usage");
+  const opened = await open(current);
+  expect(opened).toMatchObject({ placement: "popup" });
+  expect(await current.request<boolean>("plugin.popup.close", { pane: opened.pane })).toBe(true);
+  older.close();
+  current.close();
+}, 40000);
 
 test("stopping the plugin closes its popup", async () => {
   const session = "popup-stop";

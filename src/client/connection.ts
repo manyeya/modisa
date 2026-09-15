@@ -1,6 +1,7 @@
 // Attaching to the server, handling what it pushes, reconnecting after drops and restarts, and quitting.
 import { codeVersion } from "../core/paths";
 import { unb64 } from "../protocol/conn";
+import { PLUGIN_UI } from "../protocol/types";
 import type { App, ServerView } from "./context";
 import { notify } from "./notify";
 import { pluginToast } from "./plugin-ui";
@@ -66,10 +67,17 @@ async function attach(app: App, spawn: boolean) {
     // ready, one reconnect loop owns it; failed attempts must not spawn loops.
     if (!app.quitting && ready && conn === app.conn) {
       conn.close();
+      // plugins' actions can't reach the session now: hide what they show (the next attach brings it back), and a popup
+      // this client had open is gone with the connection
+      if (app.popup) app.modal?.close(null);
+      if (app.view?.plugins?.length) {
+        app.view = { ...app.view, plugins: [] };
+        render(app);
+      }
       void connectWithRetry(app, true);
     }
   };
-  const res = await conn.request<ServerView & { prompts: number[]; version?: string }>("attach", { area: app.area() });
+  const res = await conn.request<ServerView & { prompts: number[]; version?: string }>("attach", { area: app.area(), ui: PLUGIN_UI });
   for (const p of app.panes.values()) p.destroy(); // reconnect: rebuild from the replay
   app.panes.clear();
   app.view = res;

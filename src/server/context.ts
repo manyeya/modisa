@@ -4,7 +4,7 @@ import type { Config } from "../config/config";
 import type { Adapter } from "../config/adapters";
 import type { Conn } from "../protocol/conn";
 import { b64, fail } from "../protocol/conn";
-import type { PluginUiView } from "../protocol/types";
+import { PLUGIN_UI, type PluginUiView } from "../protocol/types";
 import { Session, type SpawnOpts } from "./session/session";
 import type { PtyPane } from "./session/pane";
 import { Detector } from "./agents/detect";
@@ -13,7 +13,8 @@ import { save } from "./persist/store";
 import { quote } from "./persist/template";
 
 // plugin: set once a plugin's connection has said plugin.hello; it then acts as that plugin, never as a pane
-export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean; plugin?: string };
+export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean; plugin?: string; ui?: number }; // ui: the plugin UI version it attached with
+export const understandsPlugins = (c: Client) => (c.ui ?? 0) >= PLUGIN_UI;
 
 export type ServerContext = {
   session: string;
@@ -69,7 +70,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
       viewQueued = true;
       queueMicrotask(() => {
         viewQueued = false;
-        ctx.broadcast("view", { ...ctx.s.view(), paused: ctx.mail.paused, plugins: ctx.pluginUi() });
+        for (const c of ctx.attached()) c.conn.notify("view", { ...ctx.s.view(), paused: ctx.mail.paused, ...(understandsPlugins(c) && { plugins: ctx.pluginUi() }) });
       });
     }
     clearTimeout(saveTimer);

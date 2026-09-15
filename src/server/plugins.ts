@@ -20,7 +20,7 @@ import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
 import type { PluginKey, PluginStatus, PluginUiView, Tone } from "../protocol/types";
 import { linkedPlugins, readManifest } from "../config/plugins";
-import type { Client, ServerContext } from "./context";
+import { understandsPlugins, type Client, type ServerContext } from "./context";
 import type { Handlers } from "./rpc/dispatch";
 import type { PtyPane } from "./session/pane";
 import type { SpawnOpts } from "./session/session";
@@ -469,7 +469,7 @@ export function createPluginHost(ctx: ServerContext) {
       if (sessionUi.toasts.length >= SESSION.toasts) throw fail("rate_limited", `too many toasts from the session's plugins: at most ${SESSION.toasts} every ${TOASTS.windowMs / 1000}s`);
       pl.ui.toasts.push(now);
       sessionUi.toasts.push(now);
-      ctx.broadcast("plugin.toast", { plugin: pl.name, text: cleanText(p.text, LIMIT.toastText), tone: p.tone, system: !!p.system });
+      ctx.broadcast("plugin.toast", { plugin: pl.name, text: cleanText(p.text, LIMIT.toastText), tone: p.tone, system: !!p.system }, ctx.attached().filter(understandsPlugins));
       return true;
     },
     "ui.state": (p) => uiOf(need(p.plugin)),
@@ -508,6 +508,7 @@ export function createPluginHost(ctx: ServerContext) {
         }
         case "popup":
           if (!c.attached) throw fail("usage", "a popup opens in a TUI client (a key or the palette); from the CLI use a split, tab or zoomed pane");
+          if (!understandsPlugins(c)) throw fail("usage", "this client is from before plugin popups: update shepherd on this machine, or use a split, tab or zoomed pane");
           if (popups.size) throw fail("ui_busy", "a popup is already open in this session");
           pane = s.spawnHidden(opts);
           popups.set(pane.id, { plugin: pl.name, client: c });

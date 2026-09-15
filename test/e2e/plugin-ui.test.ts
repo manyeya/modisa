@@ -5,6 +5,7 @@ import { test, expect, beforeAll, beforeEach, afterAll } from "bun:test";
 import { Screen, sandbox, startServer } from "../support/harness";
 import { results } from "../../src/protocol/schema";
 import { connectUnix } from "../../src/protocol/transport";
+import { PLUGIN_UI } from "../../src/protocol/types";
 
 const sb = sandbox("plugin-ui");
 const S = "ui";
@@ -164,6 +165,29 @@ test("an action taken from an ended run's UI is refused; the new run's works", a
   expect(old).toBe("plugin_unavailable");
   expect(now).toBe("hi there");
 }, 30000);
+
+test("a client that attaches without declaring plugin UI gets views without it and no plugin toasts; one that declares it gets both", async () => {
+  const sock = `${sb.root}/state/${S}.sock`;
+  const [older, current] = await Promise.all([connectUnix(sock), connectUnix(sock)]);
+  const seen: Record<"older" | "current", any[]> = { older: [], current: [] };
+  older.onMessage = (m) => seen.older.push(m);
+  current.onMessage = (m) => seen.current.push(m);
+  const attachedOlder = await older.request<any>("attach", {});
+  const attachedCurrent = await current.request<any>("attach", { ui: PLUGIN_UI });
+  expect("plugins" in attachedOlder).toBe(false);
+  expect(Array.isArray(attachedCurrent.plugins)).toBe(true);
+
+  expect(await apply(["ui.status.set", { id: "count", text: "for current clients" }], ["ui.toast", { text: "only for current clients" }])).toEqual(["ok", "ok"]);
+  await Bun.sleep(500);
+  const views = (list: any[]) => list.filter((m) => m.method === "view").map((m) => m.params);
+  expect(views(seen.older).length).toBeGreaterThan(0); // it still gets the session's views
+  expect(views(seen.older).every((v) => !("plugins" in v))).toBe(true);
+  expect(seen.older.some((m) => m.method === "plugin.toast")).toBe(false);
+  expect(views(seen.current).some((v) => v.plugins?.some((p: any) => p.status.some((s: any) => s.text === "for current clients")))).toBe(true);
+  expect(seen.current.some((m) => m.method === "plugin.toast" && m.params.text === "only for current clients")).toBe(true);
+  older.close();
+  current.close();
+}, 20000);
 
 test("updates are rate-limited, and toasts more so", async () => {
   const updates = await apply(...Array.from({ length: 45 }, (_, i): [string, object] => ["ui.status.set", { id: "count", text: `${i}` }]));

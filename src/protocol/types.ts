@@ -73,5 +73,10 @@ export type PluginUiView = {
   links: { pattern?: string; regex?: string; action: string }[]; // URLs Ctrl+click hands to an action, in manifest order (src/protocol/links.ts)
 };
 
+// The plugin UI a client understands, sent with attach: the server sends plugins' UI (in views, plugin toasts, popups)
+// only to clients at this version or later, so an older client never gets what it can't draw. Bump on a change an
+// older client would misdraw.
+export const PLUGIN_UI = 1;
+
 // Everything a client needs to draw the session.
 export type View = { active: number; workspaces: WorkspaceView[]; panes: PaneInfo[]; plugins?: PluginUiView[] };
