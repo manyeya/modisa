@@ -20,10 +20,10 @@ const plugins = async (session = S) => JSON.parse((await sb.run(session, ["plugi
 const connected = async (name: string, session = S) => {
   for (let i = 0; i < 100 && !(await plugins(session)).find((p) => p.name === name)?.connected; i++) await Bun.sleep(100);
 };
-async function attach(session = S) {
-  const ui = new Screen(["-s", session], sb.env, sb.root);
+async function attach(session = S, size?: { cols: number; rows: number }) {
+  const ui = new Screen(["-s", session], sb.env, sb.root, size?.cols, size?.rows);
   screens.push(ui);
-  await ui.until("attached", (s) => s.includes("SPACES"), 20000);
+  await ui.until("attached", (s) => (size ? borders(s) > 0 : s.includes("SPACES")), 20000); // a small terminal may hide the sidebar
   return ui;
 }
 // a session of its own: the linked plugins start in it
@@ -234,6 +234,51 @@ test("output from the pane underneath never draws over a popup, through a resize
 
   ui.write("\x02x");
   await ui.until("the popup gone and the pane redrawn", (s) => !s.includes("in-popup") && !s.includes("Pop · ") && s.includes("noise noise"));
+}, 60000);
+
+test("a popup always fits the terminal, through a resize below its minimum, and won't open in one too small", async () => {
+  const session = "popup-small";
+  await fresh(session);
+  const ui = await attach(session, { cols: 44, rows: 14 });
+  // the popup's frame is whole: both top corners over both bottom corners, on screen
+  const whole = () => {
+    const lines = ui.lines();
+    const body = lines.findIndex((l) => l.includes("in-popup"));
+    expect(body).toBeGreaterThan(0);
+    const left = lines[body]!.lastIndexOf("│", lines[body]!.indexOf("in-popup"));
+    const top = body - 1;
+    const right = lines[top]!.indexOf("╮", left);
+    expect(lines[top]![left]).toBe("╭");
+    expect(right).toBeGreaterThan(left);
+    const bottom = lines.findIndex((l, i) => i > top && l[left] === "╰");
+    expect(bottom).toBeGreaterThan(body);
+    expect(lines[bottom]![right]).toBe("╯");
+    expect(right).toBeLessThan(Math.max(...lines.map((l) => l.length)));
+  };
+
+  ui.write("\x02U");
+  await ui.until("the popup", (s) => s.includes("in-popup"));
+  whole();
+  ui.resize(24, 8); // smaller than the popup wants, still above its minimum
+  await Bun.sleep(1000);
+  whole();
+  ui.resize(21, 6); // below the minimum while it's open: it shrinks to fit instead of spilling off
+  await Bun.sleep(1000);
+  expect((await list(session)).some((p) => p.popup)).toBe(true);
+  ui.write("\x02x");
+  await ui.until("prefix x still closes it", (s) => !s.includes("in-popup"));
+  await Bun.sleep(500);
+  expect((await list(session)).some((p) => p.popup)).toBe(false);
+
+  ui.write("\x02U"); // too small to open one
+  await Bun.sleep(1500);
+  expect(ui.text()).not.toContain("in-popup");
+  expect((await list(session)).some((p) => p.popup)).toBe(false);
+  ui.resize(44, 14);
+  await Bun.sleep(1000);
+  ui.write("\x02U"); // big enough again
+  await ui.until("the popup again", (s) => s.includes("in-popup"));
+  whole();
 }, 60000);
 
 test("stopping the plugin closes its popup", async () => {

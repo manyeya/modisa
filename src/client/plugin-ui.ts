@@ -68,6 +68,8 @@ export function pluginLink(app: App, pane: string, url: string, x: number, y: nu
 // is already open it waits for nothing and says so (ui_busy).
 export async function openPluginPane(app: App, from: { plugin: string; run: string }, pane: string, params: Record<string, unknown> = {}, origin?: { pane: string; instance?: string }) {
   if (app.modal) return app.toast(`${from.plugin}: can't open ${pane} while a dialog is open`, app.th.warn);
+  const placement = pluginUi(app).find((p) => p.plugin === from.plugin)?.panes.find((p) => p.id === pane)?.placement;
+  if (placement === "popup" && (app.r.width < POPUP_MIN.w + 2 || app.r.height < POPUP_MIN.h + 2)) return app.toast(`${from.plugin}: the terminal is too small for ${pane}`, app.th.warn);
   try {
     const opened = await app.conn.request<{ pane: string; placement: string; title: string; width?: number | string; height?: number | string }>("plugin.pane.open", { plugin: from.plugin, pane, params, run: from.run, ...(origin && { from: origin }) });
     if (opened.placement === "popup") showPopup(app, opened);
@@ -81,10 +83,13 @@ export async function openPluginPane(app: App, from: { plugin: string; run: stri
 const cells = (size: number | string | undefined, total: number, fallback: number) =>
   typeof size === "number" ? size : typeof size === "string" && size.endsWith("%") ? Math.floor((total * Number(size.slice(0, -1))) / 100) : fallback;
 
+// The popup's box: its manifest size, at least POPUP_MIN, but never past the terminal (a cell of margin each side), even
+// when the terminal shrinks below the minimum while the popup is open. Below the minimum, a popup doesn't open.
+export const POPUP_MIN = { w: 20, h: 5 };
 export function popupRect(app: App) {
   const p = app.popup!;
-  const w = Math.max(20, Math.min(app.r.width - 2, cells(p.width, app.r.width, Math.floor(app.r.width * 0.7))));
-  const h = Math.max(5, Math.min(app.r.height - 2, cells(p.height, app.r.height, Math.floor(app.r.height * 0.6))));
+  const w = Math.max(1, Math.min(app.r.width - 2, Math.max(POPUP_MIN.w, cells(p.width, app.r.width, Math.floor(app.r.width * 0.7)))));
+  const h = Math.max(1, Math.min(app.r.height - 2, Math.max(POPUP_MIN.h, cells(p.height, app.r.height, Math.floor(app.r.height * 0.6)))));
   return { x: Math.floor((app.r.width - w) / 2), y: Math.floor((app.r.height - h) / 3), w, h };
 }
 
