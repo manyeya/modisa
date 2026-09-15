@@ -61,6 +61,9 @@ export class OwnedGroup {
 const LIMIT = { statusSegments: 4, statusText: 32, sidebarTitle: 30, sidebarRows: 20, rowText: 60, badgeText: 12, badges: 50, menuItems: 8, menuTitle: 40, toastText: 120 };
 const UPDATES = { burst: 30, perSecond: 10 }; // ui.* calls per run
 const TOASTS = { burst: 3, windowMs: 10_000 };
+// and across all the session's plugins together, so many plugins, each within its own limits, can't do it either:
+// first come, first served
+const SESSION = { statusSegments: 12, badgesPerPane: 4, sidebarSections: 6, menuItems: 24, toasts: 6, burst: 60, perSecond: 30 };
 
 type UiState = {
   status: Map<string, PluginUiView["status"][number]>;
@@ -307,6 +310,10 @@ export function createPluginHost(ctx: ServerContext) {
     }
   };
 
+  // the other running plugins, and the session's shared update and toast budgets
+  const others = (pl: Plugin) => [...plugins.values()].filter((x) => x !== pl && x.run && !x.run.revoked);
+  const sessionUi = { tokens: SESSION.burst, refilled: Date.now(), toasts: [] as number[] };
+
   // A ui.* call: from the plugin's bound connection, within its rate, naming only actions it offered.
   const uiCall = (c: Client, action?: string) => {
     const pl = [...plugins.values()].find((x) => x.client === c && x.run && !x.run.revoked);
@@ -314,8 +321,13 @@ export function createPluginHost(ctx: ServerContext) {
     const now = Date.now();
     pl.ui.tokens = Math.min(UPDATES.burst, pl.ui.tokens + ((now - pl.ui.refilled) / 1000) * UPDATES.perSecond);
     pl.ui.refilled = now;
+    sessionUi.tokens = Math.min(SESSION.burst, sessionUi.tokens + ((now - sessionUi.refilled) / 1000) * SESSION.perSecond);
+    sessionUi.refilled = now;
+    // both checked before either is spent, so an update one refuses doesn't use up the other
     if (pl.ui.tokens < 1) throw fail("rate_limited", `too many ui updates from ${pl.name}: at most ${UPDATES.perSecond} a second`);
+    if (sessionUi.tokens < 1) throw fail("rate_limited", `too many ui updates from the session's plugins: at most ${SESSION.perSecond} a second`);
     pl.ui.tokens -= 1;
+    sessionUi.tokens -= 1;
     if (action && !pl.actions.includes(action)) throw fail("no_such_action", `${pl.name} didn't offer action ${action} in hello (it offers: ${pl.actions.join(", ") || "none"})`);
     return pl;
   };
@@ -399,6 +411,7 @@ export function createPluginHost(ctx: ServerContext) {
     "ui.status.set": (p, c) => {
       const pl = uiCall(c, p.action);
       if (!pl.ui.status.has(p.id) && pl.ui.status.size >= LIMIT.statusSegments) throw fail("error", `at most ${LIMIT.statusSegments} status segments per plugin`);
+      if (!pl.ui.status.has(p.id) && others(pl).reduce((n, x) => n + x.ui.status.size, pl.ui.status.size) >= SESSION.statusSegments) throw fail("error", `at most ${SESSION.statusSegments} status segments across the session's plugins`);
       pl.ui.status.set(p.id, { id: p.id, text: cleanText(p.text, LIMIT.statusText), tone: p.tone as Tone, ...(p.action && { action: p.action }) });
       return changed(pl);
     },
@@ -410,6 +423,7 @@ export function createPluginHost(ctx: ServerContext) {
     "ui.sidebar.set": (p, c) => {
       const pl = uiCall(c);
       for (const row of p.rows) if (row.action && !pl.actions.includes(row.action)) throw fail("no_such_action", `${pl.name} didn't offer action ${row.action} in hello`);
+      if (!pl.ui.sidebar && others(pl).filter((x) => x.ui.sidebar).length >= SESSION.sidebarSections) throw fail("error", `at most ${SESSION.sidebarSections} plugins' sidebar sections in a session`);
       // a row that focuses a pane names the process it's for; clicking it later reaches that process or nothing
       for (const row of p.rows) if (row.pane && ctx.s.panes.get(row.pane)?.info.instance !== row.instance) throw fail("pane_gone", `no pane ${row.pane} with instance ${row.instance ?? "(none given: a row's pane needs its instance)"}`);
       pl.ui.sidebar = {
@@ -427,6 +441,7 @@ export function createPluginHost(ctx: ServerContext) {
       const pl = uiCall(c);
       if (ctx.s.panes.get(p.pane)?.info.instance !== p.instance) throw fail("pane_gone", `no pane ${p.pane} with instance ${p.instance}: it closed or was restarted`);
       if (!pl.ui.badges.has(p.pane) && pl.ui.badges.size >= LIMIT.badges) throw fail("error", `at most ${LIMIT.badges} badges per plugin`);
+      if (!pl.ui.badges.has(p.pane) && others(pl).filter((x) => x.ui.badges.has(p.pane)).length >= SESSION.badgesPerPane) throw fail("error", `at most ${SESSION.badgesPerPane} plugins' badges on one pane`);
       pl.ui.badges.set(p.pane, { pane: p.pane, instance: p.instance, text: cleanText(p.text, LIMIT.badgeText), tone: p.tone });
       return changed(pl);
     },
@@ -438,6 +453,7 @@ export function createPluginHost(ctx: ServerContext) {
     "ui.menu.set": (p, c) => {
       const pl = uiCall(c);
       for (const item of p.items) if (!pl.actions.includes(item.action)) throw fail("no_such_action", `${pl.name} didn't offer action ${item.action} in hello`);
+      if (others(pl).reduce((n, x) => n + x.ui.menu.length, Math.min(p.items.length, LIMIT.menuItems)) > SESSION.menuItems) throw fail("error", `at most ${SESSION.menuItems} menu entries across the session's plugins`);
       pl.ui.menu = p.items.slice(0, LIMIT.menuItems).map((item: any) => ({ id: item.id, title: cleanText(item.title, LIMIT.menuTitle), action: item.action }));
       return changed(pl);
     },
@@ -448,7 +464,10 @@ export function createPluginHost(ctx: ServerContext) {
       const now = Date.now();
       pl.ui.toasts = pl.ui.toasts.filter((at) => now - at < TOASTS.windowMs);
       if (pl.ui.toasts.length >= TOASTS.burst) throw fail("rate_limited", `too many toasts from ${pl.name}: at most ${TOASTS.burst} every ${TOASTS.windowMs / 1000}s`);
+      sessionUi.toasts = sessionUi.toasts.filter((at) => now - at < TOASTS.windowMs);
+      if (sessionUi.toasts.length >= SESSION.toasts) throw fail("rate_limited", `too many toasts from the session's plugins: at most ${SESSION.toasts} every ${TOASTS.windowMs / 1000}s`);
       pl.ui.toasts.push(now);
+      sessionUi.toasts.push(now);
       ctx.broadcast("plugin.toast", { plugin: pl.name, text: cleanText(p.text, LIMIT.toastText), tone: p.tone, system: !!p.system });
       return true;
     },
