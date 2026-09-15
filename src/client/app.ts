@@ -20,7 +20,7 @@ export async function runClient(opts: ClientOptions) {
   const r = await createCliRenderer({ exitOnCtrlC: false, targetFps: 60 });
   logHandlerErrors(r, debug);
   const app = new App(r, opts, cfg, debug);
-  r.setBackgroundColor(app.th.bg);
+  app.paintBackground();
 
   // Bun updates stream dimensions after SIGWINCH; use the stream event's fresh size.
   const resizeStream = () => r.resize(process.stdout.columns, process.stdout.rows);

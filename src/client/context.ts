@@ -132,6 +132,21 @@ export class App {
     this.cfg = cfg;
     this.th = theme(cfg);
     this.prefix = parsePrefix(cfg.prefix);
+    this.paintBackground();
+  }
+
+  // The theme's background in shepherd's own cells, and as the terminal's default background (OSC 11), so the window
+  // padding a terminal draws around its cells matches the TUI instead of framing it in the terminal's own colour.
+  // The terminal gets its own colour back (OSC 111) when the client exits: OpenTUI's destroy() doesn't do it.
+  private backgroundResetOnExit = false;
+  paintBackground() {
     this.r.setBackgroundColor(this.th.bg);
+    const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(this.th.bg);
+    if (!hex) return;
+    // ponytail: writeOut is OpenTUI's private output path (its own OSC sequences use it), so this can't split a frame
+    (this.r as any).writeOut(`\x1b]11;rgb:${hex[1]}/${hex[2]}/${hex[3]}\x07`);
+    if (this.backgroundResetOnExit) return;
+    this.backgroundResetOnExit = true;
+    process.once("exit", () => process.stdout.write("\x1b]111\x07")); // detach, quit, or any exit that runs its hooks
   }
 }
