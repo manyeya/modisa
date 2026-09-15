@@ -1,24 +1,44 @@
 // Plugin panes and keys. split, tab and zoomed open ordinary panes (with the plugin's environment) that outlive the
 // plugin; a popup only opens from a TUI client; keys that are shepherd's, or wanted by two plugins, are off, and a
-// [plugin_keys] remap wins; an overlay opens zoomed over its origin and gives focus and zoom back when it closes; a
-// popup shows only in the client that opened it, one per session, keeps Escape for its program and closes on prefix x,
-// on its process exiting, and when its plugin stops; a key runs its action for the focused pane.
+// [plugin_keys] remap wins; an overlay opens zoomed over its origin and gives focus and zoom back when it closes, but
+// only if it still had the focus; a popup shows only in the client that opened it, one per session, keeps Escape for its
+// program and closes on prefix x, on its process exiting, and when its plugin stops; output from the pane underneath
+// never draws over it, through a resize, and the pane redraws after it closes; a key runs its action for the focused pane.
+// Every popup test has its own session and TUI clients, so each passes alone and in any order.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { Screen, sandbox, startServer, borders } from "../support/harness";
 
 const sb = sandbox("plugin-panes");
 const S = "panes";
 const REPO = `${import.meta.dir}/../..`;
-const run = (...args: string[]) => sb.run(S, args);
 const screens: Screen[] = [];
-const list = async () => JSON.parse((await run("pane", "list", "--json")).stdout) as any[];
-const plugins = async () => JSON.parse((await run("plugin", "list", "--json")).stdout) as any[];
+const sessions = new Set<string>([S]);
+const cli = (session: string) => (...args: string[]) => sb.run(session, args);
+const run = cli(S);
+const list = async (session = S) => JSON.parse((await sb.run(session, ["pane", "list", "--json"])).stdout) as any[];
+const plugins = async (session = S) => JSON.parse((await sb.run(session, ["plugin", "list", "--json"])).stdout) as any[];
+const connected = async (name: string, session = S) => {
+  for (let i = 0; i < 100 && !(await plugins(session)).find((p) => p.name === name)?.connected; i++) await Bun.sleep(100);
+};
+async function attach(session = S) {
+  const ui = new Screen(["-s", session], sb.env, sb.root);
+  screens.push(ui);
+  await ui.until("attached", (s) => s.includes("SPACES"), 20000);
+  return ui;
+}
+// a session of its own: the linked plugins start in it
+async function fresh(name: string) {
+  sessions.add(name);
+  await startServer(sb, name);
+  await connected("demo", name);
+  return cli(name);
+}
 
 async function plugin(name: string, manifest: object) {
   const dir = `${sb.root}/${name}`;
   await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: 1, run: ["bun", "plugin.ts"], ...manifest }));
   await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
-  await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./shepherd-plugin";\nrunPlugin(async (shepherd) => { await shepherd.hello({ hello: (p) => "hi " + (p.pane ?? "nobody") }); });\n`);
+  await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./shepherd-plugin";\nrunPlugin(async (shepherd) => { await shepherd.hello({ hello: (_p, call) => "hi " + (call.target?.pane ?? "nobody") }); });\n`);
   expect((await run("plugin", "link", dir)).code).toBe(0);
 }
 
@@ -47,7 +67,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const s of screens) s.close();
-  await run("kill", S);
+  for (const s of sessions) await sb.run(s, ["kill", s]);
   await sb.cleanup();
 });
 
@@ -64,7 +84,7 @@ test("split, tab and zoomed open ordinary panes with the plugin's environment, a
   expect((await run("plugin", "stop", "demo")).code).toBe(0);
   expect((await list()).some((p) => p.id === side.pane)).toBe(true); // the session's now
   expect((await run("plugin", "start", "demo")).code).toBe(0);
-  for (let i = 0; i < 100 && !(await plugins()).find((p) => p.name === "demo")?.connected; i++) await Bun.sleep(100);
+  await connected("demo");
 }, 40000);
 
 test("a popup only opens from a TUI client", async () => {
@@ -86,9 +106,7 @@ test("keys: shepherd's own and one two plugins want are off, and a [plugin_keys]
 });
 
 test("an overlay opens zoomed over the pane and gives focus and zoom back when it closes", async () => {
-  const ui = new Screen(["-s", S], sb.env, sb.root);
-  screens.push(ui);
-  await ui.until("attached", (s) => s.includes("SPACES"), 20000);
+  const ui = await attach();
   await run("pane", "focus", "p1");
   await ui.until("p1 focused, not zoomed", (s) => borders(s) > 1);
   ui.write("\x02O");
@@ -101,47 +119,107 @@ test("an overlay opens zoomed over the pane and gives focus and zoom back when i
   expect((await list()).some((p) => p.title === "Peek")).toBe(false);
 }, 40000);
 
-test("a popup shows only where it was opened, is one per session, keeps Escape for its program, and closes on prefix x", async () => {
-  const [ui] = screens;
-  const other = new Screen(["-s", S], sb.env, sb.root);
-  screens.push(other);
-  await other.until("a second client", (s) => s.includes("SPACES"), 20000);
+test("an overlay doesn't take focus back if the user focused another pane in that tab meanwhile", async () => {
+  const other = (await run("pane", "split", "--name", "elsewhere", "sleep 120")).stdout;
+  await run("pane", "focus", "p1");
+  const overlay = JSON.parse((await run("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
+  await run("pane", "focus", other); // the user moves on, in the same tab
+  await run("pane", "close", overlay);
+  await Bun.sleep(500);
+  expect((await list()).find((p) => p.id === other)).toMatchObject({ focused: true });
+  await run("pane", "close", other);
+}, 30000);
 
-  ui!.write("\x02U");
-  await ui!.until("the popup", (s) => s.includes("in-popup") && s.includes("prefix x closes"));
+test("an overlay doesn't take focus back if the user switched tabs meanwhile", async () => {
+  await run("pane", "focus", "p1");
+  const overlay = JSON.parse((await run("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
+  await run("tab", "create", "away"); // switches to the new tab
+  const away = (await list()).find((p) => p.focused);
+  expect(away.id).not.toBe(overlay);
+  await run("pane", "close", overlay);
+  await Bun.sleep(500);
+  expect((await list()).find((p) => p.id === away.id)).toMatchObject({ focused: true });
+  await run("pane", "close", away.id);
+}, 30000);
+
+test("a popup shows only where it was opened, is one per session, keeps Escape for its program, and closes on prefix x", async () => {
+  const session = "popup-one";
+  const here = await fresh(session);
+  const ui = await attach(session);
+  const other = await attach(session);
+
+  ui.write("\x02U");
+  await ui.until("the popup", (s) => s.includes("in-popup") && s.includes("Pop · prefix x closes"));
   await Bun.sleep(500);
   expect(other.text()).not.toContain("in-popup");
   other.write("\x02U"); // the other client asks for one too
   await other.until("told a popup is already open", (s) => s.includes("a popup is already open"));
 
-  ui!.write("\x1b"); // Escape belongs to the popup's program
+  ui.write("\x1b"); // Escape belongs to the popup's program
   await Bun.sleep(400);
-  expect(ui!.text()).toContain("in-popup");
-  ui!.write("\x02x");
-  await ui!.until("the popup gone", (s) => !s.includes("in-popup"));
-  expect((await list()).some((p) => p.popup)).toBe(false);
+  expect(ui.text()).toContain("in-popup");
+  ui.write("\x02x");
+  await ui.until("the popup gone", (s) => !s.includes("in-popup"));
+  expect((await list(session)).some((p) => p.popup)).toBe(false);
 
-  ui!.write("\x02U");
-  await ui!.until("a popup again", (s) => s.includes("in-popup"));
-  ui!.write("done\r"); // its program ends
-  await ui!.until("it closes when its process exits", (s) => !s.includes("in-popup"), 10000);
+  ui.write("\x02U");
+  await ui.until("a popup again", (s) => s.includes("in-popup"));
+  ui.write("done\r"); // its program ends
+  await ui.until("it closes when its process exits", (s) => !s.includes("in-popup"), 10000);
+  expect((await here("plugin", "list")).code).toBe(0);
+}, 60000);
+
+test("output from the pane underneath never draws over a popup, through a resize, and the pane redraws after it closes", async () => {
+  const session = "popup-noise";
+  const here = await fresh(session);
+  const noisy = (await here("pane", "split", "--name", "noisy", "while :; do printf 'noise noise noise\\033]7;file://host/tmp\\a\\033]0;title\\a\\033[31mred\\033[0m\\n'; sleep 0.05; done")).stdout;
+  await here("pane", "focus", noisy);
+  const ui = await attach(session);
+  await ui.until("the noise", (s) => s.includes("noise noise"));
+  ui.write("\x02U");
+  await ui.until("the popup", (s) => s.includes("in-popup") && s.includes("Pop · prefix x closes"));
+
+  const intact = () => {
+    const lines = ui.lines();
+    const top = lines.findIndex((l) => l.includes("Pop · "));
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(lines[top]).toContain("Pop · prefix x closes");
+    const left = lines[top]!.indexOf("╭");
+    const right = lines[top]!.lastIndexOf("╮");
+    const body = lines.slice(top + 1, top + 9).map((l) => l.slice(left + 1, right));
+    expect(body.join("\n")).toContain("in-popup");
+    expect(body.join("\n")).not.toContain("noise");
+    expect(ui.text()).not.toContain("file://host"); // OSC 7 is never text
+  };
+  for (let i = 0; i < 8; i++) {
+    await Bun.sleep(200); // the pane underneath keeps printing
+    intact();
+  }
+  ui.resize(110, 32);
+  await ui.until("the popup redrawn at the new size", (s) => s.includes("Pop · prefix x closes") && s.includes("in-popup"));
+  for (let i = 0; i < 5; i++) {
+    await Bun.sleep(200);
+    intact();
+  }
+
+  ui.write("\x02x");
+  await ui.until("the popup gone and the pane redrawn", (s) => !s.includes("in-popup") && !s.includes("Pop · ") && s.includes("noise noise"));
 }, 60000);
 
 test("stopping the plugin closes its popup", async () => {
-  const [ui] = screens;
-  ui!.write("\x02U");
-  await ui!.until("the popup", (s) => s.includes("in-popup"));
-  expect((await run("plugin", "stop", "demo")).code).toBe(0);
-  await ui!.until("the popup gone", (s) => !s.includes("in-popup"));
-  expect((await run("plugin", "start", "demo")).code).toBe(0);
-  for (let i = 0; i < 100 && !(await plugins()).find((p) => p.name === "demo")?.connected; i++) await Bun.sleep(100);
+  const session = "popup-stop";
+  const here = await fresh(session);
+  const ui = await attach(session);
+  ui.write("\x02U");
+  await ui.until("the popup", (s) => s.includes("in-popup"));
+  expect((await here("plugin", "stop", "demo")).code).toBe(0);
+  await ui.until("the popup gone", (s) => !s.includes("in-popup"));
 }, 40000);
 
 test("a key runs its plugin's action for the focused pane", async () => {
-  const [ui] = screens;
-  await ui!.until("demo's keys back", () => true);
-  await Bun.sleep(1000);
+  const ui = await attach();
+  await connected("demo");
   await run("pane", "focus", "p1");
-  ui!.write("\x02G");
-  await ui!.until("the action's result, for p1", (s) => s.includes("demo: Say hello → hi p1"));
+  ui.write("\x02G");
+  await ui.until("the action's result, for p1", (s) => s.includes("demo: Say hello → hi p1"));
 }, 30000);

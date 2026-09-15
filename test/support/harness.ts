@@ -21,6 +21,8 @@ export function sandbox(name: string) {
   };
   delete env.SHEPHERD_SOCKET;
   delete env.SHEPHERD_PANE_ID;
+  // the developer's own terminal: shells in panes would load its startup scripts (Terminal.app's prints errors and OSC 7)
+  for (const k of ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "LC_TERMINAL", "LC_TERMINAL_VERSION", "WT_SESSION", "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR", "VTE_VERSION"]) delete env[k];
   // agents' config-directory overrides would point integration tests at the real ones
   for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "CURSOR_CONFIG_DIR", "XDG_CONFIG_HOME", "QODER_CONFIG_DIR", "QWEN_HOME", "GROK_CONFIG_DIR", "GROK_HOME", "ANTIGRAVITY_CLI_CONFIG_DIR", "HERMES_HOME", "KIMI_CODE_HOME", "PI_CODING_AGENT_DIR", "PI_CONFIG_DIR"]) delete env[k];
   // `shepherd -s <session> <args…>`: stdout and stderr together (out) and apart, trimmed, and the exit status
@@ -58,6 +60,11 @@ export class Screen {
   text = () => this.fmt.formatString(this.vt);
   lines = () => this.text().split("\n");
   write = (s: string) => this.pty.write(s);
+  resize(cols: number, rows: number) {
+    this.vt.resize(cols, rows);
+    this.pty.resize(cols, rows);
+    process.kill(this.proc.pid, "SIGWINCH"); // the PTY isn't the detached client's controlling terminal, so say it
+  }
   async until(what: string, ok: (s: string) => boolean, ms = 8000) {
     for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(50)) if (ok(this.text())) return;
     throw new Error(`timed out waiting for: ${what}\n----\n${this.text()}\n----`);

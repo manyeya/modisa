@@ -122,7 +122,8 @@ export function createActions(app: App): Record<string, Action> {
         if (v.startsWith("plugin:")) {
           const [, plugin, run, action] = v.split(":");
           const focused = app.tab().focused; // the target is the pane focused now, not when the action finishes
-          return runPluginAction(app, { plugin: plugin!, run: run! }, action!, { pane: focused, instance: app.info(focused)?.instance });
+          const instance = app.info(focused)?.instance;
+          return runPluginAction(app, { plugin: plugin!, run: run! }, action!, {}, instance ? { pane: focused, instance } : undefined);
         }
         if (v === "kill") return app.conn.request("kill");
         actions[v]?.run();

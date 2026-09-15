@@ -17,10 +17,10 @@ const short = (value: unknown) => {
 
 // Run a plugin's action and say how it went: its result, its error, or that a timeout left the outcome unknown.
 // `from` is the run whose UI it was taken from (captured when that was drawn): the server refuses it if that run ended.
-export async function runPluginAction(app: App, from: { plugin: string; run: string }, action: string, params: Record<string, unknown> = {}) {
+export async function runPluginAction(app: App, from: { plugin: string; run: string }, action: string, params: Record<string, unknown> = {}, target?: { pane: string; instance: string }) {
   const label = `${from.plugin}: ${titleOf(app, from.plugin, action)}`;
   try {
-    const result = await app.conn.request("plugin.invoke", { plugin: from.plugin, action, params, run: from.run });
+    const result = await app.conn.request("plugin.invoke", { plugin: from.plugin, action, params, run: from.run, ...(target && { target }) });
     app.toast(result === null || result === undefined ? `${label} ✓` : `${label} → ${short(result)}`, app.th.done);
   } catch (e) {
     const { code, message } = e as { code?: string; message: string };
@@ -36,9 +36,10 @@ export function pluginKey(app: App, key: string) {
     const k = plugin.keys.find((x) => x.key === key && x.state === "active");
     if (!k) continue;
     const pane = app.tab().focused;
-    const from = { pane, instance: app.info(pane)?.instance };
-    if (k.action) return runPluginAction(app, plugin, k.action, from);
-    if (k.pane) return openPluginPane(app, plugin, k.pane, {}, from);
+    const instance = app.info(pane)?.instance;
+    const target = instance ? { pane, instance } : undefined;
+    if (k.action) return runPluginAction(app, plugin, k.action, {}, target);
+    if (k.pane) return openPluginPane(app, plugin, k.pane, {}, target);
   }
 }
 
@@ -70,8 +71,12 @@ export function popupRect(app: App) {
 // Escape included; prefix x closes it.
 function showPopup(app: App, opened: { pane: string; title: string; width?: number | string; height?: number | string }) {
   app.popup = { pane: opened.pane, title: opened.title, width: opened.width, height: opened.height };
-  const rect = popupRect(app);
-  app.conn.request("plugin.popup.resize", { pane: opened.pane, cols: Math.max(10, rect.w - 2), rows: Math.max(3, rect.h - 2) }).catch(() => {});
+  // its program sizes to the popup, again whenever the terminal does
+  const fitProgram = () => {
+    const rect = popupRect(app);
+    app.conn.request("plugin.popup.resize", { pane: opened.pane, cols: Math.max(10, rect.w - 2), rows: Math.max(3, rect.h - 2) }).catch(() => {});
+  };
+  fitProgram();
   let armed = false;
   const veil = new BoxRenderable(app.r, { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", zIndex: 90 });
   veil.onMouseDown = (e) => { e.preventDefault(); e.stopPropagation(); };
@@ -87,7 +92,7 @@ function showPopup(app: App, opened: { pane: string; title: string; width?: numb
   app.modal = {
     keepEscape: true,
     close,
-    resize: () => render(app),
+    resize: () => (fitProgram(), render(app)),
     keys: (k) => {
       if (k.ctrl && k.name === app.prefix.name && !armed) return (armed = true);
       if (armed && k.name === "x") {

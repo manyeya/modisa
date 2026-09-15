@@ -24,6 +24,7 @@ export class Session {
       changed: () => void;
       empty: () => void;
       created: (p: PtyPane) => void;
+      closing?: (id: string, focused: boolean) => void; // focused: it's the focused pane of the tab on screen
     },
   ) {}
 
@@ -138,6 +139,7 @@ export class Session {
     const loc = id && this.locate(id);
     if (!p || !loc) return;
     const { ws, tab } = loc;
+    this.hooks.closing?.(id, tab.focused === id && tab === this.tab);
     const rs = rects(tab.tree, this.area);
     const next = neighbor(rs, id, "left") ?? neighbor(rs, id, "up") ?? neighbor(rs, id, "right") ?? neighbor(rs, id, "down");
     this.panes.delete(id);

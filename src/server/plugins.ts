@@ -107,7 +107,9 @@ const dirsOf = (name: string) => ({ SHEPHERD_PLUGIN: name, SHEPHERD_PLUGIN_DATA:
 // gone to another tab, and otherwise leaves focus where closing put it. popup is a terminal with no place in the layout,
 // owned by the one TUI client that opened it (others never see it), one per session, closed when its process exits,
 // its client closes it (prefix x), the plugin closes it, or the plugin stops.
-type Overlay = { plugin: string; origin?: string; instance?: string; tab?: unknown; wasZoomed: boolean };
+// hadFocus: the overlay was the focused pane of the tab on screen when it closed. Only then does focus go back: if the
+// user focused another pane or switched tabs while it was open, focus stays where they put it.
+type Overlay = { plugin: string; origin?: string; instance?: string; wasZoomed: boolean; hadFocus?: boolean };
 type Popup = { plugin: string; client: Client };
 
 export function createPluginHost(ctx: ServerContext) {
@@ -279,6 +281,12 @@ export function createPluginHost(ctx: ServerContext) {
   const uiView = () =>
     [...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).map(uiOf).filter((v) => v.actions.length || v.status.length || v.sidebar || v.badges.length || v.menu.length || v.keys.length || v.panes.length);
 
+  // a pane is being closed: whether an overlay still had the focus then
+  const paneClosing = (id: string, focused: boolean) => {
+    const overlay = overlays.get(id);
+    if (overlay) overlay.hadFocus = focused;
+  };
+
   // an overlay's or popup's process ended
   const paneExited = (p: PtyPane) => {
     const overlay = overlays.get(p.id);
@@ -286,7 +294,7 @@ export function createPluginHost(ctx: ServerContext) {
       overlays.delete(p.id);
       const origin = overlay.origin ? ctx.s.panes.get(overlay.origin) : undefined;
       const where = origin && origin.info.instance === overlay.instance ? ctx.s.locate(origin.id) : undefined;
-      if (where && where.tab === ctx.s.tab) {
+      if (overlay.hadFocus && where && where.tab === ctx.s.tab) {
         ctx.s.focusPane(origin!.id);
         where.tab.zoomed = overlay.wasZoomed;
         ctx.s.layout();
@@ -367,13 +375,12 @@ export function createPluginHost(ctx: ServerContext) {
       const run = pl.run;
       if (!conn || !run || run.revoked) throw fail("plugin_unavailable", `${p.plugin} isn't connected (${pl.status}${pl.error ? `: ${pl.error}` : ""})`);
       if (p.run && p.run !== run.id) throw fail("plugin_unavailable", `${p.plugin} has restarted since that was shown; use what it shows now`);
-      // an action aimed at a pane ({ pane, instance }, from a menu, key or the palette) reaches that process or nothing
-      const target = p.params as { pane?: unknown; instance?: unknown } | undefined;
-      if (typeof target?.pane === "string" && typeof target.instance === "string" && ctx.s.panes.get(target.pane)?.info.instance !== target.instance) throw fail("pane_gone", `pane ${target.pane} has closed or restarted since`);
+      // an action aimed at a pane (from a menu, key or the palette) reaches that process or nothing
+      if (p.target && ctx.s.panes.get(p.target.pane)?.info.instance !== p.target.instance) throw fail("pane_gone", `pane ${p.target.pane} has closed or restarted since`);
       if (!pl.actions.includes(p.action)) throw fail("no_such_action", `${p.plugin} has no action ${p.action} (it offers: ${pl.actions.join(", ") || "none"})`);
       const invocation = `${pl.name}-${++invocations}`;
       try {
-        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation }, { timeoutMs: INVOKE_MS })) ?? null;
+        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation, ...(p.target && { target: p.target }) }, { timeoutMs: INVOKE_MS })) ?? null;
       } catch (e) {
         if ((e as { code?: string }).code === "timeout") {
           conn.notify("plugin.cancel", { invocation, action: p.action }); // advisory: nothing proves the action stopped
@@ -526,5 +533,5 @@ export function createPluginHost(ctx: ServerContext) {
     }
   };
 
-  return { methods, start, stop, disconnected, uiView, paneExited };
+  return { methods, start, stop, disconnected, uiView, paneExited, paneClosing };
 }

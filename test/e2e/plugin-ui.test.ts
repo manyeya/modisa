@@ -84,6 +84,8 @@ test("references are checked: an action it didn't offer, a badge for another pro
 });
 
 test("a pane target is tied to its process: a row, action or pane for a closed pane is refused on the server", async () => {
+  const p1 = JSON.parse((await run("pane", "read", "p1", "--json")).stdout);
+  const p1Instance = () => p1.instance as string;
   const id = (await run("pane", "split", "--name", "shortlived", "sleep 60")).stdout;
   const { instance } = JSON.parse((await run("pane", "read", id, "--json")).stdout);
   expect(await apply(["ui.sidebar.set", { title: "Attention", rows: [{ text: "no instance", pane: id }] }])).toEqual(["pane_gone"]);
@@ -91,8 +93,15 @@ test("a pane target is tied to its process: a row, action or pane for a closed p
   expect(await apply(["ui.sidebar.set", { title: "Attention", rows: [{ text: "closed", pane: id, instance }] }])).toEqual(["pane_gone"]);
   const focus = await run("pane", "focus", `${id}:${instance}`, "--json"); // what a sidebar row click sends
   expect(JSON.parse(focus.stderr).error.code).toBe("pane_gone");
-  const invoke = await run("plugin", "run", "ui-demo", "hello", JSON.stringify({ pane: id, instance }), "--json");
-  expect(JSON.parse(invoke.stderr).error.code).toBe("pane_gone");
+  // what a menu entry, key or palette entry sends: a typed target, apart from the plugin's own params
+  const conn = await connectUnix(`${sb.root}/state/${S}.sock`);
+  const invoke = (target: object, params: object = {}) => conn.request("plugin.invoke", { plugin: "ui-demo", action: "hello", params, target }).then(() => "ok", (e) => e.code);
+  expect(await invoke({ pane: id, instance })).toBe("pane_gone");
+  expect(await invoke({ pane: "p1" })).toBe("invalid_params"); // a partial target is refused, never skipped
+  expect(await invoke({ pane: "p1", instance: p1Instance() })).toBe("ok");
+  // a plugin's own `pane` param isn't a shepherd target
+  expect(await conn.request("plugin.invoke", { plugin: "ui-demo", action: "hello", params: { pane: "not a shepherd pane" } }).then(() => "ok", (e) => e.code)).toBe("ok");
+  conn.close();
 });
 
 test("only a plugin's bound connection can change the TUI", async () => {

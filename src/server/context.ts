@@ -44,6 +44,7 @@ export type ServerContext = {
   snapshot(p: PtyPane, lines?: number): PtyPane["info"] & { screen: string; recentOutput: string };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
   paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups)
+  paneClosing(id: string, focused: boolean): void; // a pane is being closed; focused: it had the focus on screen
 };
 
 export function createContext(session: string, version: string, cfg: Config, adapters: Adapter[]): ServerContext {
@@ -51,6 +52,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
 
   ctx.pluginUi = () => [];
   ctx.paneExited = () => {};
+  ctx.paneClosing = () => {};
   ctx.attached = () => [...ctx.clients].filter((c) => c.attached);
   ctx.broadcast = (event, data, to = ctx.attached()) => to.forEach((c) => c.conn.notify(event, data));
   // shapes: `events` in protocol/schema.ts (an e2e test checks every emitted event against them)
@@ -87,6 +89,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
     created: (p) => ctx.emit("pane.created", { pane: p.id, instance: p.info.instance, name: p.info.name, command: p.info.command }),
     changed: () => ctx.changed(),
     empty: () => ctx.shutdown(true),
+    closing: (id, focused) => ctx.paneClosing(id, focused),
   });
   ctx.detector = new Detector(() => ctx.adapters);
   ctx.mail = new Mailbox(() => ctx.cfg.messaging);

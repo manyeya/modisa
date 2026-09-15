@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 5;
+export const SDK_VERSION = 6;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -33,7 +33,9 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // (plugin.cancel, for that invocation only) or the connection goes. It's cooperative: an action that ignores it keeps
 // running, the caller has already been told the outcome is unknown, and neither the abort nor a rejection proves
 // that effects already started were undone.
-export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal }) => unknown;
+// `target` is the pane the user took the action from (a menu entry, key or palette entry), kept apart from params and
+// already checked by shepherd to be that pane's current process.
+export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string } }) => unknown;
 
 // What a plugin shows in shepherd's TUI (see Client.ui). Tones map to the user's theme.
 export type Tone = "fg" | "dim" | "accent" | "warn";
@@ -216,14 +218,14 @@ export class Client {
     }
   }
 
-  private async answer(id: number, { action, params, invocation }: { action?: string; params?: Record<string, unknown>; invocation?: string }) {
+  private async answer(id: number, { action, params, invocation, target }: { action?: string; params?: Record<string, unknown>; invocation?: string; target?: { pane: string; instance: string } }) {
     const reply = (x: object) => this.send({ jsonrpc: "2.0", id, ...x });
     const run = action ? this.actions[action] : undefined;
     if (!run) return reply({ error: { code: -32601, message: `no action ${action}` } });
     const controller = new AbortController();
     if (invocation) this.running.set(invocation, controller);
     try {
-      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal })) ?? null });
+      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal, ...(target && { target }) })) ?? null });
     } catch (error) {
       reply({ error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
     } finally {

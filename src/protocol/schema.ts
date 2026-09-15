@@ -180,7 +180,9 @@ export const api = {
   "plugin.hello": z.object({ caller, token: z.string().min(1), actions: z.array(z.string().min(1)).optional() }),
   // call an action a connected plugin offers; shepherd sends it a plugin.action request ({ action, params })
   // run: the run whose UI the action was taken from (ui.state's `run`); refused if that run has since ended
-  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional() }),
+  // target: the pane the action is for (a menu entry, key or palette entry), a complete pane + instance pair kept apart
+  // from the plugin's own params; checked when invoked, and handed to the action as call.target
+  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional(), target: z.strictObject({ pane: z.string().min(1), instance: z.string().min(1) }).optional() }),
   // A plugin's own TUI contributions, only on its bound connection (after plugin.hello). Text is cleaned of control
   // characters and cut to length; actions must be ones the plugin offered in hello; updates are rate-limited.
   "ui.status.set": z.object({ caller, id: z.string().min(1).max(40), text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional() }),

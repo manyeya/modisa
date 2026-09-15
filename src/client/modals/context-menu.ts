@@ -27,7 +27,7 @@ export function contextMenu(app: App, pane: string, x: number, y: number) {
     // a plugin's entry runs its action for this pane
     if (action.startsWith("plugin:")) {
       const [, plugin, run, act] = action.split(":");
-      return runPluginAction(app, { plugin: plugin!, run: run! }, act!, { pane, instance: p.instance });
+      return runPluginAction(app, { plugin: plugin!, run: run! }, act!, {}, { pane, instance: p.instance });
     }
     // Complete target selection before running actions that use the active pane.
     try { await app.conn.request("cmd", { name: "focusPane", args: { pane } }); }
