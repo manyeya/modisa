@@ -17,7 +17,7 @@ import GUIDE from "../plugins/template/AGENTS.md" with { type: "text" };
 export const SDK_TEXT = String(SDK);
 export const sdkVersion = (text: string) => Number(/SDK_VERSION = (\d+)/.exec(text)?.[1]) || undefined;
 
-const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink", "install"];
+const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink", "install", "search"];
 export const isLocalPluginCommand = (verb?: string) => !!verb && LOCAL.includes(verb);
 
 const HELLO_MS = 10_000;
@@ -41,6 +41,8 @@ export async function runPluginLocal(verb: string, args: string[], flags: Args["
       return link(args[0], str(flags.session), json);
     case "install":
       return (await import("./plugin-install")).install(args[0], { ref: str(flags.ref), subdir: str(flags.subdir), session: str(flags.session), json });
+    case "search":
+      return (await import("./plugin-search")).search(args, json);
     default:
       return (await import("./plugin-install")).unlinkPlugin(args[0], str(flags.session), json);
   }

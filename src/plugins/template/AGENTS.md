@@ -23,6 +23,10 @@ shepherd plugin run {{name}} status '{"any":"params"}'
 shepherd plugin stop {{name}}    # and plugin start {{name}}
 ```
 
+To share it, push it to a public git repository and give the repository the `shepherd-plugin` topic:
+`shepherd plugin search` finds it, and `shepherd plugin install <url>` installs it. Put `plugin.json` at the top of the
+repository, or, for a plugin in a subdirectory, say in the repository's README which `--subdir` to install.
+
 ## The library
 
 - `runPlugin(async (shepherd) => …)` connects, runs your code, and exits when the session's connection closes.

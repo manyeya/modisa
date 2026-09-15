@@ -132,6 +132,11 @@ shepherd plugin unlink attention-log`) + p(
         `Nothing is left behind if it fails; a plugin that installs but won't start says so. ${c("plugin list")} shows each install's source and commit.`,
         `Unlinking an install stops it in every running session, then deletes its checkout — never its data or logs. If a session still runs it or can't be reached, the checkout stays and ${c("unlink")} says why. A directory you linked yourself is never deleted. Both commands take ${c("--json")}.`,
       ) },
+      { id: "find", title: "Find one", html: code("sh", `shepherd plugin search            # everything with the shepherd-plugin topic, most starred first
+shepherd plugin search github     # …that also matches these words`) + p(
+        `It lists public GitHub repositories with the ${c("shepherd-plugin")} topic, each with the command that installs it. Nothing in the list is vetted: a plugin runs as you, so read it before you install it.`,
+        `To share one, push it to a public repository with ${c("plugin.json")} at the top and add the ${c("shepherd-plugin")} topic. A plugin in a subdirectory is found by its repository, so say which ${c("--subdir")} in the README.`,
+      ) },
       { id: "manage", title: "Run it", html: table(["Command", "Does"], [
         [c("plugin list [--json]"), "Every plugin: running or not, connected, its actions, where it came from, and keys that are off."],
         [c("plugin logs <name>"), "Its stdout and stderr."],
