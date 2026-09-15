@@ -5,12 +5,13 @@
 // linked and started exactly like `plugin link`. No dependencies are installed and no build scripts run; the plugin's
 // own entrypoint starts in the running session reached. A failure before the name is taken leaves nothing behind.
 import { socketPath } from "../core/paths";
+import { gitEnv, SAFE_GIT, sourceProblem } from "./plugin-git";
 import { MANAGED_DIR, PLUGINS_DIR, readInstall, readManifest, withoutCredentials, type InstallRecord } from "../config/plugins";
 import { connectExisting, connectUnix, runningPid } from "../protocol/transport";
 import { DIR } from "../core/paths";
 import { describeStart, sessionName, startIn, type StartOutcome } from "./plugin";
 
-type Stage = "git" | "clone" | "ref" | "subdir" | "manifest" | "collision";
+type Stage = "source" | "git" | "clone" | "ref" | "subdir" | "manifest" | "collision";
 type InstallResult = {
   installed: boolean;
   alreadyInstalled?: boolean;
@@ -26,9 +27,9 @@ type InstallResult = {
   reason?: string;
 };
 
-// git with argv values only (never a shell), and never prompting for credentials
+// Every installer git call: argv values only (never a shell), with plugin-git.ts's environment and settings.
 async function git(args: string[], cwd?: string) {
-  const p = Bun.spawn(["git", ...args], { cwd, env: { ...Bun.env, GIT_TERMINAL_PROMPT: "0" }, stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawn(["git", ...SAFE_GIT, ...args], { cwd, env: gitEnv(Bun.env), stdout: "pipe", stderr: "pipe" });
   const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   return { code: await p.exited, out: out.trim(), err: err.trim() };
 }
@@ -70,7 +71,9 @@ export async function install(url: string | undefined, options: { ref?: string; 
     return report({ installed: false, source, ref, stage, reason: withoutCredentials(reason) }, json);
   };
 
-  if (!json) console.log(`installing from ${source}. A plugin runs as you, with your files and network; it isn't sandboxed.`);
+  const unsupported = sourceProblem(url);
+  if (unsupported) return failed("source", unsupported);
+  if (!json) console.log(`installing from ${source}: only https, ssh, git and file transports are used, and no build or dependency scripts run before it starts. A plugin runs as you, with your files and network; it isn't sandboxed.`);
   if (!Bun.which("git")) return failed("git", "git isn't installed");
   if (ref?.startsWith("-")) return failed("ref", `not a ref: ${ref}`);
   const subdir = options.subdir?.replace(/\/+$/, "") || null;

@@ -170,7 +170,7 @@ export const cliResults = {
     dir: z.string().optional(), // the plugin's directory (the checkout, or --subdir inside it)
     start: pluginStart.optional(),
     hints: z.array(z.string()).optional(),
-    stage: z.enum(["git", "clone", "ref", "subdir", "manifest", "collision"]).optional(),
+    stage: z.enum(["source", "git", "clone", "ref", "subdir", "manifest", "collision"]).optional(),
     reason: z.string().optional(),
   }),
   // managed: installed with `plugin install` (stopped in every reachable session; its checkout deleted only if none

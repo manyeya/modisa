@@ -127,7 +127,9 @@ shepherd plugin link my-plugin    # every session starts it; the running one sta
       ) },
       { id: "install", title: "Install one", html: code("sh", `shepherd plugin install https://github.com/you/shepherd-plugins --subdir attention-log --ref v1.2.0
 shepherd plugin unlink attention-log`) + p(
-        `${c("install")} clones the repository (a ${c("--ref")} branch, tag or commit, and a ${c("--subdir")} if the plugin isn't at the top), checks the plugin's directory and manifest, links it and starts it. It installs no dependencies and runs no build scripts, and says when the plugin needs them. Nothing is left behind if it fails; a plugin that installs but won't start says so. ${c("plugin list")} shows each install's source and commit.`,
+        `${c("install")} clones the repository (a ${c("--ref")} branch, tag or commit, and a ${c("--subdir")} if the plugin isn't at the top), checks the plugin's directory and manifest, links it and starts it. No build or dependency scripts run before the plugin starts, and it says when the plugin needs setup.`,
+        `It takes ${c("https://")}, ${c("ssh://")}, ${c("git://")} and ${c("file://")} URLs and ${c("user@host:path")} — never a remote-helper (${c("<helper>::")}) URL or plain http — and git uses only those transports whatever your git config or environment says (${c("GIT_ALLOW_PROTOCOL")} is set, and variables like ${c("GIT_DIR")} or ${c("GIT_CONFIG_COUNT")} aren't passed on). Your ssh agent, ssh command and credential helpers still apply. It's an installer policy, not a sandbox: the plugin itself runs as you.`,
+        `Nothing is left behind if it fails; a plugin that installs but won't start says so. ${c("plugin list")} shows each install's source and commit.`,
         `Unlinking an install stops it in every running session, then deletes its checkout — never its data or logs. If a session still runs it or can't be reached, the checkout stays and ${c("unlink")} says why. A directory you linked yourself is never deleted. Both commands take ${c("--json")}.`,
       ) },
       { id: "manage", title: "Run it", html: table(["Command", "Does"], [
