@@ -104,7 +104,7 @@ test("keys: shepherd's own and one two plugins want are off, and a [plugin_keys]
   expect(keys.U).toMatchObject({ pane: "pop", state: "active" }); // remapped from P
   expect(keys.P).toBeUndefined();
   expect(keys.G).toMatchObject({ action: "hello", state: "active" });
-  expect((await run("plugin", "list")).stdout).toContain("demo: key v (hello) is off: shepherd's split-right");
+  expect((await run("plugin", "list")).stdout).toContain("demo: key v (hello) is off in the server's config: shepherd's split-right");
 });
 
 test("an overlay opens zoomed over the pane and gives focus and zoom back when it closes", async () => {

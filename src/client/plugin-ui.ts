@@ -4,6 +4,7 @@
 import { BoxRenderable } from "@opentui/core";
 import type { PluginUiView, Tone } from "../protocol/types";
 import { linkMatches } from "../protocol/links";
+import { bindPluginKeys } from "../config/keys";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
 import { menu } from "./modals/menu";
@@ -32,18 +33,21 @@ export async function runPluginAction(app: App, from: { plugin: string; run: str
   }
 }
 
+// Plugins' keys as this client's own config binds them: the session's server sends what plugin.json declares, and
+// [plugin_keys] here, not on the server, decides which key runs what, so each attached client can differ.
+export const pluginKeys = (app: App) => bindPluginKeys(pluginUi(app).flatMap((p) => p.keys.map((k) => ({ plugin: p.plugin, ...k }))), app.cfg.plugin_keys);
+
 // Prefix + a plugin's key: its action, or its pane, for the pane focused now (not when the action finishes).
 export function pluginKey(app: App, key: string) {
   if (!app.view) return;
-  for (const plugin of pluginUi(app)) {
-    const k = plugin.keys.find((x) => x.key === key && x.state === "active");
-    if (!k) continue;
-    const pane = app.tab().focused;
-    const instance = app.info(pane)?.instance;
-    const target = instance ? { pane, instance } : undefined;
-    if (k.action) return runPluginAction(app, plugin, k.action, {}, target);
-    if (k.pane) return openPluginPane(app, plugin, k.pane, {}, target);
-  }
+  const bound = pluginKeys(app).find((k) => k.key === key && k.state === "active");
+  const plugin = bound && pluginUi(app).find((p) => p.plugin === bound.plugin);
+  if (!bound || !plugin) return;
+  const pane = app.tab().focused;
+  const instance = app.info(pane)?.instance;
+  const target = instance ? { pane, instance } : undefined;
+  if (bound.action) return runPluginAction(app, plugin, bound.action, {}, target);
+  if (bound.pane) return openPluginPane(app, plugin, bound.pane, {}, target);
 }
 
 // Ctrl+click on a URL: the plugin actions whose link pattern matches it, by plugin name then manifest order. One runs;

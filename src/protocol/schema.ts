@@ -122,7 +122,7 @@ export const pluginUiView = z.strictObject({
   sidebar: z.strictObject({ title: z.string(), rows: z.array(z.strictObject({ text: z.string(), tone, action: z.string().optional(), pane: z.string().optional(), instance: z.string().optional() })) }).optional(),
   badges: z.array(z.strictObject({ pane: z.string(), instance: z.string(), text: z.string(), tone })),
   menu: z.array(z.strictObject({ id: z.string(), title: z.string(), action: z.string() })),
-  keys: z.array(pluginKey),
+  keys: z.array(z.strictObject({ key: z.string(), action: z.string().optional(), pane: z.string().optional(), description: z.string() })),
   panes: z.array(z.strictObject({ id: z.string(), title: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]) })),
   links: z.array(z.strictObject({ pattern: z.string().optional(), regex: z.string().optional(), action: z.string() })),
 });

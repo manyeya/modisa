@@ -130,7 +130,7 @@ export async function runCli(a: Args): Promise<number> {
         if (json) print(ps, true);
         else {
           table(ps.map((p) => ({ name: p.name, status: p.exitCode !== undefined && p.status !== "running" ? `${p.status} ${p.exitCode}` : p.status, connected: p.connected ? "yes" : "no", actions: p.actions.join(","), error: p.error ?? "", log: p.log })), ["name", "status", "connected", "actions", "error", "log"]);
-          for (const p of ps) for (const k of p.keys ?? []) if (k.state === "disabled") console.log(`${p.name}: key ${k.key || "(none)"} (${k.action ?? k.pane}) is off: ${k.reason}`);
+          for (const p of ps) for (const k of p.keys ?? []) if (k.state === "disabled") console.log(`${p.name}: key ${k.key || "(none)"} (${k.action ?? k.pane}) is off in the server's config: ${k.reason}`);
         }
         break;
       }

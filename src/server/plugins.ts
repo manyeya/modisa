@@ -14,7 +14,7 @@
 // toasts, which shepherd draws itself. Nothing restarts a plugin; plugin.start does, when asked.
 import { DIR } from "../core/paths";
 import { CONFIG_DIR } from "../config/config";
-import { shepherdKey } from "../config/keys";
+import { bindPluginKeys } from "../config/keys";
 import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
@@ -238,25 +238,11 @@ export function createPluginHost(ctx: ServerContext) {
     for (const p of live) p.run!.group.signal("SIGKILL");
   };
 
-  // Keys for this session's running plugins: plugin.json's, remapped by [plugin_keys]. shepherd's own and reserved keys
-  // are refused, and when two plugins want one key both are disabled, so nothing depends on which started first.
-  const keyTable = () => {
-    const wanted = [...plugins.values()]
-      .filter((pl) => pl.run && !pl.run.revoked && pl.manifest?.keys?.length)
-      .flatMap((pl) =>
-        pl.manifest!.keys!.map((k) => {
-          const remap = ctx.cfg.plugin_keys?.[`${pl.name}.${k.action ?? k.pane}`];
-          return { plugin: pl.name, key: remap ?? k.key, action: k.action, pane: k.pane, description: k.description, remapped: remap !== undefined };
-        }),
-      );
-    const byKey = new Map<string, string[]>();
-    for (const w of wanted) if (w.key) byKey.set(w.key, [...(byKey.get(w.key) ?? []), w.plugin]);
-    return wanted.map(({ plugin, remapped, ...w }): PluginKey & { plugin: string } => {
-      const others = (byKey.get(w.key) ?? []).filter((p) => p !== plugin);
-      const reason = !w.key ? "turned off in [plugin_keys]" : shepherdKey(w.key) ?? (others.length || (byKey.get(w.key)?.length ?? 0) > 1 ? `also wanted by ${others.length ? others.join(", ") : `another key of ${plugin}`}` : undefined);
-      return { plugin, ...w, ...(remapped && !reason && { description: w.description }), state: reason ? "disabled" : "active", ...(reason && { reason }) };
-    });
-  };
+  // Keys for this session's running plugins as the SERVER's config binds them: what `plugin list` reports. Clients get
+  // plugin.json's keys in the view and bind them with their own config (bindPluginKeys), so these aren't theirs.
+  const declaredKeys = (pl: Plugin) => (pl.manifest?.keys ?? []).map(({ key, action, pane, description }) => ({ key, ...(action && { action }), ...(pane && { pane }), description }));
+  const keyTable = (): (PluginKey & { plugin: string })[] =>
+    bindPluginKeys([...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).flatMap((pl) => declaredKeys(pl).map((k) => ({ plugin: pl.name, ...k }))), ctx.cfg.plugin_keys);
   const keysOf = (name: string) => keyTable().filter((k) => k.plugin === name).map(({ plugin: _plugin, ...k }) => k);
 
   const view = ({ run, argv: _argv, manifest: _manifest, client, stopping: _stopping, starting: _starting, ui: _ui, ...p }: Plugin): PluginStatus => ({
@@ -278,7 +264,7 @@ export function createPluginHost(ctx: ServerContext) {
       ...(pl.ui.sidebar && { sidebar: pl.ui.sidebar }),
       badges: [...pl.ui.badges.values()],
       menu: pl.ui.menu,
-      keys: pl.run && !pl.run.revoked ? keysOf(pl.name) : [],
+      keys: pl.run && !pl.run.revoked ? declaredKeys(pl) : [], // plugin.json's defaults: each client binds them with its own config
       panes: pl.run && !pl.run.revoked ? (pl.manifest?.panes ?? []).map(({ id, title, placement }) => ({ id, title, placement })) : [],
       links: pl.client ? (pl.manifest?.links ?? []).filter((l) => pl.actions.includes(l.action)) : [],
     };

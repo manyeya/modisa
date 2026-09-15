@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 7;
+export const SDK_VERSION = 8;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -51,7 +51,7 @@ export type UiState = {
   sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string; instance?: string }[] };
   badges: { pane: string; instance: string; text: string; tone: Tone }[];
   menu: MenuItem[];
-  keys: { key: string; action?: string; pane?: string; description: string; state: "active" | "disabled"; reason?: string }[];
+  keys: { key: string; action?: string; pane?: string; description: string }[]; // as plugin.json declares them: each client binds them with its own config
   panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[];
 };
 
@@ -158,7 +158,7 @@ export class Client {
     /** A label on a pane's border, for that pane's current process (`instance`) only. */
     badge: (pane: string, instance: string, text: string, tone?: Tone) => this.request<UiState>("ui.badge.set", { pane, instance, text, ...(tone && { tone }) }),
     clearBadge: (pane: string) => this.request<UiState>("ui.badge.clear", { pane }),
-    /** Entries in the pane context menu; the action gets { pane, instance }. */
+    /** Entries in the pane context menu; the action gets the pane it was opened on as `call.target` ({ pane, instance }). */
     menu: (items: MenuItem[]) => this.request<UiState>("ui.menu.set", { items }),
     /** A toast in every attached client (a system notification too, if the user has those on); a few per 10s. */
     toast: (text: string, options: { tone?: Tone; system?: boolean } = {}) => this.request<true>("ui.toast", { text, ...options }),

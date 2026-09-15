@@ -73,7 +73,7 @@ export const sessionName = (session?: string) => session ?? Bun.env.SHEPHERD_SES
 
 // "<key>: <why>" for each of a plugin's keys that's off in that session
 const offKeys = (status: any): string[] => (status?.keys ?? []).filter((k: any) => k.state === "disabled").map((k: any) => `${k.key || "(none)"}: ${k.reason}`);
-const keysOff = (keys?: string[]) => (keys?.length ? `\n  keys off: ${keys.join("; ")}` : "");
+const keysOff = (keys?: string[]) => (keys?.length ? `\n  keys off in the server's config: ${keys.join("; ")}` : "");
 
 // Start a linked plugin in the one running session this reaches, and wait for it to connect: a process that started
 // isn't a plugin that's ready. Never starts a session.

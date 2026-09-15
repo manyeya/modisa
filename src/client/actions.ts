@@ -17,7 +17,7 @@ import { reload } from "./notify";
 import { quit } from "./connection";
 import { render } from "./render";
 import { deleteSpace, renameSpace } from "./spaces";
-import { pluginKey, pluginUi, runPluginAction } from "./plugin-ui";
+import { pluginKey, pluginKeys, pluginUi, runPluginAction } from "./plugin-ui";
 
 export function createActions(app: App): Record<string, Action> {
   const { r } = app;
@@ -28,13 +28,12 @@ export function createActions(app: App): Record<string, Action> {
     help: {
       label: "Keyboard guide",
       run: async () => {
-        const plugins = pluginUi(app).flatMap((plugin) =>
-          plugin.keys.map((k) => ({
-            name: `${app.cfg.prefix}  ${k.key}`,
-            description: k.state === "active" ? `${plugin.plugin}: ${k.description}` : `${plugin.plugin}: ${k.description} (off: ${k.reason})`,
-            value: k.state === "active" ? `plugin-key:${k.key}` : "",
-          })),
-        );
+        // plugins' keys as this client's config binds them
+        const plugins = pluginKeys(app).map((k) => ({
+          name: `${app.cfg.prefix}  ${k.key || "(none)"}`,
+          description: k.state === "active" ? `${k.plugin}: ${k.description}` : `${k.plugin}: ${k.description} (off: ${k.reason})`,
+          value: k.state === "active" ? `plugin-key:${k.key}` : "",
+        }));
         const action = await pick(app, "KEYBOARD / prefix " + app.cfg.prefix, [...Object.entries(bindings).map(([key, action]) => ({ name: `${app.cfg.prefix}  ${key}`, description: actions[action]?.label ?? action, value: action })), ...plugins]);
         if (action?.startsWith("plugin-key:")) pluginKey(app, action.slice("plugin-key:".length));
         else if (action && action !== "help") actions[action]?.run();

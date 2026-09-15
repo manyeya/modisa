@@ -68,7 +68,7 @@ export type PluginUiView = {
   sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string; instance?: string }[] }; // a sidebar section; a row's pane comes with its instance
   badges: { pane: string; instance: string; text: string; tone: Tone }[]; // labels on pane borders
   menu: { id: string; title: string; action: string }[]; // pane context menu entries
-  keys: PluginKey[]; // under the prefix
+  keys: { key: string; action?: string; pane?: string; description: string }[]; // plugin.json's, under the prefix: each client binds them with its own [plugin_keys]
   panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[]; // it can open (plugin.pane.open)
   links: { pattern?: string; regex?: string; action: string }[]; // URLs Ctrl+click hands to an action, in manifest order (src/protocol/links.ts)
 };
