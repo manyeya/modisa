@@ -13,13 +13,14 @@ shepherd plugin install <git-url>  # someone else's: --ref and --subdir pick a v
 `attention-log/` is a complete one made that way: when an agent newly becomes blocked, it appends a line to a log.
 The rest of this page is the protocol underneath, for plugins that don't use the client library.
 
-A plugin is **any program** shepherd starts alongside the session server. There is no SDK, no
-manifest and no API to implement: shepherd hands you a unix socket and gets out of the way. If it can
-speak newline-delimited JSON, it can be a plugin — Bun, Python, Go, a shell script wrapping the
-`shepherd` CLI.
+The client library (`shepherd plugin sdk`) is TypeScript, but nothing requires it: a plugin is a program shepherd
+starts with the session and connects to its unix socket, so anything that speaks newline-delimited JSON can be one —
+Bun, Python, Go, or a shell script wrapping the `shepherd` CLI. What a plugin can show in the TUI, its links and its
+limits are explained in [`attention-log/AGENTS.md`](attention-log/AGENTS.md) (the guide `plugin new` writes); this
+page is the wire protocol under all of it.
 
-Everything below is verified against a running session; `blocked-notifier/plugin.ts` in this
-directory is a complete working example.
+Everything below is verified against a running session; `blocked-notifier/plugin.ts` in this directory is a working
+example with no manifest and no library.
 
 ## Link it
 
@@ -33,12 +34,13 @@ A plugin is a directory with a `plugin.json`:
 protocol version the plugin speaks; one the server doesn't speak fails to start, and says so.
 
 ```sh
-shepherd plugin link ./attention-log    # checks plugin.json, links it into ~/.config/shepherd/plugins
-shepherd restart                         # plugins start with the session server
-shepherd plugin list                     # status, exit code, connected or not, actions, log file
+shepherd plugin link ./attention-log    # checks plugin.json, links it for every session, starts it in the running one
+shepherd plugin install <git-url>       # or fetch one: https, ssh, git or file URL, --ref and --subdir
+shepherd plugin list                     # status, exit code, connected or not, actions, source, keys that are off
 shepherd plugin logs attention-log
 shepherd plugin run attention-log <action> '{"any":"params"}'
-shepherd plugin unlink attention-log     # removes the link, never the directory
+shepherd plugin stop attention-log       # and plugin start attention-log
+shepherd plugin unlink attention-log     # removes the link; a directory you linked is never deleted
 ```
 
 **Shepherd owns the process.** Each plugin runs in its own process group. When the session stops,
@@ -55,10 +57,12 @@ the token shepherd started you with and the actions you offer:
 {"jsonrpc":"2.0","id":1,"method":"plugin.hello","params":{"token":"<$SHEPHERD_PLUGIN_TOKEN>","actions":["summary"]}}
 ```
 
-Shepherd then sends `plugin.action` requests (`{"action":"summary","params":{...}}`) on that
-connection. Reply with a result or an error on the request's `id`; the caller gets it, or
-`plugin_error`, `plugin_unavailable`, `no_such_action` or `timeout` (30s) as its error code.
-Each request carries an `invocation` id.
+Shepherd then sends `plugin.action` requests on that connection:
+`{"action":"summary","params":{...},"invocation":"attention-log-7"}`, plus `"target":{"pane","instance"}` when the
+user took the action on a pane (a menu entry, key or palette entry; already checked to be that pane's current process)
+and `"link":"https://…"` when it came from a Ctrl+clicked URL. `target` and `link` are never inside `params`. Reply
+with a result or an error on the request's `id`; the caller gets it, or `plugin_error`, `plugin_unavailable`,
+`no_such_action` or `timeout` (30s) as its error code.
 
 **A timeout means the outcome is unknown, not failed.** The plugin may still finish the action, and
 running it again can repeat its effects, so nothing retries it. Shepherd sends the plugin a
@@ -74,9 +78,11 @@ security boundary.** Anything running as you can reach the socket, and a plugin 
 the session stopping) or its process exiting revokes it and closes its connection; a new start gets a
 new token. Each plugin's log keeps the first 5 MB of output per run.
 
-`shepherd plugin unlink` removes the link, so no session starts the plugin again, and stops the running
-copy in the one session it reaches (the default, or `-s`). Other running sessions keep theirs until
-they restart.
+`shepherd plugin unlink` removes the link, so no session starts the plugin again. For a directory you linked, it stops
+the running copy in the one session it reaches (the default, or `-s`); other running sessions keep theirs until they
+restart. For a plugin `plugin install` fetched, it stops it in every running session it can reach, then deletes the
+checkout (never the plugin's data or logs), or keeps the checkout and says why when a session still runs it or can't
+be reached.
 
 ## Declare it in config.toml instead
 
@@ -102,9 +108,17 @@ The server starts your process with its own environment plus:
 |---|---|
 | `SHEPHERD_SOCKET` | absolute path to the session's unix socket — this is your API |
 | `SHEPHERD_SESSION` | the session name |
+| `SHEPHERD_PLUGIN` | a linked plugin's name |
+| `SHEPHERD_PLUGIN_TOKEN` | a linked plugin's token for `plugin.hello`, good for this run only |
+| `SHEPHERD_PLUGIN_DATA` | a linked plugin's own directory for files, `~/.local/state/shepherd/plugins/<name>` |
+| `SHEPHERD_PLUGIN_CONFIG` | a linked plugin's own config directory, `~/.config/shepherd/plugin-config/<name>` |
 
-stdout and stderr are inherited by the server, so they land in `~/.local/state/shepherd/<session>.log`.
-Redirect in `run` if you want your own file.
+A pane a plugin opens (`plugin.pane.open`) gets `SHEPHERD_PLUGIN`, `SHEPHERD_PLUGIN_DATA` and `SHEPHERD_PLUGIN_CONFIG`
+too, and `SHEPHERD_PLUGIN_CONTEXT`: JSON saying which pane it was opened from and with which params.
+
+A linked plugin's stdout and stderr go to `~/.local/state/shepherd/plugins/<session>.<name>.log` (`plugin logs`). A
+`[[plugin]]` program's are inherited by the server, so they land in `~/.local/state/shepherd/<session>.log`; redirect
+in `run` if you want your own file.
 
 **You are not a pane.** `SHEPHERD_PANE_ID` is deliberately unset for plugins. Two consequences:
 
@@ -177,7 +191,8 @@ event.
 
 `protocol.describe` returns the protocol version and JSON Schemas generated from the schemas the
 server uses: every request (`requests`), the results of the supported ones (`results`: `list`,
-`events.subscribe`, `pane.read`, `agent.list`, `wait`, `send`, `plugin.list`, `plugin.hello`), every
+`events.subscribe`, `pane.read`, `agent.list`, `wait`, `send`, `plugin.list`, `plugin.hello`, `ui.state`,
+`plugin.pane.open`), every
 event (`events`), the envelope, and the error reply (`error`). The e2e suite checks real replies and
 events against them.
 
@@ -242,8 +257,34 @@ it's for panes.
 | `tab.create`, `workspace.create` / `.list` / `.rename` / `.close` | | |
 | `events.subscribe` | `output` | start the event stream |
 | `report` | `pane`, `source`, `agent`, `state`, `seq`, `session`, `release` | drive a pane's state yourself |
+| `plugin.hello` | `token`, `actions[]` | binds this connection to your plugin's run |
+| `plugin.list` / `plugin.start` / `plugin.stop` | (`name`) | plugins' status; start or stop one |
+| `plugin.invoke` | `plugin`, `action`, `params` | calls another plugin's action, as `shepherd plugin run` does |
+| `protocol.describe` | — | the protocol version and JSON Schemas for everything here |
 
 `target` is a pane id (`p3`), an `@name`, or a bare name.
+
+## The TUI
+
+These work only on a plugin's bound connection (after `plugin.hello`); from any other connection they fail with
+`plugin_unavailable`. What each shows, how it's drawn, and the limits are in
+[`attention-log/AGENTS.md`](attention-log/AGENTS.md).
+
+| Method | Params | |
+|---|---|---|
+| `ui.status.set` / `ui.status.clear` | `id`, `text`, `tone`, `action` / `id` | a status row segment |
+| `ui.sidebar.set` / `ui.sidebar.clear` | `title`, `rows[]` (`text`, `tone`, `action`, `pane` + `instance`) | the plugin's sidebar section |
+| `ui.badge.set` / `ui.badge.clear` | `pane`, `instance`, `text`, `tone` / `pane` | a label on a pane's border |
+| `ui.menu.set` | `items[]` (`id`, `title`, `action`) | pane context menu entries |
+| `ui.toast` | `text`, `tone`, `system` | a passing message in every attached client |
+| `ui.state` | `plugin` | what it shows now |
+| `plugin.pane.open` | `plugin`, `pane`, `params`, `from` | opens one of `plugin.json`'s `panes` |
+| `ui.popup.close` | — | closes the plugin's popup |
+
+An `action` must be one the run offered in `plugin.hello`, or the call fails with `no_such_action`. A pane named with
+its `instance` that has closed or restarted fails with `pane_gone`. Too many updates fail with `rate_limited`; a popup
+while another is open fails with `ui_busy`. Everything a run showed is cleared when it ends. `plugin.json`'s `keys` and
+`links` need no calls: shepherd sends the plugin a `plugin.action` when one is used.
 
 ### Reporting state for your own tool
 
@@ -272,21 +313,29 @@ state.
 3. **Don't block the read loop.** Handle an event asynchronously, or you will stall behind your own
    pending request — especially with `pane.output` on.
 4. **`wait` blocks server-side**, so it is cheap. Use it instead of polling `list` in a loop.
-5. **Nothing supervises you.** If your process crashes, it stays dead until `shepherd restart`. Keep
-   the top-level loop boring.
+5. **Nothing supervises you.** If your process crashes, it stays dead until `shepherd plugin start <name>` or the next
+   server start. Keep the top-level loop boring.
 6. **Plugins run where the server runs.** With `--remote`, that is the remote machine — not your
-   laptop. A plugin that pops a desktop notification will pop it there, where nobody is looking.
-   See [Remote sessions](../../README.md#remote-sessions-over-ssh).
+   laptop — with its files. A desktop notification your process raises itself pops up there, where nobody is
+   looking; what you show through `ui.*` (a `ui.toast` with `system: true` included) is drawn by the attached client,
+   on the user's machine. See [Remote sessions](../../README.md#remote-sessions-over-ssh).
 7. **Subscribe before you act.** See the no-replay note above; it is the most common reason a plugin
    "does nothing" on the first run.
 
-## Try the example
+## Try the examples
+
+```sh
+shepherd plugin check examples/plugins/attention-log   # its manifest, build and behavioural tests
+shepherd plugin link examples/plugins/attention-log    # prefix A shows its log; blocked agents show in the sidebar
+```
+
+`blocked-notifier` is the no-manifest kind:
 
 ```sh
 bun examples/plugins/blocked-notifier/plugin.ts   # refuses to run outside a session
 ```
 
-Then add the `[[plugin]]` block above, `shepherd restart`, and put an agent into a prompt that needs
+Add the `[[plugin]]` block above, `shepherd restart`, and put an agent into a prompt that needs
 you. The line appears in the session log:
 
 ```text
