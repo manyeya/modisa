@@ -8,6 +8,7 @@ import { connectUnix } from "../protocol/transport";
 import type { Conn } from "../protocol/conn";
 import { SDK_TEXT, sdkVersion } from "./plugin";
 import { OwnedGroup } from "../server/plugins";
+import { shepherdKey } from "../config/keys";
 
 const SDK_VERSION = sdkVersion(SDK_TEXT);
 
@@ -43,6 +44,10 @@ export async function checkPlugin(arg: string): Promise<number> {
   if (!manifest) return bad("manifest", `${error}\nplugin.json needs at least: { "name": "my-plugin", "protocol": ${PROTOCOL}, "run": ["bun", "plugin.ts"] }`), 1;
   if (manifest.protocol !== PROTOCOL) return bad("manifest", `it says protocol ${manifest.protocol}; this shepherd speaks protocol ${PROTOCOL}`), 1;
   ok("manifest", `${manifest.name}, protocol ${manifest.protocol}, runs ${manifest.run.join(" ")}`);
+  // a key that's one of shepherd's own can never work (another plugin's, or a user's remap, can only be known in a session)
+  const clashes = (manifest.keys ?? []).flatMap((k) => (shepherdKey(k.key) ? [`${k.key}: ${shepherdKey(k.key)}; pick another key in plugin.json`] : []));
+  if (clashes.length) return bad("keys", clashes.join("\n")), 1;
+  if (manifest.keys?.length) ok("keys", manifest.keys.map((k) => k.key).join(", "));
   let pass = true;
 
   const lib = Bun.file(`${dir}/shepherd-plugin.ts`);

@@ -36,3 +36,16 @@ test("text shown in the TUI loses escape sequences and control characters, and i
   expect(cleanText("\x1b[31mred\x1b[0m\x07 bell\x1b]0;title\x07 ok", 100)).toBe("red bell ok");
   expect(cleanText("x".repeat(50), 10)).toBe("x".repeat(10));
 });
+
+test("invisible formatting characters that could reorder or hide text are removed", () => {
+  expect(cleanText("safe‮exe.txt", 100)).toBe("safeexe.txt"); // right-to-left override
+  expect(cleanText("⁦isolated⁩", 100)).toBe("isolated");
+  expect(cleanText("zero​width‍﻿⁠", 100)).toBe("zerowidth");
+});
+
+test("text is cut by terminal cells, never through a character", () => {
+  expect(cleanText("ab\u{1F600}cd", 3)).toBe("ab"); // the emoji is 2 cells: it doesn't fit, and isn't split
+  expect(cleanText("ab\u{1F600}cd", 4)).toBe("ab\u{1F600}");
+  expect(cleanText("日本語", 5)).toBe("日本"); // wide characters count 2
+  expect(cleanText("éé", 1)).toBe("é"); // a combining accent stays with its letter
+});

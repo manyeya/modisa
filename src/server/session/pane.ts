@@ -31,7 +31,7 @@ export class PtyPane {
   private rs = new RenderState();
 
   constructor(
-    opts: { id: string; cwd: string; command?: string; harness?: string; name?: string; createdBy: string; cols: number; rows: number },
+    opts: { id: string; cwd: string; command?: string; harness?: string; name?: string; createdBy: string; cols: number; rows: number; env?: Record<string, string> },
     private hooks: { output: (p: PtyPane, bytes: Uint8Array) => void; exit: (p: PtyPane) => void; title: (p: PtyPane) => void },
   ) {
     const shell = Bun.env.SHELL || "/bin/sh";
@@ -85,6 +85,7 @@ export class PtyPane {
         COLORTERM: "truecolor",
         SHEPHERD_PANE_ID: opts.id,
         PWD: opts.cwd,
+        ...opts.env,
       },
     }); } catch (error) {
       this.pty.close();

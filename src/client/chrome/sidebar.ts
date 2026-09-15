@@ -102,11 +102,16 @@ export function drawSidebar(app: App) {
         render(app);
       },
     });
-    const columns = sidebarColumns(`${folded ? "▸" : "▾"} ${section.title.toUpperCase()}`, String(section.rows.length), contentWidth(app));
+    // headed by the plugin's name on its own row, so a section can't pass for one of shepherd's however narrow the
+    // sidebar; the title the plugin chose goes under it
+    const columns = sidebarColumns(`${folded ? "▸" : "▾"} ${plugin.plugin}`, String(section.rows.length), contentWidth(app));
     head.add(new TextRenderable(r, { content: t`${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: contentWidth(app), height: 1, flexShrink: 0, fg: th.dim }));
     if (folded) continue;
+    side.add(new TextRenderable(r, { content: "  " + fit(section.title, contentWidth(app)), width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
     for (const item of section.rows.slice(0, 8)) {
-      const body = row(app, side, { run: () => (item.pane ? app.call("focusPane", { pane: item.pane }) : item.action && runPluginAction(app, plugin, item.action)) });
+      // focus the process the row was set for (the server checks the instance), never another pane given its id
+      const focus = () => app.conn.request("pane.focus", { target: `${item.pane}:${item.instance}` }).catch(() => app.toast(`${plugin.plugin}: that pane is gone`, th.warn));
+      const body = row(app, side, { run: () => (item.pane ? focus() : item.action && runPluginAction(app, plugin, item.action)) });
       body.add(new TextRenderable(r, { content: fit(item.text, contentWidth(app)), width: contentWidth(app), height: 1, flexShrink: 0, fg: toneColor(app, item.tone) }));
     }
   }

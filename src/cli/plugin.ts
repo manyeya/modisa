@@ -69,7 +69,11 @@ next: put the plugin's logic in plugin.ts (AGENTS.md explains how), then
   return 0;
 }
 
-const sessionName = (session?: string) => session ?? Bun.env.SHEPHERD_SESSION ?? "default";
+export const sessionName = (session?: string) => session ?? Bun.env.SHEPHERD_SESSION ?? "default";
+
+// "<key>: <why>" for each of a plugin's keys that's off in that session
+const offKeys = (status: any): string[] => (status?.keys ?? []).filter((k: any) => k.state === "disabled").map((k: any) => `${k.key || "(none)"}: ${k.reason}`);
+const keysOff = (keys?: string[]) => (keys?.length ? `\n  keys off: ${keys.join("; ")}` : "");
 
 // Start a linked plugin in the one running session this reaches, and wait for it to connect: a process that started
 // isn't a plugin that's ready. Never starts a session.
@@ -84,12 +88,15 @@ export async function startIn(session: string | undefined, name: string) {
       status = await conn.request("plugin.start", { name });
     } catch (e) {
       const code = (e as { code?: string }).code;
-      if (code === "already_running") return { session: where, state: "already-running" as const, pid: (await listed())?.pid, log: (await listed())?.log };
+      if (code === "already_running") {
+        const s = await listed();
+        return { session: where, state: "already-running" as const, pid: s?.pid, log: s?.log, disabledKeys: offKeys(s) };
+      }
       return { session: where, state: "failed" as const, reason: (e as Error).message };
     }
     for (const end = Date.now() + HELLO_MS; ; await Bun.sleep(200)) {
       const s = (await listed()) ?? status;
-      if (s.connected) return { session: where, state: "started" as const, pid: s.pid, log: s.log };
+      if (s.connected) return { session: where, state: "started" as const, pid: s.pid, log: s.log, disabledKeys: offKeys(s) };
       if (s.status !== "running") return { session: where, state: "failed" as const, reason: s.error ?? `it ${s.status}`, pid: s.pid, log: s.log };
       if (Date.now() > end) return { session: where, state: "no-hello" as const, reason: `it started but didn't connect within ${HELLO_MS / 1000}s`, pid: s.pid, log: s.log };
     }
@@ -103,9 +110,9 @@ export type StartOutcome = Awaited<ReturnType<typeof startIn>>;
 export function describeStart(start: StartOutcome, what = "linked") {
   switch (start.state) {
     case "started":
-      return `started in session ${start.session}, connected (pid ${start.pid})`;
+      return `started in session ${start.session}, connected (pid ${start.pid})${keysOff(start.disabledKeys)}`;
     case "already-running":
-      return `already running in session ${start.session} (pid ${start.pid}); not started again`;
+      return `already running in session ${start.session} (pid ${start.pid}); not started again${keysOff(start.disabledKeys)}`;
     case "not-started":
       return `not started: ${start.reason}`;
     case "failed":

@@ -23,6 +23,7 @@ export type Config = {
   permissions: { keys_foreign: Policy; close_foreign: Policy; run_foreign: Policy };
   agents: Record<string, { launch?: string; resume?: string }>;
   plugin: { run: string }[];
+  plugin_keys: Record<string, string>; // "<plugin>.<action or pane>" → key ("" turns it off); outranks plugin.json
   remote_command: string;
 };
 
@@ -39,6 +40,7 @@ export const DEFAULTS: Config = {
   permissions: { keys_foreign: "ask", close_foreign: "ask", run_foreign: "ask" },
   agents: {},
   plugin: [],
+  plugin_keys: {},
   remote_command: "shepherd",
 };
 
@@ -91,6 +93,11 @@ run_foreign = "ask"
 # [[plugin]]
 # run = "my-plugin --socket $SHEPHERD_SOCKET"
 
+# A plugin's keys (after the prefix) are the ones its plugin.json asks for unless you change them here:
+# "<plugin>.<action or pane>" = "K", or "" to turn one off.
+# [plugin_keys]
+# "attention-log.log" = "A"
+
 # How --remote starts shepherd on the far side of ssh. Set an absolute path when it isn't on the
 # PATH of a non-interactive ssh shell (~/.local/bin often isn't).
 # remote_command = "shepherd"
@@ -114,6 +121,7 @@ export async function loadConfig(): Promise<Config> {
       permissions: { ...DEFAULTS.permissions, ...user.permissions },
       agents: { ...user.agents },
       plugin: user.plugin ?? [],
+      plugin_keys: { ...user.plugin_keys },
     };
   } catch (e) {
     console.error(`shepherd: bad config ${CONFIG_PATH}: ${e}`);

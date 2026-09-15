@@ -17,7 +17,7 @@ import { reload } from "./notify";
 import { quit } from "./connection";
 import { render } from "./render";
 import { deleteSpace, renameSpace } from "./spaces";
-import { pluginUi, runPluginAction } from "./plugin-ui";
+import { pluginKey, pluginUi, runPluginAction } from "./plugin-ui";
 
 export function createActions(app: App): Record<string, Action> {
   const { r } = app;
@@ -25,7 +25,21 @@ export function createActions(app: App): Record<string, Action> {
 
   const actions: Record<string, Action> = {
     "theme-picker": { label: "Change theme", run: () => openSettings(app, "theme") },
-    help: { label: "Keyboard guide", run: () => pick(app, "KEYBOARD / prefix " + app.cfg.prefix, Object.entries(bindings).map(([key, action]) => ({ name: `${app.cfg.prefix}  ${key}`, description: actions[action]?.label ?? action, value: action }))).then((action) => { if (action && action !== "help") actions[action]?.run(); }) },
+    help: {
+      label: "Keyboard guide",
+      run: async () => {
+        const plugins = pluginUi(app).flatMap((plugin) =>
+          plugin.keys.map((k) => ({
+            name: `${app.cfg.prefix}  ${k.key}`,
+            description: k.state === "active" ? `${plugin.plugin}: ${k.description}` : `${plugin.plugin}: ${k.description} (off: ${k.reason})`,
+            value: k.state === "active" ? `plugin-key:${k.key}` : "",
+          })),
+        );
+        const action = await pick(app, "KEYBOARD / prefix " + app.cfg.prefix, [...Object.entries(bindings).map(([key, action]) => ({ name: `${app.cfg.prefix}  ${key}`, description: actions[action]?.label ?? action, value: action })), ...plugins]);
+        if (action?.startsWith("plugin-key:")) pluginKey(app, action.slice("plugin-key:".length));
+        else if (action && action !== "help") actions[action]?.run();
+      },
+    },
     "pane-menu": { label: "Pane context menu", run: () => contextMenu(app, app.tab().focused, Math.min(r.width - 34, app.area().x + 3), app.area().y + 1) },
     "pane-picker": { label: "Switch pane", run: async () => {
       const id = await pick(app, "PANES", app.view!.panes.map((p) => ({ name: p.name ? "@" + p.name : p.title, description: `${p.id} · ${p.agent?.state ?? p.status} · ${p.cwd}`, value: p.id })));

@@ -11,7 +11,7 @@ export type NotifyEvent = Exclude<AgentState, "idle">;
 export type IntegrationStatus = { id: string; name: string; kind: "lifecycle" | "session"; status: "current" | "outdated" | "none"; available: boolean; configured: boolean };
 
 // A failed request's stable code (JSON-RPC error.data.code); the CLI maps some to exit statuses.
-export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error", "already_running", "rate_limited"] as const;
+export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid_params", "unknown_method", "no_such_pane", "pane_gone", "no_such_plugin", "no_such_action", "plugin_unavailable", "plugin_error", "already_running", "rate_limited", "ui_busy"] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 // A plugin as its host sees it. status: running; exited (code 0), failed (nonzero, or it couldn't start: a bad
@@ -30,7 +30,12 @@ export type PluginStatus = {
   actions: string[]; // what `shepherd plugin run` can call
   group?: "running" | "gone"; // its process group: children can outlive the process shepherd started
   invocations?: number; // action calls sent to it and not yet answered or timed out
+  keys?: PluginKey[]; // its keys in this session: active, or disabled and why
 };
+
+// A plugin key: `key` after the prefix runs `action` or opens `pane`. Disabled when it's one of shepherd's keys or
+// reserved, when another plugin wants the same key (both are disabled), or when [plugin_keys] turns it off.
+export type PluginKey = { key: string; action?: string; pane?: string; description: string; state: "active" | "disabled"; reason?: string };
 
 export type PaneInfo = {
   id: string;
@@ -47,6 +52,7 @@ export type PaneInfo = {
   session?: { agent: string; id: string; source: string }; // the agent's own session, for exact resume
   cols: number;
   rows: number;
+  popup?: boolean; // a plugin's popup: no place in the layout, shown only by the client that opened it
 };
 
 export type TabView = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
@@ -59,9 +65,11 @@ export type PluginUiView = {
   run: string; // the run that set it: an action taken from what it showed is refused once that run has ended
   actions: { id: string; title: string; description?: string }[]; // offered by the connected run: palette entries
   status: { id: string; text: string; tone: Tone; action?: string }[]; // status bar segments
-  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string }[] }; // a sidebar section
+  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string; instance?: string }[] }; // a sidebar section; a row's pane comes with its instance
   badges: { pane: string; instance: string; text: string; tone: Tone }[]; // labels on pane borders
   menu: { id: string; title: string; action: string }[]; // pane context menu entries
+  keys: PluginKey[]; // under the prefix
+  panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[]; // it can open (plugin.pane.open)
 };
 
 // Everything a client needs to draw the session.

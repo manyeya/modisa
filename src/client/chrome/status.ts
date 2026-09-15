@@ -28,7 +28,7 @@ export function drawStatus(app: App) {
     let room = r.width - 100;
     for (const plugin of pluginUi(app)) {
       for (const s of plugin.status) {
-        const text = ` ${fit(s.text, 24)} `;
+        const text = ` ${plugin.plugin}: ${fit(s.text, 24)} `; // named, so it can't pass for shepherd's own
         const width = Bun.stringWidth(text);
         if (width > room) break;
         room -= width;

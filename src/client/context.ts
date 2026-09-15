@@ -14,7 +14,8 @@ import type { Manifest } from "../cli/update";
 export type ClientOptions = { session: string; connect: (spawn: boolean) => Promise<Conn>; remote?: boolean };
 export type ServerView = View & { paused: boolean };
 export type Option = { name: string; description: string; value: string };
-export type Modal = { close: (v: any) => void; keys?: (k: KeyEvent) => boolean; resize: () => void };
+// keepEscape: Escape goes to what's in the modal (a plugin popup's program), not to closing it
+export type Modal = { close: (v: any) => void; keys?: (k: KeyEvent) => boolean; resize: () => void; keepEscape?: boolean };
 export type Action = { label: string; run: () => any };
 export type PointerShape = "default" | "pointer" | "move";
 
@@ -47,6 +48,7 @@ export class App {
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
   readonly promptIds = new Map<number, BoxRenderable>(); // open permission prompts
   readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded
+  popup: { pane: string; title: string; width?: number | string; height?: number | string } | undefined; // a plugin popup this client opened
   chromeSig = ""; // what the tab bar, sidebar and status row last drew
   quitting = false;
   update: Manifest | undefined; // a newer shepherd release, when one is out

@@ -11,6 +11,7 @@ import { contextMenu } from "./modals/context-menu";
 import { drawTabs } from "./chrome/tabs";
 import { drawSidebar } from "./chrome/sidebar";
 import { drawStatus } from "./chrome/status";
+import { popupRect } from "./plugin-ui";
 
 export function render(app: App) {
   const { r, th } = app;
@@ -36,8 +37,19 @@ export function render(app: App) {
   const live = new Set(view.panes.map((p) => p.id));
   for (const [id, p] of app.panes) if (!live.has(id)) (p.destroy(), app.panes.delete(id));
   for (const p of view.panes) if (!app.panes.has(p.id)) addPane(app, p);
+  // a plugin popup this client opened: its process ended, so it's gone
+  if (app.popup && !live.has(app.popup.pane)) app.modal?.close(null);
   for (const [id, p] of app.panes) {
+    if (id === app.popup?.pane) {
+      const rect = popupRect(app);
+      Object.assign(p.box, { visible: true, left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: 101, borderColor: th.focus, titleColor: th.focus });
+      p.box.title = fit(` ${view.panes.find((x) => x.id === id)?.title ?? app.popup.title} · prefix x closes `, Math.max(0, rect.w - 4));
+      p.colors(th.bg, th.fg);
+      if (!p.term.focused) p.term.focus();
+      continue;
+    }
     p.box.visible = visible.has(id);
+    p.box.zIndex = 1;
     p.colors(th.bg, th.fg);
     if (!visible.has(id)) continue;
     const rect = rs.get(id)!;
@@ -50,7 +62,7 @@ export function render(app: App) {
     const agentTag = i.agent ? [indicators.pane && app.icon(i.agent.state), labels.agent && `${i.agent.harness} ${i.agent.state}`].filter(Boolean).map((s) => " " + s).join("") : "";
     const exited = i.status === "exited" ? ` [exited ${i.exitCode ?? "?"}]` : "";
     // plugins' badges, only for the process they were set for
-    const badges = (view.plugins ?? []).flatMap((plugin) => plugin.badges.filter((b) => b.pane === id && b.instance === i.instance).map((b) => ` [${b.text}]`)).join("");
+    const badges = (view.plugins ?? []).flatMap((plugin) => plugin.badges.filter((b) => b.pane === id && b.instance === i.instance).map((b) => ` [${plugin.plugin}: ${b.text}]`)).join("");
     p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited}${badges} `, Math.max(0, rect.w - 4));
     p.box.titleColor = focused ? th.focus : st ? th[st] : th.dim;
     p.box.bottomTitle = labels.status && rect.w >= 40 ? fit(` ${i.id} / ${i.agent?.state ?? i.status} ${focused ? "· active" : ""} `, rect.w - 4) : undefined;

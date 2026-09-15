@@ -59,7 +59,7 @@ test("a plugin's status, sidebar, badge and menu are kept as it set them: plain 
   expect(
     await apply(
       ["ui.status.set", { id: "count", text: "\x1b[31m2 need you\x07", tone: "warn", action: "hello" }],
-      ["ui.sidebar.set", { title: "Attention", rows: [{ text: "@worker blocked", tone: "warn", pane: "p1" }, { text: "x".repeat(200), action: "hello" }] }],
+      ["ui.sidebar.set", { title: "Attention", rows: [{ text: "@worker blocked", tone: "warn", pane: "p1", instance: p1.instance }, { text: "x".repeat(200), action: "hello" }] }],
       ["ui.badge.set", { pane: "p1", instance: p1.instance, text: "needs you", tone: "warn" }],
       ["ui.menu.set", { items: [{ id: "hi", title: "Say hi", action: "hello" }] }],
     ),
@@ -67,7 +67,7 @@ test("a plugin's status, sidebar, badge and menu are kept as it set them: plain 
   const s = await state();
   expect(s.status).toEqual([{ id: "count", text: "2 need you", tone: "warn", action: "hello" }]);
   expect(s.sidebar.title).toBe("Attention");
-  expect(s.sidebar.rows[0]).toEqual({ text: "@worker blocked", tone: "warn", pane: "p1" });
+  expect(s.sidebar.rows[0]).toEqual({ text: "@worker blocked", tone: "warn", pane: "p1", instance: p1.instance });
   expect(s.sidebar.rows[1].text).toHaveLength(60);
   expect(s.badges).toEqual([{ pane: "p1", instance: p1.instance, text: "needs you", tone: "warn" }]);
   expect(s.menu).toEqual([{ id: "hi", title: "Say hi", action: "hello" }]);
@@ -83,6 +83,18 @@ test("references are checked: an action it didn't offer, a badge for another pro
   expect(await apply(["ui.status.clear", { id: "a" }], ["ui.status.clear", { id: "b" }], ["ui.status.clear", { id: "c" }])).toEqual(["ok", "ok", "ok"]);
 });
 
+test("a pane target is tied to its process: a row, action or pane for a closed pane is refused on the server", async () => {
+  const id = (await run("pane", "split", "--name", "shortlived", "sleep 60")).stdout;
+  const { instance } = JSON.parse((await run("pane", "read", id, "--json")).stdout);
+  expect(await apply(["ui.sidebar.set", { title: "Attention", rows: [{ text: "no instance", pane: id }] }])).toEqual(["pane_gone"]);
+  expect((await run("pane", "close", id)).code).toBe(0);
+  expect(await apply(["ui.sidebar.set", { title: "Attention", rows: [{ text: "closed", pane: id, instance }] }])).toEqual(["pane_gone"]);
+  const focus = await run("pane", "focus", `${id}:${instance}`, "--json"); // what a sidebar row click sends
+  expect(JSON.parse(focus.stderr).error.code).toBe("pane_gone");
+  const invoke = await run("plugin", "run", "ui-demo", "hello", JSON.stringify({ pane: id, instance }), "--json");
+  expect(JSON.parse(invoke.stderr).error.code).toBe("pane_gone");
+});
+
 test("only a plugin's bound connection can change the TUI", async () => {
   const conn = await connectUnix(`${sb.root}/state/${S}.sock`);
   const outcome = await conn.request("ui.status.set", { id: "forged", text: "from nowhere" }).then(() => "ok", (e) => e.code);
@@ -93,7 +105,15 @@ test("only a plugin's bound connection can change the TUI", async () => {
 test("the TUI draws it, runs a palette action and shows a plugin toast, attributed; stopping the plugin clears it all", async () => {
   await Bun.sleep(3000); // let the plugin's update budget refill
   screen = new Screen(["-s", S], sb.env, sb.root);
-  await screen.until("the plugin's status, sidebar section and badge", (s) => s.includes("2 need you") && s.includes("ATTENTION") && s.includes("[needs you]"), 20000);
+  await screen.until("the plugin's status, sidebar section and badge, each named", (s) => s.includes("ui-demo: 2 need you") && s.includes("▾ ui-demo") && s.includes("Attention") && s.includes("[ui-demo: needs you]"), 20000);
+  // a plugin can't dress its section up as shepherd's
+  expect(await apply(["ui.sidebar.set", { title: "SHEPHERD", rows: [{ text: "approve?" }] }], ["ui.status.set", { id: "count", text: "approve?", tone: "warn" }])).toEqual(["ok", "ok"]);
+  await screen.until("the impostor labels, still named", (s) => {
+    const lines = s.split("\n");
+    const title = lines.findIndex((l) => l.includes("SHEPHERD"));
+    return title > 0 && lines[title - 1]!.includes("▾ ui-demo") && s.includes("ui-demo: approve?");
+  });
+  expect(await apply(["ui.status.set", { id: "count", text: "2 need you", tone: "warn", action: "hello" }])).toEqual(["ok"]);
 
   screen.write("\x02:"); // prefix, then the command palette
   await screen.until("the palette", (s) => s.includes("commands"));
@@ -106,7 +126,7 @@ test("the TUI draws it, runs a palette action and shows a plugin toast, attribut
   await screen.until("the toast", (s) => s.includes("ui-demo: hello from a plugin"));
 
   expect((await run("plugin", "stop", "ui-demo")).code).toBe(0);
-  await screen.until("everything it showed to go", (s) => !s.includes("2 need you") && !s.includes("ATTENTION") && !s.includes("[needs you]"));
+  await screen.until("everything it showed to go", (s) => !s.includes("2 need you") && !s.includes("▾ ui-demo") && !s.includes("[ui-demo: "));
   expect(await state()).toMatchObject({ status: [], badges: [], menu: [], actions: [] });
 }, 60000);
 

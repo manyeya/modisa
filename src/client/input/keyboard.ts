@@ -7,6 +7,7 @@ import { pointer } from "../panes/pointer";
 import { finishRename } from "../chrome/sidebar";
 import { bindings, keyName } from "./bindings";
 import { copyKey } from "./copy-mode";
+import { pluginKey } from "../plugin-ui";
 
 export function installKeyboard(app: App) {
   app.r.keyInput.on("keypress", (k) => {
@@ -21,7 +22,7 @@ export function installKeyboard(app: App) {
     }
     const modal = app.modal;
     if (modal) {
-      if (k.name === "escape") {
+      if (k.name === "escape" && !modal.keepEscape) {
         k.preventDefault();
         return modal.close(null);
       }
@@ -37,7 +38,8 @@ export function installKeyboard(app: App) {
       k.preventDefault();
       app.prefixArmed = false;
       if (isPrefix) app.focusedPane()?.term.handleKeyPress(k); // prefix twice sends it through
-      else app.actions[bindings[keyName(k)] ?? ""]?.run();
+      else if (bindings[keyName(k)]) app.actions[bindings[keyName(k)]!]?.run();
+      else pluginKey(app, keyName(k)); // shepherd's keys first; a plugin never gets one of them
       render(app);
     } else if (isPrefix) {
       k.preventDefault();

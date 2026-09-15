@@ -1,0 +1,27 @@
+// shepherd's own prefix bindings (key → action name), shared by the client, which runs them, and the server, which
+// refuses plugin keys that would shadow them.
+export const BUILTIN_BINDINGS: Record<string, string> = {
+  v: "split-right", "%": "split-right", "-": "split-down", '"': "split-down",
+  h: "focus-left", j: "focus-down", k: "focus-up", l: "focus-right",
+  left: "focus-left", down: "focus-down", up: "focus-up", right: "focus-right",
+  H: "resize-left", J: "resize-down", K: "resize-up", L: "resize-right",
+  z: "zoom", x: "close-pane", X: "close-tab",
+  c: "new-tab", n: "next-tab", p: "prev-tab",
+  w: "workspace-picker", W: "new-workspace",
+  a: "new-agent", b: "toggle-sidebar",
+  o: "pane-picker", e: "pane-menu", "?": "help",
+  t: "theme-picker",
+  "[": "copy-mode", "/": "search", ":": "palette",
+  s: "settings", R: "reload-config",
+  m: "toggle-messaging", i: "message-log", M: "send-message",
+  ",": "rename-tab", ".": "rename-pane", $: "rename-workspace", "&": "delete-workspace",
+  d: "detach",
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [String(n), `agent-${n}`])),
+};
+
+// Keys no plugin can have, whatever the bindings say: x closes any pane or popup, d detaches, and escape (with the prefix
+// twice, which types it through) are the ways out of anything a plugin opens.
+export const RESERVED_KEYS = ["x", "d", "escape"];
+
+// Why a plugin can't have `key`, if it can't.
+export const shepherdKey = (key: string) => (RESERVED_KEYS.includes(key) ? "reserved for getting out of plugin panes" : BUILTIN_BINDINGS[key] ? `shepherd's ${BUILTIN_BINDINGS[key]}` : undefined);

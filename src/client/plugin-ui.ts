@@ -1,9 +1,11 @@
 // What plugins contribute to the TUI, drawn in the user's theme from the data the server sends with the view, and
 // running their actions from a status segment, sidebar row, menu entry or the palette. Everything a plugin shows is
 // attributed to it by name, so none of it can pass for shepherd's own prompts.
+import { BoxRenderable } from "@opentui/core";
 import type { PluginUiView, Tone } from "../protocol/types";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
+import { render } from "./render";
 
 export const pluginUi = (app: App): PluginUiView[] => app.view?.plugins ?? [];
 export const toneColor = (app: App, tone: Tone) => ({ fg: app.th.fg, dim: app.th.dim, accent: app.th.accent, warn: app.th.warn })[tone] ?? app.th.fg;
@@ -25,6 +27,79 @@ export async function runPluginAction(app: App, from: { plugin: string; run: str
     if (code === "timeout") app.toast(`${label}: no answer in time, so its outcome is unknown`, app.th.warn, 8000);
     else app.toast(`${label}: ${message}`, app.th.blocked, 8000);
   }
+}
+
+// Prefix + a plugin's key: its action, or its pane, for the pane focused now (not when the action finishes).
+export function pluginKey(app: App, key: string) {
+  if (!app.view) return;
+  for (const plugin of pluginUi(app)) {
+    const k = plugin.keys.find((x) => x.key === key && x.state === "active");
+    if (!k) continue;
+    const pane = app.tab().focused;
+    const from = { pane, instance: app.info(pane)?.instance };
+    if (k.action) return runPluginAction(app, plugin, k.action, from);
+    if (k.pane) return openPluginPane(app, plugin, k.pane, {}, from);
+  }
+}
+
+// Open one of a plugin's panes. A popup is shown only here, by the client that asked, over everything else; if a dialog
+// is already open it waits for nothing and says so (ui_busy).
+export async function openPluginPane(app: App, from: { plugin: string; run: string }, pane: string, params: Record<string, unknown> = {}, origin?: { pane: string; instance?: string }) {
+  if (app.modal) return app.toast(`${from.plugin}: can't open ${pane} while a dialog is open`, app.th.warn);
+  try {
+    const opened = await app.conn.request<{ pane: string; placement: string; title: string; width?: number | string; height?: number | string }>("plugin.pane.open", { plugin: from.plugin, pane, params, run: from.run, ...(origin && { from: origin }) });
+    if (opened.placement === "popup") showPopup(app, opened);
+  } catch (e) {
+    const { code, message } = e as { code?: string; message: string };
+    app.toast(code === "ui_busy" ? `${from.plugin}: a popup is already open` : `${from.plugin}: ${message}`, code === "ui_busy" ? app.th.warn : app.th.blocked);
+  }
+}
+
+// cells from a manifest size: a number of cells, or a percentage of the terminal
+const cells = (size: number | string | undefined, total: number, fallback: number) =>
+  typeof size === "number" ? size : typeof size === "string" && size.endsWith("%") ? Math.floor((total * Number(size.slice(0, -1))) / 100) : fallback;
+
+export function popupRect(app: App) {
+  const p = app.popup!;
+  const w = Math.max(20, Math.min(app.r.width - 2, cells(p.width, app.r.width, Math.floor(app.r.width * 0.7))));
+  const h = Math.max(5, Math.min(app.r.height - 2, cells(p.height, app.r.height, Math.floor(app.r.height * 0.6))));
+  return { x: Math.floor((app.r.width - w) / 2), y: Math.floor((app.r.height - h) / 3), w, h };
+}
+
+// The popup is a modal: a veil over everything, and the popup's terminal on top. Its program gets every key,
+// Escape included; prefix x closes it.
+function showPopup(app: App, opened: { pane: string; title: string; width?: number | string; height?: number | string }) {
+  app.popup = { pane: opened.pane, title: opened.title, width: opened.width, height: opened.height };
+  const rect = popupRect(app);
+  app.conn.request("plugin.popup.resize", { pane: opened.pane, cols: Math.max(10, rect.w - 2), rows: Math.max(3, rect.h - 2) }).catch(() => {});
+  let armed = false;
+  const veil = new BoxRenderable(app.r, { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", zIndex: 90 });
+  veil.onMouseDown = (e) => { e.preventDefault(); e.stopPropagation(); };
+  app.r.root.add(veil);
+  const close = () => {
+    if (app.popup?.pane !== opened.pane) return;
+    app.popup = undefined;
+    app.modal = undefined;
+    veil.destroyRecursively();
+    app.conn.request("plugin.popup.close", { pane: opened.pane }).catch(() => {}); // already gone is fine
+    render(app);
+  };
+  app.modal = {
+    keepEscape: true,
+    close,
+    resize: () => render(app),
+    keys: (k) => {
+      if (k.ctrl && k.name === app.prefix.name && !armed) return (armed = true);
+      if (armed && k.name === "x") {
+        armed = false;
+        close();
+        return true;
+      }
+      armed = false;
+      return false; // everything else is the popup program's
+    },
+  };
+  render(app);
 }
 
 // A plugin's toast. A system notification too only if it asked and the user has system notifications on for something.

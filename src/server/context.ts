@@ -43,12 +43,14 @@ export type ServerContext = {
   agentOpts(harness: string, prompt?: string, name?: string, createdBy?: string): SpawnOpts;
   snapshot(p: PtyPane, lines?: number): PtyPane["info"] & { screen: string; recentOutput: string };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
+  paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups)
 };
 
 export function createContext(session: string, version: string, cfg: Config, adapters: Adapter[]): ServerContext {
   const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), down: false, prompts: new Map() } as ServerContext;
 
   ctx.pluginUi = () => [];
+  ctx.paneExited = () => {};
   ctx.attached = () => [...ctx.clients].filter((c) => c.attached);
   ctx.broadcast = (event, data, to = ctx.attached()) => to.forEach((c) => c.conn.notify(event, data));
   // shapes: `events` in protocol/schema.ts (an e2e test checks every emitted event against them)
@@ -78,7 +80,10 @@ export function createContext(session: string, version: string, cfg: Config, ada
       ctx.broadcast("output", { pane: p.id, data: b64(bytes) });
       ctx.emit("pane.output", { pane: p.id, instance: p.info.instance, text: new TextDecoder().decode(bytes) });
     },
-    exited: (p) => ctx.emit("process.exited", { pane: p.id, instance: p.info.instance, name: p.info.name, exitCode: p.info.exitCode }),
+    exited: (p) => {
+      ctx.emit("process.exited", { pane: p.id, instance: p.info.instance, name: p.info.name, exitCode: p.info.exitCode });
+      ctx.paneExited(p);
+    },
     created: (p) => ctx.emit("pane.created", { pane: p.id, instance: p.info.instance, name: p.info.name, command: p.info.command }),
     changed: () => ctx.changed(),
     empty: () => ctx.shutdown(true),

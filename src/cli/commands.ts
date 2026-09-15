@@ -128,7 +128,10 @@ export async function runCli(a: Args): Promise<number> {
       case "plugin list": {
         const ps = await call<any[]>("plugin.list");
         if (json) print(ps, true);
-        else table(ps.map((p) => ({ name: p.name, status: p.exitCode !== undefined && p.status !== "running" ? `${p.status} ${p.exitCode}` : p.status, connected: p.connected ? "yes" : "no", actions: p.actions.join(","), error: p.error ?? "", log: p.log })), ["name", "status", "connected", "actions", "error", "log"]);
+        else {
+          table(ps.map((p) => ({ name: p.name, status: p.exitCode !== undefined && p.status !== "running" ? `${p.status} ${p.exitCode}` : p.status, connected: p.connected ? "yes" : "no", actions: p.actions.join(","), error: p.error ?? "", log: p.log })), ["name", "status", "connected", "actions", "error", "log"]);
+          for (const p of ps) for (const k of p.keys ?? []) if (k.state === "disabled") console.log(`${p.name}: key ${k.key || "(none)"} (${k.action ?? k.pane}) is off: ${k.reason}`);
+        }
         break;
       }
       case "plugin stop":
@@ -140,6 +143,17 @@ export async function runCli(a: Args): Promise<number> {
       case "plugin ui":
         print(await call("ui.state", { plugin: rest[0] }), true);
         break;
+      case "plugin pane": {
+        let params: unknown;
+        try {
+          params = rest[2] === undefined ? undefined : JSON.parse(rest[2]);
+        } catch {
+          throw fail("usage", `params must be JSON, like '{"key":"value"}': ${rest[2]}`);
+        }
+        const opened = await call("plugin.pane.open", { plugin: rest[0], pane: rest[1], params });
+        json ? print(opened, true) : console.log(`${opened.pane} (${opened.placement})`);
+        break;
+      }
       case "plugin logs": {
         const p = (await call<any[]>("plugin.list")).find((x) => x.name === rest[0]);
         if (!p) throw fail("no_such_plugin", `no plugin named ${rest[0]} (see shepherd plugin list)`);

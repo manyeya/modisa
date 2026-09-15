@@ -98,9 +98,12 @@ export const paneInfo = z.strictObject({
   agent: agentInfo.optional(),
   session: z.strictObject({ agent: z.string(), id: z.string(), source: z.string() }).optional(), // the agent's own session, reported by its integration
   cols: z.number().int(), rows: z.number().int(),
+  popup: z.boolean().optional(), // a plugin's popup: no place in the layout, shown only by the client that opened it
 });
 const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string().optional() });
+const pluginKey = z.strictObject({ key: z.string(), action: z.string().optional(), pane: z.string().optional(), description: z.string(), state: z.enum(["active", "disabled"]), reason: z.string().optional() });
 const pluginStatus = z.strictObject({
+  keys: z.array(pluginKey).optional(),
   name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["running", "exited", "failed", "stopped"]),
   pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
   connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
@@ -111,13 +114,16 @@ export const pluginUiView = z.strictObject({
   run: z.string(),
   actions: z.array(z.strictObject({ id: z.string(), title: z.string(), description: z.string().optional() })),
   status: z.array(z.strictObject({ id: z.string(), text: z.string(), tone, action: z.string().optional() })),
-  sidebar: z.strictObject({ title: z.string(), rows: z.array(z.strictObject({ text: z.string(), tone, action: z.string().optional(), pane: z.string().optional() })) }).optional(),
+  sidebar: z.strictObject({ title: z.string(), rows: z.array(z.strictObject({ text: z.string(), tone, action: z.string().optional(), pane: z.string().optional(), instance: z.string().optional() })) }).optional(),
   badges: z.array(z.strictObject({ pane: z.string(), instance: z.string(), text: z.string(), tone })),
   menu: z.array(z.strictObject({ id: z.string(), title: z.string(), action: z.string() })),
+  keys: z.array(pluginKey),
+  panes: z.array(z.strictObject({ id: z.string(), title: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]) })),
 });
 export const results = {
   list: z.array(listedPane),
   "ui.state": pluginUiView,
+  "plugin.pane.open": z.strictObject({ pane: z.string(), instance: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]), title: z.string(), width: z.union([z.number(), z.string()]).optional(), height: z.union([z.number(), z.string()]).optional() }),
   "events.subscribe": z.strictObject({ protocol: z.number().int(), epoch: z.string(), seq: z.number().int().nonnegative(), panes: z.array(listedPane).optional() }),
   "pane.read": paneInfo.extend({ screen: z.string(), recentOutput: z.string() }),
   "agent.list": z.array(z.strictObject({ id: z.string(), name: z.string().optional(), title: z.string(), harness: z.string(), state, source: z.enum(["hook", "screen"]), workspace: z.string().optional() })),
@@ -139,6 +145,7 @@ export const pluginStart = z.strictObject({
   reason: z.string().optional(),
   pid: z.number().int().optional(),
   log: z.string().optional(),
+  disabledKeys: z.array(z.string()).optional(), // "<key>: <why>"
 });
 export const cliResults = {
   // registering is global (every session starts it); starting is only in `start.session`
@@ -178,7 +185,8 @@ export const api = {
   // characters and cut to length; actions must be ones the plugin offered in hello; updates are rate-limited.
   "ui.status.set": z.object({ caller, id: z.string().min(1).max(40), text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional() }),
   "ui.status.clear": z.object({ caller, id: z.string().min(1).max(40) }),
-  "ui.sidebar.set": z.object({ caller, title: z.string(), rows: z.array(z.object({ text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional(), pane: z.string().min(1).optional() })).max(50) }),
+  // a row with `pane` needs that pane's `instance`: clicking it reaches that process or nothing
+  "ui.sidebar.set": z.object({ caller, title: z.string(), rows: z.array(z.object({ text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional(), pane: z.string().min(1).optional(), instance: z.string().min(1).optional() })).max(50) }),
   "ui.sidebar.clear": z.object({ caller }),
   "ui.toast": z.object({ caller, text: z.string(), tone: tone.default("fg"), system: z.boolean().optional() }),
   "ui.badge.set": z.object({ caller, pane: z.string().min(1), instance: z.string().min(1), text: z.string(), tone: tone.default("accent") }),
@@ -186,6 +194,14 @@ export const api = {
   "ui.menu.set": z.object({ caller, items: z.array(z.object({ id: z.string().min(1).max(40), title: z.string(), action: z.string().min(1) })).max(20) }),
   // what a plugin shows now (any client may read it: plugin tests, plugin check)
   "ui.state": z.object({ caller, plugin: z.string().min(1) }),
+  // Open one of a plugin's panes (plugin.json `panes`) from a key, the palette, an action or the CLI. `from` is the pane
+  // it's opened over or next to, resolved when it was asked for. A popup opens only from an attached TUI client.
+  "plugin.pane.open": z.object({ caller, plugin: z.string().min(1), pane: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional(), from: z.object({ pane: z.string().min(1), instance: z.string().optional() }).optional() }),
+  // the client showing a popup: its size, and closing it
+  "plugin.popup.resize": z.object({ caller, pane: z.string().min(1), cols: z.number().int().min(10).max(1000), rows: z.number().int().min(3).max(500) }),
+  "plugin.popup.close": z.object({ caller, pane: z.string().min(1) }),
+  // a plugin closing its own popup (bound connection)
+  "ui.popup.close": z.object({ caller }),
   // from integrations: lifecycle state (authoritative for the pane until released or the agent exits),
   // the agent's own session id (for exact resume), or both
   report: z.object({

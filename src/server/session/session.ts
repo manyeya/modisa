@@ -6,7 +6,7 @@ import { cwd as here } from "../../core/paths";
 
 export type Tab = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
 export type Workspace = { id: string; name: string; cwd: string; tabs: Tab[]; active: number };
-export type SpawnOpts = { cwd?: string; command?: string; harness?: string; name?: string; createdBy?: string; ephemeral?: boolean };
+export type SpawnOpts = { cwd?: string; command?: string; harness?: string; name?: string; createdBy?: string; ephemeral?: boolean; env?: Record<string, string> };
 
 export class Session {
   workspaces: Workspace[] = [];
@@ -66,13 +66,13 @@ export class Session {
   private spawn(o: SpawnOpts, cwd: string): PtyPane {
     const id = `p${++this.paneSeq}`;
     const p = new PtyPane(
-      { id, cwd: o.cwd ?? cwd, command: o.command, harness: o.harness, name: o.name, createdBy: o.createdBy ?? "user", cols: this.area.w - 2, rows: this.area.h - 2 },
+      { id, cwd: o.cwd ?? cwd, command: o.command, harness: o.harness, name: o.name, createdBy: o.createdBy ?? "user", cols: this.area.w - 2, rows: this.area.h - 2, env: o.env },
       {
         output: this.hooks.output,
         title: () => this.hooks.changed(),
         exit: (p) => {
           // shells close their pane; command/agent panes stay so their output and exit code can be read
-          if ((!p.info.command || o.ephemeral) && this.panes.has(p.id)) this.close(p.id);
+          if ((!p.info.command || o.ephemeral) && this.panes.has(p.id)) this.locate(p.id) ? this.close(p.id) : this.dropHidden(p.id);
           else this.hooks.changed();
           this.hooks.exited(p);
         },
@@ -81,6 +81,22 @@ export class Session {
     this.panes.set(id, p);
     this.hooks.created(p);
     return p;
+  }
+
+  // A pane with no place in any tab (a plugin's popup). Every client gets its output; only the one that opened it
+  // shows it. Removed when its process exits, or by dropHidden.
+  spawnHidden(o: SpawnOpts): PtyPane {
+    const p = this.spawn({ ...o, ephemeral: true }, o.cwd ?? here());
+    p.info.popup = true;
+    this.hooks.changed();
+    return p;
+  }
+  dropHidden(id: string) {
+    const p = this.panes.get(id);
+    if (!p || this.locate(id)) return;
+    this.panes.delete(id);
+    p.dispose();
+    this.hooks.changed();
   }
 
   newWorkspace(name?: string, cwd = here(), o: SpawnOpts = {}) {

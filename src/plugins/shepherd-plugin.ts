@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 4;
+export const SDK_VERSION = 5;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -37,16 +37,19 @@ export type Action = (params: Record<string, unknown>, call: { invocation?: stri
 
 // What a plugin shows in shepherd's TUI (see Client.ui). Tones map to the user's theme.
 export type Tone = "fg" | "dim" | "accent" | "warn";
-export type SidebarRow = { text: string; tone?: Tone; action?: string; pane?: string };
+// a row that focuses a pane names its instance too: clicking reaches that process, or tells the user it's gone
+export type SidebarRow = { text: string; tone?: Tone; action?: string; pane?: string; instance?: string };
 export type MenuItem = { id: string; title: string; action: string };
 export type UiState = {
   plugin: string;
   run: string;
   actions: { id: string; title: string; description?: string }[];
   status: { id: string; text: string; tone: Tone; action?: string }[];
-  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string }[] };
+  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string; instance?: string }[] };
   badges: { pane: string; instance: string; text: string; tone: Tone }[];
   menu: MenuItem[];
+  keys: { key: string; action?: string; pane?: string; description: string; state: "active" | "disabled"; reason?: string }[];
+  panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[];
 };
 
 export class ShepherdError extends Error {
@@ -156,6 +159,8 @@ export class Client {
     menu: (items: MenuItem[]) => this.request<UiState>("ui.menu.set", { items }),
     /** A toast in every attached client (a system notification too, if the user has those on); a few per 10s. */
     toast: (text: string, options: { tone?: Tone; system?: boolean } = {}) => this.request<true>("ui.toast", { text, ...options }),
+    /** Close this plugin's popup, if one is open. */
+    closePopup: () => this.request<true>("ui.popup.close"),
     /** What this plugin shows now. */
     state: () => this.request<UiState>("ui.state", { plugin: this.name ?? "" }),
   };
