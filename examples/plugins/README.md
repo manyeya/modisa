@@ -6,7 +6,8 @@
 shepherd plugin new my-plugin      # TypeScript, shepherd's client library, AGENTS.md (the guide), a test
 cd my-plugin                       # put the logic in plugin.ts
 shepherd plugin check .            # manifest, build, then a throwaway session: starts, connects, your tests, exits
-shepherd plugin link . && shepherd restart
+shepherd plugin link .             # every session starts it; the running one starts it now
+shepherd plugin install <git-url>  # someone else's: --ref and --subdir pick a version and a directory
 ```
 
 `attention-log/` is a complete one made that way: when an agent newly becomes blocked, it appends a line to a log.

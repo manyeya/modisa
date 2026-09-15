@@ -117,11 +117,46 @@ shepherd integration uninstall claude   # takes the skill back out too`) + p(`Re
   },
   {
     slug: "plugins", group: "Automation", title: "Plugins",
-    description: "Any program, started with the session and given its socket.",
+    description: "Programs started with each session: actions, panes, keys, links, and a little of the TUI.",
     sections: [
-      { id: "config", title: "Declare one", html: code("toml", `[[plugin]]\nrun = "bun ~/code/watcher/plugin.ts"`) + p(
-        `Plugins start with the session server and get ${c("SHEPHERD_SOCKET")} — the session's unix socket, which is the whole API — plus ${c("SHEPHERD_SESSION")}. No SDK and no manifest: anything that speaks newline-delimited JSON-RPC qualifies. Edit the config, then ${c("shepherd restart")}.`,
-        `${c("run")} goes through a <strong>login</strong> shell, so your profile is sourced first and can rewrite ${c("PATH")}. Use absolute paths.`,
+      { id: "write", title: "Write one", html: code("sh", `shepherd plugin new my-plugin     # plugin.json, plugin.ts, a test, the client library, AGENTS.md
+shepherd plugin check my-plugin   # manifest, build, then a throwaway session: starts, connects, passes its tests
+shepherd plugin link my-plugin    # every session starts it; the running one starts it now`) + p(
+        `A plugin is a directory with a ${c("plugin.json")}: its name, its protocol version, how to start it (${c("run")}, an argv run in its directory), and what it offers — ${c("actions")}, ${c("panes")}, ${c("keys")} and ${c("links")}. ${c("plugin new")} writes it in TypeScript with shepherd's client library, which handles the protocol, and ${c("AGENTS.md")}, a guide an agent can follow to write the rest.`,
+        `A plugin runs as you, with your files and network. It isn't sandboxed.`,
+      ) },
+      { id: "install", title: "Install one", html: code("sh", `shepherd plugin install https://github.com/you/shepherd-plugins --subdir attention-log --ref v1.2.0
+shepherd plugin unlink attention-log`) + p(
+        `${c("install")} clones the repository (a ${c("--ref")} branch, tag or commit, and a ${c("--subdir")} if the plugin isn't at the top), checks the plugin's directory and manifest, links it and starts it. It installs no dependencies and runs no build scripts, and says when the plugin needs them. Nothing is left behind if it fails; a plugin that installs but won't start says so. ${c("plugin list")} shows each install's source and commit.`,
+        `Unlinking an install stops it in every running session, then deletes its checkout — never its data or logs. If a session still runs it or can't be reached, the checkout stays and ${c("unlink")} says why. A directory you linked yourself is never deleted. Both commands take ${c("--json")}.`,
+      ) },
+      { id: "manage", title: "Run it", html: table(["Command", "Does"], [
+        [c("plugin list [--json]"), "Every plugin: running or not, connected, its actions, where it came from, and keys that are off."],
+        [c("plugin logs <name>"), "Its stdout and stderr."],
+        [c("plugin stop <name> | start <name>"), "Stop or start it in the session."],
+        [c("plugin run <name> <action> [json]"), "Call one of its actions. A timeout means the outcome is unknown: running it again can repeat its effects."],
+        [c("plugin dev <dir>"), "A throwaway session with the plugin running, to try it by hand."],
+      ]) },
+      { id: "tui", title: "In the TUI", html: ul([
+        `<strong>Status segments</strong>, a <strong>sidebar section</strong> whose rows run an action or focus a pane, <strong>badges</strong> on pane borders, entries in the <strong>pane menu</strong>, and <strong>toasts</strong>.`,
+        `<strong>Panes</strong> the plugin can open: a ${c("split")}, ${c("tab")} or ${c("zoomed")} pane that stays after the plugin stops, an ${c("overlay")} over the focused pane that gives focus back when it closes, or a ${c("popup")} over everything in the client that asked (${kbd("Ctrl+B")} ${kbd("x")} closes it).`,
+        `Its actions are in the command palette. An action taken on a pane gets that pane, already checked to be the same process.`,
+        `Shepherd draws everything in your theme and names the plugin on every piece, so nothing a plugin shows can pass for shepherd's own. Each plugin, and a session's plugins together, can only show so much and update so often. It's all cleared when the plugin stops.`,
+      ]) },
+      { id: "keys", title: "Keys", html: code("toml", `[plugin_keys]\n"attention-log.log" = "Y"   # <plugin>.<action or pane>; "" turns it off`) + p(
+        `A plugin's ${c("keys")} bind keys under the prefix to its actions and panes. A key shepherd uses, one reserved for getting out of plugin panes (${c("x")}, ${c("d")}, Escape), or one two plugins want is off, and the keyboard guide says why. ${c("[plugin_keys]")} moves a key. Each client binds keys with its own config, so two people attached to one session can differ.`,
+      ) },
+      { id: "links", title: "Links", html: code("json", `"links": [
+  { "pattern": "https://github.com/*/pull/*", "action": "open-pr" },
+  { "regex": "^https://github\\\\.com/[^/]+/[^/]+/pull/\\\\d+$", "action": "open-pr" }
+]`) + ul([
+        `Ctrl+click an http or https URL in a pane to hand it to the action whose link matches. When several plugins match, you choose.`,
+        `${c("pattern")} is a URL glob: ${c("*")} matches anything, the rest is literal, and the scheme and host ignore case.`,
+        `${c("regex")} is RE2 syntax, matched in linear time, so there are no backreferences or lookaround. It sees the URL exactly as shown; anchor it with ${c("^")} and ${c("$")}, and use ${c("(?i)")} to ignore case.`,
+        `The action gets the URL as data, exactly as clicked. Terminal hyperlinks (OSC 8) whose label differs from their destination aren't followed.`,
+      ]) },
+      { id: "remote", title: "With --remote", html: p(
+        `Plugins run where the <em>server</em> runs, with that machine's files: with ${c("--remote")}, the remote machine. Your client draws what they show, in your theme, with your ${c("[plugin_keys]")} and your notification settings. While the connection is down nothing a plugin showed can be clicked; reconnecting brings it back. A client too old for plugin UI simply doesn't show it.`,
       ) },
       { id: "not-a-pane", title: "A plugin is not a pane", html: p(
         `${c("SHEPHERD_PANE_ID")} is deliberately unset, so commands that default to "the calling pane" have no default — always pass a ${c("target")}. And you act with the <strong>user's</strong> authority: the permission prompts that gate an agent typing into or closing a pane it didn't create do not apply to you.`,
@@ -134,14 +169,15 @@ shepherd integration uninstall claude   # takes the skill back out too`) + p(`Re
         [c("message.delivered"), `${c("id")}, ${c("from")}, ${c("to")}`],
         [c("client.attached"), "—"],
         [c("pane.output"), `${c("pane")}, ${c("text")} — opt in with ${c("{ output: true }")}; it is every byte of every pane`],
-      ]) + p(`<strong>Events are not replayed.</strong> You get what happens after your subscription lands. Plugins start while the server is still booting, so subscribe first and then call ${c("list")} if you need the state of the world.`) },
-      { id: "shell", title: "The cheap way", html: p("No socket client needed — the CLI reads the same variable:") + code("sh", `#!/bin/sh
+      ]) + p(`A plugin that does something at startup or on an event is a long-lived program, not a hook in its manifest: the client library's ${c("subscribe")} gives it every pane as of that moment, then each later event once, in order. <strong>Events are not replayed</strong> across a disconnect or a server restart: whatever came and went meanwhile is a gap.`) },
+      { id: "shell", title: "Without a manifest", html: code("toml", `[[plugin]]\nrun = "bun ~/code/watcher/plugin.ts"`) + p(
+        `A ${c("[[plugin]]")} line in config.toml starts any program with the session and gives it ${c("SHEPHERD_SOCKET")}, which is the whole API. ${c("run")} goes through a <strong>login</strong> shell, so your profile can rewrite ${c("PATH")}: use absolute paths. Or skip the socket client — the CLI reads the same variable:`,
+      ) + code("sh", `#!/bin/sh
 shepherd events --follow | while read -r line; do
   echo "$line" | grep -q '"type":"agent.state".*"to":"blocked"' && say "an agent needs you"
 done`) },
       { id: "example", title: "A worked example", html: p(
-        `<a href="https://github.com/manyeya/shepherd/tree/main/examples/plugins">examples/plugins/</a> is the full guide: the method list, the JSON-RPC error codes, and the rules that will bite you. <code>blocked-notifier/plugin.ts</code> there is a complete plugin — it announces any agent that gets blocked, with the question it is stuck on.`,
-        `Remember that plugins run where the <em>server</em> runs. With ${c("--remote")} that is the remote machine, so a desktop notification pops up there.`,
+        `<a href="https://github.com/manyeya/shepherd/tree/main/examples/plugins/attention-log">examples/plugins/attention-log</a> is a complete plugin built with ${c("plugin new")}: it logs agents that newly become blocked, shows who's blocked in the status row, the sidebar and on their panes, and opens the log in a popup. <a href="https://github.com/manyeya/shepherd/tree/main/examples/plugins">examples/plugins/</a> is the full guide to the protocol underneath.`,
       ) },
     ],
   },

@@ -126,7 +126,7 @@ Check what the remote shell actually sees with `ssh devbox 'command -v shepherd'
 
 Other things worth knowing:
 
-- **Everything server-side happens remotely.** Panes, agents, integrations and `[[plugin]]` programs all run on the remote machine. A plugin that raises a desktop notification raises it there.
+- **Everything server-side happens remotely.** Panes, agents, integrations and plugins all run on the remote machine, with its files. What a plugin shows in the TUI is drawn by your local client, in your theme and with your own `[plugin_keys]`.
 - **Sessions are per machine.** `shepherd ls` lists local sessions; to see the remote ones, `ssh devbox shepherd ls`.
 - **Detaching leaves it running.** `Ctrl+B d` drops the ssh connection; the remote session keeps going, and so do the agents. Reattach from any machine.
 - **Copy uses OSC 52**, so `Ctrl+B` copy actions reach your local clipboard through ssh in terminals that support it.
@@ -207,26 +207,32 @@ shepherd events --follow
 
 ## Plugins
 
-A plugin is any program shepherd starts alongside the session server — no SDK, no manifest. It gets `SHEPHERD_SOCKET` (the session's unix socket, which is the whole API) and `SHEPHERD_SESSION`, and talks the same newline-delimited JSON-RPC the CLI does. Watch events, react to agents, open panes, drive state.
-
-```toml
-[[plugin]]
-run = "bun ~/code/watcher/plugin.ts"
-```
-
-Plugins are **not** panes: `SHEPHERD_PANE_ID` is unset, so pass an explicit `target` to every command, and know that you act with the user's authority — the permission prompts that gate agents don't apply to you.
-
-Anything that reads a pipe qualifies:
+A plugin is a program shepherd starts with each session, connected to the session's socket: it watches what happens, offers actions, and can put a little into the TUI. `shepherd plugin new` scaffolds one in TypeScript with shepherd's client library, a behavioural test, and `AGENTS.md`, a guide an agent can follow to write the rest.
 
 ```sh
-shepherd events --follow | while read -r line; do ... done
+shepherd plugin new my-plugin          # plugin.json, plugin.ts, a test, the client library, AGENTS.md
+shepherd plugin check my-plugin        # manifest, build, then a throwaway session: starts, connects, passes its tests
+shepherd plugin link my-plugin         # every session starts it; the running one starts it now
+shepherd plugin install https://github.com/you/shepherd-plugins --subdir attention-log --ref v1.2.0
+shepherd plugin list | logs <name> | stop <name> | start <name>
+shepherd plugin run <name> <action> '{"any":"params"}'
+shepherd plugin unlink <name>
 ```
 
-**[`examples/plugins/`](examples/plugins/) is the full guide**: the event catalogue with verified payloads, the methods worth calling, the error codes, and the rules that will bite you (events aren't replayed; `run` goes through a *login* shell that can rewrite `PATH`; exit when the socket closes rather than reconnecting). [`blocked-notifier/plugin.ts`](examples/plugins/blocked-notifier/plugin.ts) is a complete working example — it announces any agent that gets blocked, with the question it's stuck on.
+- **`plugin.json`** names the plugin, its protocol version and how to start it (`run`, an argv run in its directory), and what it offers: `actions` (also listed in the command palette), `panes`, `keys` under the prefix, and `links`.
+- **Install** clones a git repository (optionally a `--ref` branch, tag or commit, and a `--subdir`), checks it, links it and starts it. It installs no dependencies and runs no build scripts, and says when the plugin needs them. `plugin list` shows each install's source and commit. Unlinking an install stops it in every running session, then deletes its checkout (never its data), or keeps the checkout and says why.
+- **In the TUI**: status segments, a sidebar section, badges on pane borders, entries in the pane menu, toasts, and panes opened as a split, tab, zoomed pane, overlay or popup. Shepherd draws all of it in your theme, names the plugin on every piece, and limits how much each plugin, and a session's plugins together, can show.
+- **Keys**: `keys` bind a key under the prefix to an action or a pane. A key shepherd uses, or one two plugins want, is off; move one in `[plugin_keys]` (`"<plugin>.<action or pane>" = "Y"`, or `""` to turn it off). Each client binds keys with its own config.
+- **Links**: Ctrl+click an http(s) URL in a pane to hand it to a plugin's action, matched by a `pattern` URL glob or a `regex` in RE2 syntax (linear time, so no backreferences or lookaround). When several plugins match, you choose. Terminal hyperlinks (OSC 8) whose label differs from their destination aren't followed.
+- **Remote**: with `--remote`, plugins, their processes and their files stay on the server's machine, and your client draws their UI with your theme, keys and notification settings. A client too old for plugin UI simply doesn't show it.
+- **Startup and event workflows** aren't manifest hooks: a plugin is a long-lived program, so it subscribes to events (a snapshot of every pane, then each change) and reacts.
+- A plugin runs as you, with your files and network. It isn't sandboxed.
+
+A `[[plugin]]` `run` line in config.toml still starts a program with no manifest. **[`examples/plugins/`](examples/plugins/) is the full guide** to the protocol underneath: the events, the methods, the error codes, and the rules that will bite you. [`attention-log/`](examples/plugins/attention-log/) is a complete plugin built with `plugin new`.
 
 ## Config
 
-`Ctrl+B s` opens the settings page; `shepherd config edit` (or "Edit config.toml" in the command palette) opens `~/.config/shepherd/config.toml` itself; changes apply live. It covers the prefix key, theme, sidebar, which notifications fire (toast, system, sound, bell), messaging limits, permissions, per-agent launch commands, `remote_command` for `--remote`, and `[[plugin]]` programs.
+`Ctrl+B s` opens the settings page; `shepherd config edit` (or "Edit config.toml" in the command palette) opens `~/.config/shepherd/config.toml` itself; changes apply live. It covers the prefix key, theme, sidebar, which notifications fire (toast, system, sound, bell), messaging limits, permissions, per-agent launch commands, `remote_command` for `--remote`, `[plugin_keys]`, and `[[plugin]]` programs.
 
 ## Build
 
