@@ -1,13 +1,15 @@
-// `shepherd plugin search [words]`: plugins published on GitHub with the shepherd-plugin topic, most starred first,
+// `shepherd plugin search [words]`: plugins published on GitHub with the shepherd-tui-plugin topic, most starred first,
 // each with the command that installs it. Nothing is installed or run, and nothing in the list is vetted.
 // SHEPHERD_PLUGIN_INDEX points the search at another API base (a mirror, a test server), or turns it "off".
-export const TOPIC = "shepherd-plugin";
+import { cleanText } from "../core/text";
+
+export const TOPIC = "shepherd-tui-plugin";
 const DEFAULT_INDEX = "https://api.github.com";
 
 export type Found = { name: string; repo: string; url: string; description: string; stars: number; updated: string; archived: boolean; install: string };
 
-// Text from the index is a stranger's: no control or bidirectional-override characters reach the terminal.
-const plain = (text: unknown, max = 200) => String(text ?? "").replace(/[\x00-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩]/g, " ").trim().slice(0, max);
+// Text from the index is a stranger's: cleaned of escape, control and bidi characters, and cut to terminal cells.
+const plain = (text: unknown, cells = 200) => cleanText(String(text ?? "").replace(/\s+/g, " "), cells).trim();
 
 function failed(message: string, json: boolean) {
   console.error(json ? JSON.stringify({ error: { code: "unreachable", message } }) : `shepherd: ${message}`);

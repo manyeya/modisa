@@ -18,6 +18,7 @@ import { bindPluginKeys } from "../config/keys";
 import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
+import { cleanText } from "../core/text";
 import type { PluginKey, PluginStatus, PluginUiView, Tone } from "../protocol/types";
 import { linkedPlugins, readInstall, readManifest } from "../config/plugins";
 import { understandsPlugins, type Client, type ServerContext } from "./context";
@@ -83,25 +84,8 @@ type UiState = {
 };
 const emptyUi = (): UiState => ({ status: new Map(), badges: new Map(), menu: [], tokens: UPDATES.burst, refilled: Date.now(), toasts: [] });
 
-// Text a plugin sends is shown in the TUI: no escape sequences, control characters, or invisible formatting characters
-// (bidi overrides and isolates, zero-width marks) that could reorder or hide part of a label; and at most `cells`
-// terminal cells, cut between whole characters (a wide character counts 2).
-const graphemes = new Intl.Segmenter();
-export const cleanText = (text: string, cells: number) => {
-  const plain = text
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, "") // OSC
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "") // CSI
-    .replace(/[\x00-\x1f\x7f-\x9f]|\p{Cf}/gu, "");
-  let out = "";
-  let width = 0;
-  for (const { segment } of graphemes.segment(plain)) {
-    const w = Bun.stringWidth(segment);
-    if (width + w > cells) break;
-    out += segment;
-    width += w;
-  }
-  return out;
-};
+// Text a plugin sends is shown in the TUI, cleaned and cut to cells (core/text.ts, shared with `plugin search`)
+export { cleanText };
 
 // id: public, shown with the run's UI so an action taken from it can be refused once the run has ended
 type Run = { id: string; group: OwnedGroup; token: string; revoked: boolean; note(line: string): void };

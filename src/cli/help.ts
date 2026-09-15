@@ -29,7 +29,7 @@ plugins (examples/plugins/README.md)
   shepherd plugin list [--json] | logs <name> [--lines 50] | stop <name> | start <name>
   shepherd plugin link <dir> [--json]         register it for every session, then start it in the running session
                                               reached (the default, or -s) and wait for it to connect
-  shepherd plugin search [words] [--json]     GitHub repositories with the shepherd-plugin topic, most starred first,
+  shepherd plugin search [words] [--json]     GitHub repositories with the shepherd-tui-plugin topic, most starred first,
                                               each with the command that installs it (none of them vetted)
   shepherd plugin install <git-url> [--ref r] [--subdir d] [--json]   clone, check and link it, then start it like link.
                                               No dependencies are installed and nothing is built; it runs as you

@@ -175,7 +175,7 @@ export const cliResults = {
   }),
   // managed: installed with `plugin install` (stopped in every reachable session; its checkout deleted only if none
   // still runs it). Otherwise a directory you linked: stopped in the session reached, and never deleted.
-  // repositories with the shepherd-plugin topic, most starred first; text is stripped of control characters
+  // repositories with the shepherd-tui-plugin topic, most starred first; text is stripped of control characters
   "plugin search": z.strictObject({
     query: z.string(),
     total: z.number().int().nonnegative(),

@@ -1,5 +1,5 @@
 // `shepherd plugin search`, against a local stand-in for GitHub's search API (no network): it asks for repositories
-// with the shepherd-plugin topic and the given words, most starred first; lists each with its install command and
+// with the shepherd-tui-plugin topic and the given words, most starred first; lists each with its install command and
 // says none is vetted; strips control and bidi characters from what the index sends; drops what install can't fetch;
 // never sends a GitHub token to another index; and fails plainly (exit 3) when the index is off, unreachable or
 // rate-limiting. Every result is checked in its --json form too.
@@ -33,13 +33,13 @@ const search = async (args: string[], env: Record<string, string> = {}) => {
   return sb.run("unused", ["plugin", "search", ...args], { SHEPHERD_PLUGIN_INDEX: `http://localhost:${server.port}`, ...env });
 };
 
-test("it searches the shepherd-plugin topic with the words given, most starred first, and lists each with its install command", async () => {
+test("it searches the shepherd-tui-plugin topic with the words given, most starred first, and lists each with its install command", async () => {
   reply = results([repo("attention-log", { stargazers_count: 42 }), repo("pr-opener")]);
   const r = await search(["github", "pr"]);
   expect(r.code).toBe(0);
   const url = new URL(requests[0]!.url);
   expect(url.pathname).toBe("/search/repositories");
-  expect(url.searchParams.get("q")).toBe("topic:shepherd-plugin github pr");
+  expect(url.searchParams.get("q")).toBe("topic:shepherd-tui-plugin github pr");
   expect(url.searchParams.get("sort")).toBe("stars");
   expect(r.stdout).toContain("someone/attention-log  ★ 42");
   expect(r.stdout).toContain("shepherd plugin install https://github.com/someone/attention-log.git");
@@ -68,11 +68,20 @@ test("what the index sends can't write to the terminal, and a repository install
   expect(json.results[0].description).not.toMatch(/[\x00-\x1f‮]/);
 });
 
+test("remote text is cut by terminal cells, never through a wide character", async () => {
+  reply = results([repo("wide", { description: "日".repeat(150) })]); // 300 cells
+  const json = JSON.parse((await search(["--json"])).stdout);
+  expect(json.results[0].description).toBe("日".repeat(100)); // 200 cells
+  expect(Bun.stringWidth(json.results[0].description)).toBe(200);
+  const text = (await search([])).stdout;
+  expect(text).toContain(`  ${"日".repeat(100)}\n`);
+});
+
 test("nothing found says so", async () => {
   reply = results([]);
   const r = await search(["nothing-like-this"]);
   expect(r.code).toBe(0);
-  expect(r.stdout).toContain('no plugins with the shepherd-plugin topic matching "nothing-like-this"');
+  expect(r.stdout).toContain('no plugins with the shepherd-tui-plugin topic matching "nothing-like-this"');
 });
 
 test("a GitHub token is never sent to another index", async () => {

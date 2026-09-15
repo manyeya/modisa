@@ -213,7 +213,7 @@ A plugin is a program shepherd starts with each session, connected to the sessio
 shepherd plugin new my-plugin          # plugin.json, plugin.ts, a test, the client library, AGENTS.md
 shepherd plugin check my-plugin        # manifest, build, then a throwaway session: starts, connects, passes its tests
 shepherd plugin link my-plugin         # every session starts it; the running one starts it now
-shepherd plugin search [words]         # GitHub repositories with the shepherd-plugin topic, and how to install each
+shepherd plugin search [words]         # GitHub repositories with the shepherd-tui-plugin topic, and how to install each
 shepherd plugin install https://github.com/you/shepherd-plugins --subdir attention-log --ref v1.2.0
 shepherd plugin list | logs <name> | stop <name> | start <name>
 shepherd plugin run <name> <action> '{"any":"params"}'
