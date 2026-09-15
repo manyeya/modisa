@@ -42,7 +42,8 @@ export function render(app: App) {
   for (const [id, p] of app.panes) {
     if (id === app.popup?.pane) {
       const rect = popupRect(app);
-      Object.assign(p.box, { visible: true, left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: 101, borderColor: th.focus, titleColor: th.focus });
+      // an opaque background: a box's default is transparent, and the spaces in its title would show the pane beneath
+      Object.assign(p.box, { visible: true, left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: 101, borderColor: th.focus, titleColor: th.focus, backgroundColor: th.bg });
       p.box.title = fit(` ${view.panes.find((x) => x.id === id)?.title ?? app.popup.title} · prefix x closes `, Math.max(0, rect.w - 4));
       p.colors(th.bg, th.fg);
       if (!p.term.focused) p.term.focus();

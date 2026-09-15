@@ -27,9 +27,9 @@ async function attach(session = S) {
   return ui;
 }
 // a session of its own: the linked plugins start in it
-async function fresh(name: string) {
+async function fresh(name: string, env: Record<string, string> = {}) {
   sessions.add(name);
-  await startServer(sb, name);
+  await startServer(sb, name, env);
   await connected("demo", name);
   return cli(name);
 }
@@ -169,9 +169,34 @@ test("a popup shows only where it was opened, is one per session, keeps Escape f
   expect((await here("plugin", "list")).code).toBe(0);
 }, 60000);
 
+test("a popup is opaque: every cell it covers is its own, over a pane full of text", async () => {
+  const session = "popup-opaque";
+  const here = await fresh(session, { TERM_PROGRAM: "Apple_Terminal" }); // its shell startup prints under the popup too
+  const full = (await here("pane", "split", "--name", "full", "awk 'BEGIN{for(i=0;i<20000;i++) printf \"X\"}'; sleep 120")).stdout;
+  await here("pane", "close", "p1"); // the full pane under the whole popup
+  await here("pane", "focus", full);
+  const ui = await attach(session);
+  await ui.until("the pane full of X", (s) => s.split("\n").filter((l) => l.includes("X".repeat(60))).length > 20);
+  ui.write("\x02U");
+  await ui.until("the popup", (s) => s.includes("in-popup") && s.includes("Pop · prefix x closes"));
+  await Bun.sleep(300);
+
+  const lines = ui.lines();
+  const top = lines.findIndex((l) => l.includes("Pop · prefix x closes"));
+  const left = lines[top]!.indexOf("╭");
+  const right = lines[top]!.indexOf("╮", left);
+  const row = (i: number) => lines[i]!.slice(left, right + 1);
+  expect(row(top)).toMatch(/^╭─ Pop · prefix x closes ─+╮$/);
+  expect(row(top + 1)).toMatch(/^│in-popup +│$/);
+  for (let i = top + 2; i < top + 11; i++) expect(row(i)).toMatch(/^│ +│$/);
+  expect(row(top + 11)).toMatch(/^╰─+╯$/);
+  ui.write("\x02x");
+  await ui.until("the popup gone, the X back", (s) => !s.includes("in-popup") && s.split("\n")[top]!.includes("X".repeat(60)));
+}, 60000);
+
 test("output from the pane underneath never draws over a popup, through a resize, and the pane redraws after it closes", async () => {
   const session = "popup-noise";
-  const here = await fresh(session);
+  const here = await fresh(session, { TERM_PROGRAM: "Apple_Terminal" });
   const noisy = (await here("pane", "split", "--name", "noisy", "while :; do printf 'noise noise noise\\033]7;file://host/tmp\\a\\033]0;title\\a\\033[31mred\\033[0m\\n'; sleep 0.05; done")).stdout;
   await here("pane", "focus", noisy);
   const ui = await attach(session);
