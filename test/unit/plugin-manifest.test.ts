@@ -13,6 +13,51 @@ test("the URL under a column: the whole URL, without trailing punctuation, or no
   expect(urlAt(`https://e.com/${"a".repeat(5000)}`, 3)).toHaveLength(2048);
 });
 
+test("a closing bracket stays when the URL opened it, and goes when it didn't", () => {
+  const wiki = "see https://en.wikipedia.org/wiki/Foo_(bar) now";
+  expect(urlAt(wiki, 10)).toBe("https://en.wikipedia.org/wiki/Foo_(bar)");
+  expect(urlAt("(see https://x.dev/a)", 8)).toBe("https://x.dev/a");
+  expect(urlAt("[https://x.dev/a[1]].", 3)).toBe("https://x.dev/a[1]");
+  expect(urlAt("https://x.dev/(a)).", 3)).toBe("https://x.dev/(a)");
+  expect(urlAt("https://x.dev/a_(b)_c", 3)).toBe("https://x.dev/a_(b)_c"); // inside the URL
+  expect(urlAt("https://x.dev/a).", 3)).toBe("https://x.dev/a"); // outside it
+  expect(urlAt("https://x.dev/a],", 3)).toBe("https://x.dev/a");
+  expect(urlAt("https://x.dev/a‮gpj.exe", 3)).toBe("https://x.dev/a"); // a bidi override ends it
+});
+
+test("the column is a terminal cell: wide characters before the URL take two", () => {
+  const cjk = "日本語 https://example.com/x"; // the URL starts at cell 7 and ends at cell 27
+  expect(urlAt(cjk, 7)).toBe("https://example.com/x");
+  expect(urlAt(cjk, 27)).toBe("https://example.com/x");
+  expect(urlAt(cjk, 28)).toBeUndefined();
+  expect(urlAt(cjk, 5)).toBeUndefined();
+  const emoji = "\u{1F642} https://e.dev/a"; // 2 cells, a space, then the URL
+  expect(urlAt(emoji, 3)).toBe("https://e.dev/a");
+  expect(urlAt(emoji, 2)).toBeUndefined();
+  // a combining accent is one cell with its letter, before the URL and inside it
+  const cafe = "café https://e.dev/café"; // "café " is 5 cells; the URL's 18 cells are 5..22
+  expect(urlAt(cafe, 5)).toBe("https://e.dev/café");
+  expect(urlAt(cafe, 22)).toBe("https://e.dev/café");
+  expect(urlAt(cafe, 23)).toBeUndefined();
+  expect(urlAt(cafe, 4)).toBeUndefined();
+  // a ZWJ family is one grapheme of two cells, before the URL and inside it
+  const family = "\u{1F468}‍\u{1F469}‍\u{1F467}";
+  const zwj = `${family} https://e.dev/${family}/p`; // the URL is cells 3..20: "https://e.dev/" 3..16, the family 17..18, "/p" 19..20
+  expect(urlAt(zwj, 3)).toBe(`https://e.dev/${family}/p`);
+  expect(urlAt(zwj, 18)).toBe(`https://e.dev/${family}/p`);
+  expect(urlAt(zwj, 20)).toBe(`https://e.dev/${family}/p`);
+  expect(urlAt(zwj, 21)).toBeUndefined();
+  expect(urlAt(zwj, 2)).toBeUndefined();
+});
+
+test("a link glob ignores case in the scheme and host, not in the path", () => {
+  expect(urlMatches("https://github.com/*", "https://GitHub.com/x")).toBe(true);
+  expect(urlMatches("https://GITHUB.com/*", "HTTPS://github.COM/x")).toBe(true);
+  expect(urlMatches("https://*.example.com/*", "https://API.Example.com/v1")).toBe(true);
+  expect(urlMatches("https://x.dev/A*", "https://x.dev/a")).toBe(false);
+  expect(urlMatches("https://x.dev/*?q=A", "https://X.dev/p?q=a")).toBe(false);
+});
+
 const base = { name: "demo", protocol: 1, run: ["bun", "plugin.ts"] };
 const problems = (manifest: object) => {
   const r = pluginManifest.safeParse(manifest);

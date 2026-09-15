@@ -7,6 +7,7 @@ import { urlMatches } from "../protocol/schema";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
 import { menu } from "./modals/menu";
+import { fit } from "./design";
 import { render } from "./render";
 
 export const pluginUi = (app: App): PluginUiView[] => app.view?.plugins ?? [];
@@ -54,7 +55,8 @@ export function pluginLink(app: App, pane: string, url: string, x: number, y: nu
   const go = (h: (typeof handlers)[number]) => runPluginAction(app, h.plugin, h.action, {}, instance ? { pane, instance } : undefined, url);
   if (!handlers.length) return app.toast(`No plugin handles ${short(url)}`, app.th.dim);
   if (handlers.length === 1) return go(handlers[0]!);
-  menu(app, `OPEN ${short(url)}`, handlers.map((h, i) => ({ name: `${h.plugin.plugin}: ${titleOf(app, h.plugin.plugin, h.action)}`, key: "", action: String(i) })), x, y)
+  // the title says what's being chosen, with the URL cut to fit the menu (fit also blanks control characters)
+  menu(app, `Open ${fit(url, 18)} with`, handlers.map((h, i) => ({ name: `${h.plugin.plugin}: ${titleOf(app, h.plugin.plugin, h.action)}`, key: "", action: String(i) })), x, y)
     .then((i) => {
       const h = i === null ? undefined : handlers[Number(i)];
       if (h) void go(h);

@@ -37,6 +37,20 @@ shepherd plugin stop {{name}}    # and plugin start {{name}}
 - `shepherd.request(method, params)` for anything else. Errors are `ShepherdError`, with a stable `code`.
 - `$SHEPHERD_PLUGIN_DATA` is a directory for the plugin's own files.
 
+## Links
+
+`"links": [{ "pattern": "https://github.com/*/pull/*", "action": "open-pr" }]` in `plugin.json` hands a URL the user
+Ctrl+clicks in a pane to that action. When several plugins match, shepherd asks the user which to use.
+
+- A pattern is a URL glob, not a regular expression: it starts with `http://` or `https://`, `*` matches any run of
+  characters (including `/`), and everything else is literal. It matches the whole URL; the scheme and host ignore
+  case, the path and query don't. There are no character classes or alternation: list one link per shape instead.
+- Only http and https URLs are ever handed over.
+- The action gets the URL as `call.link`, exactly as it appeared on screen (case, escapes and query kept), and never
+  in `params`. It's data the user clicked, not a command: don't pass it to a shell.
+- Only text on screen is matched. A terminal hyperlink (OSC 8) whose visible label differs from its destination isn't
+  supported: the destination can't be read.
+
 ## What to rely on, and what not to
 
 - A pane is `id` (like `p3`) plus `instance`, unique to its process. Key state by `instance`: ids come back after a

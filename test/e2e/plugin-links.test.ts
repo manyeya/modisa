@@ -21,12 +21,12 @@ async function plugin(name: string, pattern: string) {
   for (let i = 0; i < 100 && !JSON.parse((await run("plugin", "list", "--json")).stdout).find((p: any) => p.name === name)?.connected; i++) await Bun.sleep(100);
 }
 
-// Ctrl+click (SGR mouse, left button with ctrl) a few cells into text on screen
-async function ctrlClick(text: string) {
+// Ctrl+click (SGR mouse, left button with ctrl) `offset` cells into text on screen; columns are cells, not characters
+async function ctrlClick(text: string, offset = 2) {
   const lines = ui.lines();
   const row = lines.findIndex((l) => l.includes(text));
   expect(row).toBeGreaterThanOrEqual(0);
-  const col = lines[row]!.indexOf(text) + 2;
+  const col = Bun.stringWidth(lines[row]!.slice(0, lines[row]!.indexOf(text))) + offset;
   ui.write(`\x1b[<16;${col + 1};${row + 1}M\x1b[<16;${col + 1};${row + 1}m`);
 }
 const noToast = () => ui.until("earlier toasts gone", (s) => !s.includes("No plugin handles") && !s.includes(" got "), 15000);
@@ -44,6 +44,8 @@ beforeAll(async () => {
     `https://${"a".repeat(40)}c`,
     "ftp://example.com/x",
     "javascript:alert(1)",
+    "https://Example.COM/Path_A/%7Euser?Q=Mixed",
+    "日本語 https://example.com/wide",
   ];
   await run("pane", "split", "--name", "urls", `printf '%s\\n\\n' ${lines.map((l) => `'${l}'`).join(" ")}; sleep 120`); // as arguments: % in a URL isn't a format
   ui = new Screen(["-s", S], sb.env, sb.root);
@@ -65,7 +67,7 @@ test("one matching plugin: Ctrl+click runs its action with the URL as call.link,
 test("two matching plugins: a chooser, in plugin-name order", async () => {
   await noToast();
   await ctrlClick("https://example.com/shared");
-  await ui.until("the chooser", (s) => s.includes("alpha: Open") && s.includes("beta: Open") && s.includes("esc dismiss"));
+  await ui.until("the chooser, titled with the link", (s) => s.includes("Open https://example.c… with") && s.includes("alpha: Open") && s.includes("beta: Open"));
   const lines = ui.lines();
   expect(lines.findIndex((l) => l.includes("alpha: Open"))).toBeLessThan(lines.findIndex((l) => l.includes("beta: Open")));
   ui.write("\x1b[B\r"); // the second: beta
@@ -84,6 +86,18 @@ test("the URL arrives exactly as data: shell syntax in it is never run", async (
   await ui.until("alpha's answer", (s) => s.includes("alpha got https://example.com/$(touch%20pwned)x params {}"));
   expect(await Bun.file(`${sb.root}/pwned`).exists()).toBe(false);
   expect(await Bun.file(`${sb.root}/alpha/pwned`).exists()).toBe(false);
+}, 30000);
+
+test("the host matches in any case, and the action gets the URL byte for byte: case, escapes and query kept", async () => {
+  await noToast();
+  await ctrlClick("https://Example.COM/Path_A");
+  await ui.until("alpha's answer", (s) => s.includes("alpha got https://Example.COM/Path_A/%7Euser?Q=Mixed params {}"));
+}, 30000);
+
+test("after wide characters, a click on the URL's last cell still reaches it", async () => {
+  await noToast();
+  await ctrlClick("https://example.com/wide", "https://example.com/wide".length - 1);
+  await ui.until("alpha's answer", (s) => s.includes("alpha got https://example.com/wide params {}"));
 }, 30000);
 
 test("other schemes never run anything", async () => {

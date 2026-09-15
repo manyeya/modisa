@@ -51,10 +51,13 @@ export const pluginManifest = z
   });
 export type PluginManifest = z.infer<typeof pluginManifest>;
 
-// A link pattern against a whole URL: `*` is any run of characters, everything else is literal (case-sensitive).
-// Plugin patterns are never regular expressions: this greedy wildcard match takes at most pattern × URL steps
-// (500 × 2048), so no pattern can stall the server or the TUI.
-export function urlMatches(pattern: string, url: string) {
+// A link pattern against a whole URL: `*` is any run of characters, everything else is literal; the scheme and host
+// ignore case, as URLs do, and the path and query don't. Plugin patterns are never regular expressions: this greedy
+// wildcard match takes at most pattern × URL steps (500 × 2048), so no pattern can stall the server or the TUI.
+const lowerOrigin = (s: string) => s.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, (origin) => origin.toLowerCase());
+export function urlMatches(glob: string, link: string) {
+  const pattern = lowerOrigin(glob);
+  const url = lowerOrigin(link);
   let p = 0, u = 0, star = -1, resume = 0;
   while (u < url.length) {
     if (p < pattern.length && pattern[p] !== "*" && pattern[p] === url[u]) (p++, u++);

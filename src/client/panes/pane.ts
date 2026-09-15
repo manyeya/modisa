@@ -12,12 +12,32 @@ export type PaneHooks = {
   link: (url: string, x: number, y: number) => void; // Ctrl+click on a URL
 };
 
-// the URL on a screen line that covers a column, if any
-// ponytail: columns are string indexes, so a line with wide characters before the URL can miss; map cells if that bites
-export function urlAt(line: string, col: number) {
-  for (const m of line.matchAll(/https?:\/\/[^\s<>"'`]+/g)) {
-    const url = m[0].replace(/[.,;:!?)\]}]+$/, "").slice(0, 2048);
-    if (col >= m.index && col < m.index + url.length) return url;
+// The http(s) URL drawn over a terminal cell of a screen line, if any. Cells aren't string offsets: a wide character
+// takes two. Trailing punctuation isn't part of the URL; a closing bracket is, when it closes one opened in the URL.
+const closes: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+const count = (s: string, c: string) => s.split(c).length - 1;
+export function urlAt(line: string, cell: number) {
+  let at = -1;
+  let width = 0;
+  for (const { segment, index } of new Intl.Segmenter().segment(line)) {
+    const w = Bun.stringWidth(segment);
+    if (cell < width + w) {
+      at = index;
+      break;
+    }
+    width += w;
+  }
+  if (at < 0) return;
+  // control and bidirectional-override characters end a URL: they could disguise what the action receives
+  for (const m of line.matchAll(/https?:\/\/[^\s<>"'`\p{Cc}‎‏‪-‮⁦-⁩]+/gu)) {
+    let url = m[0];
+    for (let end = url.at(-1)!; /[.,;:!?)\]}]/.test(end); end = url.at(-1)!) {
+      const opener = closes[end];
+      if (opener && count(url, opener) >= count(url, end)) break;
+      url = url.slice(0, -1);
+    }
+    url = url.slice(0, 2048);
+    if (at >= m.index && at < m.index + url.length) return url;
   }
 }
 
