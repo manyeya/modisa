@@ -19,12 +19,18 @@ import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
 import type { PluginKey, PluginStatus, PluginUiView, Tone } from "../protocol/types";
-import { linkedPlugins, readManifest } from "../config/plugins";
+import { linkedPlugins, readInstall, readManifest } from "../config/plugins";
 import { understandsPlugins, type Client, type ServerContext } from "./context";
 import type { Handlers } from "./rpc/dispatch";
 import type { PtyPane } from "./session/pane";
 import type { SpawnOpts } from "./session/session";
 import { quote } from "./persist/template";
+
+// where an installed plugin came from, if this link is the one `plugin install` made
+const installOf = async (name: string, dir: string) => {
+  const record = await readInstall(name);
+  return record && record.dir === dir ? { source: record.source, ref: record.ref, commit: record.commit } : undefined;
+};
 
 const STOP_MS = 2000;
 const INVOKE_MS = Number(Bun.env.SHEPHERD_PLUGIN_INVOKE_MS) || 30_000;
@@ -216,6 +222,7 @@ export function createPluginHost(ctx: ServerContext) {
   const start = async () => {
     for (const l of await linkedPlugins()) {
       const pl = add(l.name, "linked", l.dir);
+      pl.install = await installOf(l.name, l.dir);
       if (l.error) await failed(pl, l.error);
       else if (await prepare(pl)) await launch(pl);
     }
@@ -341,6 +348,7 @@ export function createPluginHost(ctx: ServerContext) {
         if (!linked) throw fail("no_such_plugin", `no plugin named ${p.name} is linked (shepherd plugin link <dir>)`);
         pl = plugins.get(p.name) ?? add(linked.name, "linked", linked.dir);
         pl.dir = linked.dir;
+        pl.install = await installOf(linked.name, linked.dir);
         if (linked.error && !(pl.run?.group.alive() || pl.starting)) {
           await failed(pl, linked.error);
           return view(pl);

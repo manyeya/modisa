@@ -30,7 +30,8 @@ export type PluginStatus = {
   actions: string[]; // what `shepherd plugin run` can call
   group?: "running" | "gone"; // its process group: children can outlive the process shepherd started
   invocations?: number; // action calls sent to it and not yet answered or timed out
-  keys?: PluginKey[]; // its keys in this session: active, or disabled and why
+  keys?: PluginKey[]; // its keys as the server's config binds them: active, or disabled and why
+  install?: { source: string; ref: string | null; commit: string }; // fetched with `shepherd plugin install`
 };
 
 // A plugin key: `key` after the prefix runs `action` or opens `pane`. Disabled when it's one of shepherd's keys or

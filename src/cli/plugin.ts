@@ -17,7 +17,7 @@ import GUIDE from "../plugins/template/AGENTS.md" with { type: "text" };
 export const SDK_TEXT = String(SDK);
 export const sdkVersion = (text: string) => Number(/SDK_VERSION = (\d+)/.exec(text)?.[1]) || undefined;
 
-const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink"];
+const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink", "install"];
 export const isLocalPluginCommand = (verb?: string) => !!verb && LOCAL.includes(verb);
 
 const HELLO_MS = 10_000;
@@ -39,8 +39,10 @@ export async function runPluginLocal(verb: string, args: string[], flags: Args["
       return (await import("./plugin-check")).devPlugin(args[0] ?? ".");
     case "link":
       return link(args[0], str(flags.session), json);
+    case "install":
+      return (await import("./plugin-install")).install(args[0], { ref: str(flags.ref), subdir: str(flags.subdir), session: str(flags.session), json });
     default:
-      return unlink(args[0], str(flags.session));
+      return (await import("./plugin-install")).unlinkPlugin(args[0], str(flags.session), json);
   }
 }
 
@@ -157,24 +159,3 @@ async function link(arg: string | undefined, session: string | undefined, json: 
   return start.state === "failed" || start.state === "no-hello" ? 1 : 0;
 }
 
-// Removes the link, which every session reads at its next start. A running copy is stopped only in the one session
-// this reaches (the default, or -s); other running sessions keep theirs until they restart.
-async function unlink(name: string | undefined, session: string | undefined) {
-  if (!name) {
-    console.error("usage: shepherd plugin unlink <name>");
-    return 2;
-  }
-  const target = `${PLUGINS_DIR}/${name}`;
-  if ((await Bun.$`test -L ${target}`.quiet().nothrow()).exitCode !== 0) {
-    console.error(`shepherd: no linked plugin named ${name} in ${PLUGINS_DIR}`);
-    return 1;
-  }
-  await Bun.$`rm ${target}`.quiet(); // the link only, never the plugin's directory
-  console.log(`unlinked ${name}`);
-  const where = sessionName(session);
-  const conn = await connectExisting(session).catch(() => undefined);
-  const stopped = conn ? await conn.request("plugin.stop", { name }).then(() => true, () => false) : false;
-  conn?.close();
-  console.log(stopped ? `stopped it in session ${where}; other running sessions keep their copy until they restart` : `no running copy in session ${where}; other running sessions keep theirs until they restart`);
-  return 0;
-}

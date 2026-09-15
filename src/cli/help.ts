@@ -29,7 +29,11 @@ plugins (examples/plugins/README.md)
   shepherd plugin list [--json] | logs <name> [--lines 50] | stop <name> | start <name>
   shepherd plugin link <dir> [--json]         register it for every session, then start it in the running session
                                               reached (the default, or -s) and wait for it to connect
-  shepherd plugin unlink <name>               remove the link; stops it in the session reached only, others keep theirs
+  shepherd plugin install <git-url> [--ref r] [--subdir d] [--json]   clone, check and link it, then start it like link.
+                                              No dependencies are installed and nothing is built; it runs as you
+  shepherd plugin unlink <name> [--json]      remove the link. Installed: stopped in every running session, then its
+                                              checkout deleted (kept, saying why, if a session still uses it or can't be
+                                              reached). Linked by you: stopped in the session reached; never deleted
   shepherd plugin run <name> <action> [json]   call an action a running plugin offers. A timeout means its outcome is
                                               unknown: running it again can repeat its effects
 

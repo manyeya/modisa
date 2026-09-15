@@ -129,7 +129,7 @@ export async function runCli(a: Args): Promise<number> {
         const ps = await call<any[]>("plugin.list");
         if (json) print(ps, true);
         else {
-          table(ps.map((p) => ({ name: p.name, status: p.exitCode !== undefined && p.status !== "running" ? `${p.status} ${p.exitCode}` : p.status, connected: p.connected ? "yes" : "no", actions: p.actions.join(","), error: p.error ?? "", log: p.log })), ["name", "status", "connected", "actions", "error", "log"]);
+          table(ps.map((p) => ({ name: p.name, status: p.exitCode !== undefined && p.status !== "running" ? `${p.status} ${p.exitCode}` : p.status, connected: p.connected ? "yes" : "no", actions: p.actions.join(","), source: p.install ? `${p.install.source}${p.install.ref ? ` ${p.install.ref}` : ""} @${p.install.commit.slice(0, 7)}` : p.dir ?? "", error: p.error ?? "", log: p.log })), ["name", "status", "connected", "actions", "source", "error", "log"]);
           for (const p of ps) for (const k of p.keys ?? []) if (k.state === "disabled") console.log(`${p.name}: key ${k.key || "(none)"} (${k.action ?? k.pane}) is off in the server's config: ${k.reason}`);
         }
         break;

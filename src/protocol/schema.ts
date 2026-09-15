@@ -112,6 +112,7 @@ const pluginStatus = z.strictObject({
   name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["running", "exited", "failed", "stopped"]),
   pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
   connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
+  install: z.strictObject({ source: z.string(), ref: z.string().nullable(), commit: z.string() }).optional(),
 });
 const tone = z.enum(["fg", "dim", "accent", "warn"]);
 export const pluginUiView = z.strictObject({
@@ -156,6 +157,33 @@ export const pluginStart = z.strictObject({
 export const cliResults = {
   // registering is global (every session starts it); starting is only in `start.session`
   "plugin link": z.strictObject({ name: z.string(), dir: z.string(), linked: z.literal(true), alreadyLinked: z.boolean(), start: pluginStart }),
+  // installed: the checkout, record and link are in place (then `start` says whether it started). Not installed:
+  // `stage` and `reason` say where it failed, and nothing was left behind.
+  "plugin install": z.strictObject({
+    installed: z.boolean(),
+    alreadyInstalled: z.boolean().optional(),
+    name: z.string().optional(),
+    source: z.string(), // without credentials
+    ref: z.string().nullable(), // as requested; null: the default branch
+    commit: z.string().optional(), // what the ref resolved to
+    checkout: z.string().optional(),
+    dir: z.string().optional(), // the plugin's directory (the checkout, or --subdir inside it)
+    start: pluginStart.optional(),
+    hints: z.array(z.string()).optional(),
+    stage: z.enum(["git", "clone", "ref", "subdir", "manifest", "collision"]).optional(),
+    reason: z.string().optional(),
+  }),
+  // managed: installed with `plugin install` (stopped in every reachable session; its checkout deleted only if none
+  // still runs it). Otherwise a directory you linked: stopped in the session reached, and never deleted.
+  "plugin unlink": z.strictObject({
+    name: z.string(),
+    unlinked: z.literal(true),
+    managed: z.boolean(),
+    stoppedIn: z.array(z.string()),
+    stillUsing: z.array(z.string()),
+    unreachable: z.array(z.string()),
+    checkout: z.strictObject({ path: z.string(), deleted: z.boolean() }).optional(),
+  }),
 };
 
 export const api = {
