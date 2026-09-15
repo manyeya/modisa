@@ -70,6 +70,7 @@ export type PluginUiView = {
   menu: { id: string; title: string; action: string }[]; // pane context menu entries
   keys: PluginKey[]; // under the prefix
   panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[]; // it can open (plugin.pane.open)
+  links: { pattern: string; action: string }[]; // URLs Ctrl+click hands to an action, in manifest order
 };
 
 // Everything a client needs to draw the session.

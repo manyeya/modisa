@@ -14,7 +14,7 @@ export type Msg = {
 
 // plugin.json: who the plugin is, the protocol version it speaks, and how to start it (argv, run in the plugin's
 // directory, no shell). Optionally what it offers the TUI: actions (listed before it connects; hello must offer each),
-// panes it can open, keys under the prefix, and URL patterns that Ctrl+click hands to an action.
+// panes it can open, keys under the prefix, and URL globs that Ctrl+click hands to an action.
 const pluginId = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes");
 const cells = z.union([z.number().int().positive(), z.string().regex(/^\d{1,3}%$/, 'a number of cells, or a percentage like "80%"')]);
 export const pluginManifest = z
@@ -45,15 +45,26 @@ export const pluginManifest = z
       if (k.pane && !panes.has(k.pane)) problem(["keys", i, "pane"], `key ${k.key} opens pane ${k.pane}, which isn't in panes`);
     });
     m.links?.forEach((l, i) => {
-      try {
-        new RegExp(l.pattern);
-      } catch (e) {
-        problem(["links", i, "pattern"], `not a valid regular expression: ${(e as Error).message}`);
-      }
+      if (!/^https?:\/\//.test(l.pattern)) problem(["links", i, "pattern"], "a link pattern is a URL glob starting with http:// or https://, like https://github.com/*/pull/*");
       if (!actions.has(l.action)) problem(["links", i, "action"], `links to action ${l.action}, which isn't in actions`);
     });
   });
 export type PluginManifest = z.infer<typeof pluginManifest>;
+
+// A link pattern against a whole URL: `*` is any run of characters, everything else is literal (case-sensitive).
+// Plugin patterns are never regular expressions: this greedy wildcard match takes at most pattern × URL steps
+// (500 × 2048), so no pattern can stall the server or the TUI.
+export function urlMatches(pattern: string, url: string) {
+  let p = 0, u = 0, star = -1, resume = 0;
+  while (u < url.length) {
+    if (p < pattern.length && pattern[p] !== "*" && pattern[p] === url[u]) (p++, u++);
+    else if (p < pattern.length && pattern[p] === "*") (star = p++, resume = u);
+    else if (star >= 0) (p = star + 1, u = ++resume);
+    else return false;
+  }
+  while (pattern[p] === "*") p++;
+  return p === pattern.length;
+}
 
 // The public API: the server validates params with these; the CLI builds params from them.
 const target = z.string().min(1);
@@ -119,6 +130,7 @@ export const pluginUiView = z.strictObject({
   menu: z.array(z.strictObject({ id: z.string(), title: z.string(), action: z.string() })),
   keys: z.array(pluginKey),
   panes: z.array(z.strictObject({ id: z.string(), title: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]) })),
+  links: z.array(z.strictObject({ pattern: z.string(), action: z.string() })),
 });
 export const results = {
   list: z.array(listedPane),
@@ -182,7 +194,7 @@ export const api = {
   // run: the run whose UI the action was taken from (ui.state's `run`); refused if that run has since ended
   // target: the pane the action is for (a menu entry, key or palette entry), a complete pane + instance pair kept apart
   // from the plugin's own params; checked when invoked, and handed to the action as call.target
-  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional(), target: z.strictObject({ pane: z.string().min(1), instance: z.string().min(1) }).optional() }),
+  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional(), target: z.strictObject({ pane: z.string().min(1), instance: z.string().min(1) }).optional(), link: z.string().min(1).max(2048).optional() }),
   // A plugin's own TUI contributions, only on its bound connection (after plugin.hello). Text is cleaned of control
   // characters and cut to length; actions must be ones the plugin offered in hello; updates are rate-limited.
   "ui.status.set": z.object({ caller, id: z.string().min(1).max(40), text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional() }),

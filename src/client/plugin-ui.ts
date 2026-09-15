@@ -3,8 +3,10 @@
 // attributed to it by name, so none of it can pass for shepherd's own prompts.
 import { BoxRenderable } from "@opentui/core";
 import type { PluginUiView, Tone } from "../protocol/types";
+import { urlMatches } from "../protocol/schema";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
+import { menu } from "./modals/menu";
 import { render } from "./render";
 
 export const pluginUi = (app: App): PluginUiView[] => app.view?.plugins ?? [];
@@ -17,10 +19,10 @@ const short = (value: unknown) => {
 
 // Run a plugin's action and say how it went: its result, its error, or that a timeout left the outcome unknown.
 // `from` is the run whose UI it was taken from (captured when that was drawn): the server refuses it if that run ended.
-export async function runPluginAction(app: App, from: { plugin: string; run: string }, action: string, params: Record<string, unknown> = {}, target?: { pane: string; instance: string }) {
+export async function runPluginAction(app: App, from: { plugin: string; run: string }, action: string, params: Record<string, unknown> = {}, target?: { pane: string; instance: string }, link?: string) {
   const label = `${from.plugin}: ${titleOf(app, from.plugin, action)}`;
   try {
-    const result = await app.conn.request("plugin.invoke", { plugin: from.plugin, action, params, run: from.run, ...(target && { target }) });
+    const result = await app.conn.request("plugin.invoke", { plugin: from.plugin, action, params, run: from.run, ...(target && { target }), ...(link && { link }) });
     app.toast(result === null || result === undefined ? `${label} ✓` : `${label} → ${short(result)}`, app.th.done);
   } catch (e) {
     const { code, message } = e as { code?: string; message: string };
@@ -41,6 +43,23 @@ export function pluginKey(app: App, key: string) {
     if (k.action) return runPluginAction(app, plugin, k.action, {}, target);
     if (k.pane) return openPluginPane(app, plugin, k.pane, {}, target);
   }
+}
+
+// Ctrl+click on a URL: the plugin actions whose link pattern matches it, by plugin name then manifest order. One runs;
+// several ask which; none says so. The URL goes as the invocation's link, never as params.
+export function pluginLink(app: App, pane: string, url: string, x: number, y: number) {
+  if (app.modal) return;
+  const handlers = [...pluginUi(app)].sort((a, b) => a.plugin.localeCompare(b.plugin)).flatMap((plugin) => plugin.links.filter((l) => urlMatches(l.pattern, url)).map((l) => ({ plugin, action: l.action })));
+  const instance = app.info(pane)?.instance;
+  const go = (h: (typeof handlers)[number]) => runPluginAction(app, h.plugin, h.action, {}, instance ? { pane, instance } : undefined, url);
+  if (!handlers.length) return app.toast(`No plugin handles ${short(url)}`, app.th.dim);
+  if (handlers.length === 1) return go(handlers[0]!);
+  menu(app, `OPEN ${short(url)}`, handlers.map((h, i) => ({ name: `${h.plugin.plugin}: ${titleOf(app, h.plugin.plugin, h.action)}`, key: "", action: String(i) })), x, y)
+    .then((i) => {
+      const h = i === null ? undefined : handlers[Number(i)];
+      if (h) void go(h);
+    })
+    .catch((e) => app.toast(String(e), app.th.blocked));
 }
 
 // Open one of a plugin's panes. A popup is shown only here, by the client that asked, over everything else; if a dialog

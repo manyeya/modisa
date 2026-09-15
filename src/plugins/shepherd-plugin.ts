@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 6;
+export const SDK_VERSION = 7;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -34,8 +34,9 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // running, the caller has already been told the outcome is unknown, and neither the abort nor a rejection proves
 // that effects already started were undone.
 // `target` is the pane the user took the action from (a menu entry, key or palette entry), kept apart from params and
-// already checked by shepherd to be that pane's current process.
-export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string } }) => unknown;
+// already checked by shepherd to be that pane's current process. `link` is the URL the user Ctrl+clicked, when one of
+// the manifest's links matched it (shepherd checks the pattern); treat it as data, never as a command.
+export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string }) => unknown;
 
 // What a plugin shows in shepherd's TUI (see Client.ui). Tones map to the user's theme.
 export type Tone = "fg" | "dim" | "accent" | "warn";
@@ -218,14 +219,14 @@ export class Client {
     }
   }
 
-  private async answer(id: number, { action, params, invocation, target }: { action?: string; params?: Record<string, unknown>; invocation?: string; target?: { pane: string; instance: string } }) {
+  private async answer(id: number, { action, params, invocation, target, link }: { action?: string; params?: Record<string, unknown>; invocation?: string; target?: { pane: string; instance: string }; link?: string }) {
     const reply = (x: object) => this.send({ jsonrpc: "2.0", id, ...x });
     const run = action ? this.actions[action] : undefined;
     if (!run) return reply({ error: { code: -32601, message: `no action ${action}` } });
     const controller = new AbortController();
     if (invocation) this.running.set(invocation, controller);
     try {
-      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal, ...(target && { target }) })) ?? null });
+      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal, ...(target && { target }), ...(link && { link }) })) ?? null });
     } catch (error) {
       reply({ error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
     } finally {

@@ -11,7 +11,7 @@ import { contextMenu } from "./modals/context-menu";
 import { drawTabs } from "./chrome/tabs";
 import { drawSidebar } from "./chrome/sidebar";
 import { drawStatus } from "./chrome/status";
-import { popupRect } from "./plugin-ui";
+import { popupRect, pluginLink } from "./plugin-ui";
 
 export function render(app: App) {
   const { r, th } = app;
@@ -101,6 +101,7 @@ function addPane(app: App, p: PaneInfo) {
       onDivider: (x, y) => onDivider(app, x, y),
       beginResize: (x, y) => beginResize(app, x, y),
       pointer: (shape) => pointer(app, shape),
+      link: (url, x, y) => pluginLink(app, p.id, url, x, y),
     },
   );
   app.panes.set(p.id, cp);

@@ -16,7 +16,7 @@ import { DIR } from "../core/paths";
 import { CONFIG_DIR } from "../config/config";
 import { shepherdKey } from "../config/keys";
 import { ConnectionClosedError, fail } from "../protocol/conn";
-import { PROTOCOL, type PluginManifest } from "../protocol/schema";
+import { PROTOCOL, urlMatches, type PluginManifest } from "../protocol/schema";
 import type { PluginKey, PluginStatus, PluginUiView, Tone } from "../protocol/types";
 import { linkedPlugins, readManifest } from "../config/plugins";
 import type { Client, ServerContext } from "./context";
@@ -276,10 +276,11 @@ export function createPluginHost(ctx: ServerContext) {
       menu: pl.ui.menu,
       keys: pl.run && !pl.run.revoked ? keysOf(pl.name) : [],
       panes: pl.run && !pl.run.revoked ? (pl.manifest?.panes ?? []).map(({ id, title, placement }) => ({ id, title, placement })) : [],
+      links: pl.client ? (pl.manifest?.links ?? []).filter((l) => pl.actions.includes(l.action)) : [],
     };
   };
   const uiView = () =>
-    [...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).map(uiOf).filter((v) => v.actions.length || v.status.length || v.sidebar || v.badges.length || v.menu.length || v.keys.length || v.panes.length);
+    [...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).map(uiOf).filter((v) => v.actions.length || v.status.length || v.sidebar || v.badges.length || v.menu.length || v.keys.length || v.panes.length || v.links.length);
 
   // a pane is being closed: whether an overlay still had the focus then
   const paneClosing = (id: string, focused: boolean) => {
@@ -378,9 +379,11 @@ export function createPluginHost(ctx: ServerContext) {
       // an action aimed at a pane (from a menu, key or the palette) reaches that process or nothing
       if (p.target && ctx.s.panes.get(p.target.pane)?.info.instance !== p.target.instance) throw fail("pane_gone", `pane ${p.target.pane} has closed or restarted since`);
       if (!pl.actions.includes(p.action)) throw fail("no_such_action", `${p.plugin} has no action ${p.action} (it offers: ${pl.actions.join(", ") || "none"})`);
+      // a clicked URL reaches only an action whose link pattern matches it
+      if (p.link && !(pl.manifest?.links ?? []).some((l) => l.action === p.action && urlMatches(l.pattern, p.link!))) throw fail("invalid_params", `${p.plugin}'s ${p.action} doesn't handle that link`);
       const invocation = `${pl.name}-${++invocations}`;
       try {
-        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation, ...(p.target && { target: p.target }) }, { timeoutMs: INVOKE_MS })) ?? null;
+        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation, ...(p.target && { target: p.target }), ...(p.link && { link: p.link }) }, { timeoutMs: INVOKE_MS })) ?? null;
       } catch (e) {
         if ((e as { code?: string }).code === "timeout") {
           conn.notify("plugin.cancel", { invocation, action: p.action }); // advisory: nothing proves the action stopped

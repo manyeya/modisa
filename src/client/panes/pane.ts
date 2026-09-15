@@ -9,7 +9,17 @@ export type PaneHooks = {
   onDivider: (x: number, y: number) => boolean; // is (x, y) on a border between two panes?
   beginResize: (x: number, y: number) => void;
   pointer: (shape: PointerShape) => void;
+  link: (url: string, x: number, y: number) => void; // Ctrl+click on a URL
 };
+
+// the URL on a screen line that covers a column, if any
+// ponytail: columns are string indexes, so a line with wide characters before the URL can miss; map cells if that bites
+export function urlAt(line: string, col: number) {
+  for (const m of line.matchAll(/https?:\/\/[^\s<>"'`]+/g)) {
+    const url = m[0].replace(/[.,;:!?)\]}]+$/, "").slice(0, 2048);
+    if (col >= m.index && col < m.index + url.length) return url;
+  }
+}
 
 class PaneTerminal extends EmbeddedTerminalRenderable {
   hooks?: PaneHooks;
@@ -19,6 +29,13 @@ class PaneTerminal extends EmbeddedTerminalRenderable {
       e.preventDefault();
       e.stopPropagation();
       if (e.type === "down") this.hooks?.context(e.x, e.y);
+      return;
+    }
+    const url = e.button === 0 && e.modifiers.ctrl && (e.type === "down" || e.type === "up") ? urlAt(this.screen().lines[e.y - this.screenY] ?? "", e.x - this.screenX) : undefined;
+    if (url) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === "down") this.hooks?.link(url, e.x, e.y);
       return;
     }
     super.processMouseEvent(e);
