@@ -1,7 +1,7 @@
 // Native plugin UI: a plugin's bound connection sets status segments, a sidebar section, pane badges, menu entries
 // and toasts; shepherd stores them cleaned and bounded, draws them in the TUI, runs their actions from the palette,
 // refuses actions from a run that has ended, rate-limits updates, and clears it all when the plugin stops.
-import { test, expect, beforeAll, afterAll } from "bun:test";
+import { test, expect, beforeAll, beforeEach, afterAll } from "bun:test";
 import { Screen, sandbox, startServer } from "../support/harness";
 import { results } from "../../src/protocol/schema";
 import { connectUnix } from "../../src/protocol/transport";
@@ -48,6 +48,13 @@ runPlugin(async (shepherd) => {
   expect((await run("plugin", "link", dir)).code).toBe(0);
 }, 30000);
 
+// every test gets a fresh run of the plugin: nothing shown, a full update budget, whatever ran before it
+beforeEach(async () => {
+  await run("plugin", "stop", "ui-demo"); // not running is fine
+  await run("plugin", "start", "ui-demo");
+  await connected();
+}, 20000);
+
 afterAll(async () => {
   screen?.close();
   await run("kill", S);
@@ -78,7 +85,7 @@ test("references are checked: an action it didn't offer, a badge for another pro
   expect(await apply(["ui.status.set", { id: "x", text: "t", action: "nope" }])).toEqual(["no_such_action"]);
   expect(await apply(["ui.menu.set", { items: [{ id: "m", title: "M", action: "nope" }] }])).toEqual(["no_such_action"]);
   expect(await apply(["ui.badge.set", { pane: "p1", instance: "not-this-one", text: "b" }])).toEqual(["pane_gone"]);
-  expect(await apply(["ui.status.set", { id: "a", text: "a" }], ["ui.status.set", { id: "b", text: "b" }], ["ui.status.set", { id: "c", text: "c" }], ["ui.status.set", { id: "d", text: "d" }])).toEqual(["ok", "ok", "ok", "error"]);
+  expect(await apply(["ui.status.set", { id: "count", text: "n" }], ["ui.status.set", { id: "a", text: "a" }], ["ui.status.set", { id: "b", text: "b" }], ["ui.status.set", { id: "c", text: "c" }], ["ui.status.set", { id: "d", text: "d" }])).toEqual(["ok", "ok", "ok", "ok", "error"]);
   expect((await state()).status.map((s: any) => s.id)).toEqual(["count", "a", "b", "c"]);
   expect(await apply(["ui.status.clear", { id: "a" }], ["ui.status.clear", { id: "b" }], ["ui.status.clear", { id: "c" }])).toEqual(["ok", "ok", "ok"]);
 });
@@ -113,6 +120,15 @@ test("only a plugin's bound connection can change the TUI", async () => {
 
 test("the TUI draws it, runs a palette action and shows a plugin toast, attributed; stopping the plugin clears it all", async () => {
   await Bun.sleep(3000); // let the plugin's update budget refill
+  const p1 = JSON.parse((await run("pane", "read", "p1", "--json")).stdout);
+  expect(
+    await apply(
+      ["ui.status.set", { id: "count", text: "2 need you", tone: "warn", action: "hello" }],
+      ["ui.sidebar.set", { title: "Attention", rows: [{ text: "@worker blocked", tone: "warn", pane: "p1", instance: p1.instance }] }],
+      ["ui.badge.set", { pane: "p1", instance: p1.instance, text: "needs you", tone: "warn" }],
+    ),
+  ).toEqual(["ok", "ok", "ok"]);
+  screen?.close();
   screen = new Screen(["-s", S], sb.env, sb.root);
   await screen.until("the plugin's status, sidebar section and badge, each named", (s) => s.includes("ui-demo: 2 need you") && s.includes("▾ ui-demo") && s.includes("Attention") && s.includes("[ui-demo: needs you]"), 20000);
   // a plugin can't dress its section up as shepherd's
@@ -140,8 +156,6 @@ test("the TUI draws it, runs a palette action and shows a plugin toast, attribut
 }, 60000);
 
 test("an action taken from an ended run's UI is refused; the new run's works", async () => {
-  expect((await run("plugin", "start", "ui-demo")).code).toBe(0);
-  await connected();
   const current = (await state()).run;
   const conn = await connectUnix(`${sb.root}/state/${S}.sock`);
   const old = await conn.request("plugin.invoke", { plugin: "ui-demo", action: "hello", run: "an-ended-run" }).then(() => "ok", (e) => e.code);

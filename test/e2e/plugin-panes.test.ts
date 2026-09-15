@@ -72,20 +72,20 @@ afterAll(async () => {
 });
 
 test("split, tab and zoomed open ordinary panes with the plugin's environment, and outlive the plugin", async () => {
-  const side = JSON.parse((await run("plugin", "pane", "demo", "side", "--json")).stdout);
+  const session = "placements";
+  const here = await fresh(session);
+  const side = JSON.parse((await here("plugin", "pane", "demo", "side", "--json")).stdout);
   expect(side).toMatchObject({ placement: "split", title: "Side" });
-  expect((await run("wait", side.pane, "--match", "side:demo:config", "--timeout", "10")).code).toBe(0);
-  expect((await list()).find((p) => p.id === side.pane)).toMatchObject({ createdBy: "plugin:demo", title: "Side" });
-  const tabs = JSON.parse((await run("workspace", "list", "--json")).stdout)[0].tabs;
-  expect(JSON.parse((await run("plugin", "pane", "demo", "board", "--json")).stdout).placement).toBe("tab");
-  expect(JSON.parse((await run("workspace", "list", "--json")).stdout)[0].tabs).toBe(tabs + 1);
-  expect(JSON.parse((await run("plugin", "pane", "demo", "focus", "--json")).stdout).placement).toBe("zoomed");
+  expect((await here("wait", side.pane, "--match", "side:demo:config", "--timeout", "10")).code).toBe(0);
+  expect((await list(session)).find((p) => p.id === side.pane)).toMatchObject({ createdBy: "plugin:demo", title: "Side" });
+  const tabs = JSON.parse((await here("workspace", "list", "--json")).stdout)[0].tabs;
+  expect(JSON.parse((await here("plugin", "pane", "demo", "board", "--json")).stdout).placement).toBe("tab");
+  expect(JSON.parse((await here("workspace", "list", "--json")).stdout)[0].tabs).toBe(tabs + 1);
+  expect(JSON.parse((await here("plugin", "pane", "demo", "focus", "--json")).stdout).placement).toBe("zoomed");
 
-  expect((await run("plugin", "stop", "demo")).code).toBe(0);
-  expect((await list()).some((p) => p.id === side.pane)).toBe(true); // the session's now
-  expect((await run("plugin", "start", "demo")).code).toBe(0);
-  await connected("demo");
-}, 40000);
+  expect((await here("plugin", "stop", "demo")).code).toBe(0);
+  expect((await list(session)).some((p) => p.id === side.pane)).toBe(true); // the session's now
+}, 60000);
 
 test("a popup only opens from a TUI client", async () => {
   const r = await run("plugin", "pane", "demo", "pop", "--json");
@@ -106,41 +106,46 @@ test("keys: shepherd's own and one two plugins want are off, and a [plugin_keys]
 });
 
 test("an overlay opens zoomed over the pane and gives focus and zoom back when it closes", async () => {
-  const ui = await attach();
-  await run("pane", "focus", "p1");
+  const session = "overlay-restore";
+  const here = await fresh(session);
+  await here("pane", "split", "--name", "beside", "sleep 120"); // two panes, so zoom shows
+  await here("pane", "focus", "p1");
+  const ui = await attach(session);
   await ui.until("p1 focused, not zoomed", (s) => borders(s) > 1);
   ui.write("\x02O");
   await ui.until("the overlay, zoomed", (s) => s.includes("peeking") && borders(s) === 1);
-  const overlay = (await list()).find((p) => p.title === "Peek");
+  const overlay = (await list(session)).find((p) => p.title === "Peek");
   expect(overlay).toMatchObject({ focused: true, createdBy: "plugin:demo" });
   ui.write("\r"); // its program ends
   await ui.until("the overlay gone, the layout back", (s) => !s.includes("peeking") && borders(s) > 1);
-  expect((await list()).find((p) => p.id === "p1")).toMatchObject({ focused: true });
-  expect((await list()).some((p) => p.title === "Peek")).toBe(false);
-}, 40000);
+  expect((await list(session)).find((p) => p.id === "p1")).toMatchObject({ focused: true });
+  expect((await list(session)).some((p) => p.title === "Peek")).toBe(false);
+}, 60000);
 
 test("an overlay doesn't take focus back if the user focused another pane in that tab meanwhile", async () => {
-  const other = (await run("pane", "split", "--name", "elsewhere", "sleep 120")).stdout;
-  await run("pane", "focus", "p1");
-  const overlay = JSON.parse((await run("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
-  await run("pane", "focus", other); // the user moves on, in the same tab
-  await run("pane", "close", overlay);
+  const session = "overlay-same-tab";
+  const here = await fresh(session);
+  const other = (await here("pane", "split", "--name", "elsewhere", "sleep 120")).stdout;
+  await here("pane", "focus", "p1");
+  const overlay = JSON.parse((await here("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
+  await here("pane", "focus", other); // the user moves on, in the same tab
+  await here("pane", "close", overlay);
   await Bun.sleep(500);
-  expect((await list()).find((p) => p.id === other)).toMatchObject({ focused: true });
-  await run("pane", "close", other);
-}, 30000);
+  expect((await list(session)).find((p) => p.id === other)).toMatchObject({ focused: true });
+}, 60000);
 
 test("an overlay doesn't take focus back if the user switched tabs meanwhile", async () => {
-  await run("pane", "focus", "p1");
-  const overlay = JSON.parse((await run("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
-  await run("tab", "create", "away"); // switches to the new tab
-  const away = (await list()).find((p) => p.focused);
+  const session = "overlay-tab-switch";
+  const here = await fresh(session);
+  await here("pane", "focus", "p1");
+  const overlay = JSON.parse((await here("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
+  await here("tab", "create", "away"); // switches to the new tab
+  const away = (await list(session)).find((p) => p.focused);
   expect(away.id).not.toBe(overlay);
-  await run("pane", "close", overlay);
+  await here("pane", "close", overlay);
   await Bun.sleep(500);
-  expect((await list()).find((p) => p.id === away.id)).toMatchObject({ focused: true });
-  await run("pane", "close", away.id);
-}, 30000);
+  expect((await list(session)).find((p) => p.id === away.id)).toMatchObject({ focused: true });
+}, 60000);
 
 test("a popup shows only where it was opened, is one per session, keeps Escape for its program, and closes on prefix x", async () => {
   const session = "popup-one";
