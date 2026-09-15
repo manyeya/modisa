@@ -37,6 +37,43 @@ shepherd plugin stop {{name}}    # and plugin start {{name}}
 - `shepherd.request(method, params)` for anything else. Errors are `ShepherdError`, with a stable `code`.
 - `$SHEPHERD_PLUGIN_DATA` is a directory for the plugin's own files.
 
+## Showing things in shepherd's TUI
+
+A plugin can put a little into the TUI; shepherd draws it in the user's theme and names the plugin on every piece, so
+nothing a plugin shows can pass for shepherd's own. Everything is cleared when the plugin stops.
+
+- From the library, after `hello`:
+  - `shepherd.ui.status(id, text, { tone, action })`: a segment in the status row (up to 4); clicking runs `action`.
+  - `shepherd.ui.sidebar(title, rows)`: the plugin's section in the sidebar (up to 20 rows). A row runs its `action`,
+    or focuses its `pane`; a row's `pane` comes with that pane's `instance`, so a click reaches that process or says
+    it's gone.
+  - `shepherd.ui.badge(pane, instance, text, tone)`: a label on a pane's border, for that process only.
+  - `shepherd.ui.menu(items)`: entries in the pane context menu (up to 8).
+  - `shepherd.ui.toast(text, { tone, system })`: a passing message in every attached client (3 every 10s).
+  - `clearStatus`, `clearSidebar`, `clearBadge` and `closePopup` take them away; `shepherd.ui.state()` is what shows now.
+- Tones are `fg`, `dim`, `accent` and `warn`, mapped to the user's theme. Text loses control characters and escape
+  sequences and is cut to fit.
+- An `action` must be one the plugin offered in `hello`. Offer them in `plugin.json` too, with titles, so they're listed
+  in the command palette:
+  `"actions": [{ "id": "clear", "title": "Clear the log" }]`.
+- `"panes"` in `plugin.json` are programs the plugin can open, run in its directory with its environment:
+  `{ "id": "log", "title": "Attention log", "run": ["tail", "-f", "attention.log"], "placement": "popup" }`. Placements:
+  `split`, `tab` and `zoomed` open ordinary panes that stay after the plugin stops; `overlay` opens zoomed over the
+  focused pane and gives focus back when it closes; `popup` floats over everything in the one client that asked (one at
+  a time; `width` and `height` as cells or `"80%"`; prefix x closes it) and closes when the plugin stops.
+- `"keys"` bind a key under the prefix to an action or a pane: `{ "key": "A", "pane": "log", "description": "show the
+  log" }`. A key shepherd uses, or one two plugins want, is off for both (`shepherd plugin list` says why); the user can
+  move a key in `[plugin_keys]` in config.toml.
+- An action taken from a menu entry, key or palette entry gets the pane it was taken on as `call.target`
+  (`{ pane, instance }`), apart from its params, already checked to be that pane's current process.
+- Limits: updates are rate-limited (10 a second, bursts of 30) and so is the whole session's (30 a second across its
+  plugins); a session also shows at most 12 status segments, 6 sidebar sections, 24 menu entries and 4 plugins' badges
+  on one pane across all its plugins, first come first served. Over a limit a call fails with `rate_limited` or an
+  error: show less, or less often, rather than retrying in a loop.
+- The plugin runs with the session's server, also when the user attaches from another machine: its UI is drawn by
+  whichever client is attached. While a client is disconnected it shows none of it; a client too old to draw plugin UI
+  gets none, and a popup can't open in it.
+
 ## Links
 
 `"links"` in `plugin.json` hands a URL the user Ctrl+clicks in a pane to one of the plugin's actions. When several

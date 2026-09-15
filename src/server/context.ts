@@ -70,7 +70,9 @@ export function createContext(session: string, version: string, cfg: Config, ada
       viewQueued = true;
       queueMicrotask(() => {
         viewQueued = false;
-        for (const c of ctx.attached()) c.conn.notify("view", { ...ctx.s.view(), paused: ctx.mail.paused, ...(understandsPlugins(c) && { plugins: ctx.pluginUi() }) });
+        const view = { ...ctx.s.view(), paused: ctx.mail.paused };
+        const plugins = ctx.pluginUi(); // once per push, however many clients
+        for (const c of ctx.attached()) c.conn.notify("view", understandsPlugins(c) ? { ...view, plugins } : view);
       });
     }
     clearTimeout(saveTimer);

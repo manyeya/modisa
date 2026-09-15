@@ -53,3 +53,37 @@ test("an agent already blocked at startup isn't logged; a newly blocked one is, 
   const summary = await s.shepherd("plugin", "run", s.plugin, "summary");
   expect(JSON.parse(summary.stdout)).toMatchObject({ logged: 2 });
 }, 90_000);
+
+test("the TUI shows who's blocked: a count, a sidebar row for that agent's process, a badge on its pane, until it unblocks", async () => {
+  const worker = await agent("ui-worker");
+  await worker("working");
+  await worker("blocked");
+  const pane = (await s.json<any[]>("pane", "list")).find((p) => p.name === "ui-worker");
+  const shown = async () => {
+    const ui = await s.ui();
+    return {
+      count: ui.status.find((x) => x.id === "blocked")?.text,
+      row: ui.sidebar?.rows.some((r) => r.pane === pane.id && r.instance === pane.instance) ?? false,
+      badge: ui.badges.some((b) => b.pane === pane.id && b.instance === pane.instance && b.text === "blocked"),
+    };
+  };
+  await s.until("the TUI to show it", async () => {
+    const now = await shown();
+    return /^\d+ blocked$/.test(now.count ?? "") && now.row && now.badge;
+  });
+  expect((await s.ui()).menu).toContainEqual({ id: "seen", title: "Mark seen", action: "seen" });
+
+  await worker("working");
+  await s.until("its row and badge to go", async () => {
+    const now = await shown();
+    return !now.row && !now.badge;
+  });
+}, 60_000);
+
+test("prefix A opens the log in a popup, and clear empties the log", async () => {
+  const me = (await s.json<any[]>("plugin", "list")).find((p) => p.name === s.plugin);
+  expect(me.keys).toContainEqual(expect.objectContaining({ key: "A", pane: "log", state: "active" }));
+  expect((await s.shepherd("plugin", "run", s.plugin, "clear")).stdout).toBe("cleared"); // a string result prints as is
+  expect(await entries()).toEqual([]);
+  expect(JSON.parse((await s.shepherd("plugin", "run", s.plugin, "summary")).stdout)).toMatchObject({ logged: 0 });
+});
