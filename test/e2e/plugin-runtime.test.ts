@@ -8,7 +8,7 @@ import { cliResults } from "../../src/protocol/schema";
 const sb = sandbox("plugin-runtime");
 const S = "runtime";
 const run = (...args: string[]) => sb.run(S, args);
-const list = async () => JSON.parse((await run("plugin", "list", "--json")).stdout) as any[];
+const list = async () => sb.json<any[]>(S, ["plugin", "list"], { retry: "startup" });
 const linkJson = async (dir: string, session = S) => {
   const r = await sb.run(session, ["plugin", "link", dir, "--json"]);
   const parsed = JSON.parse(r.stdout);

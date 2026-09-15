@@ -60,6 +60,29 @@ test("check's failures say what to fix", async () => {
   expect(failing.stdout).toContain("the brief");
 }, 180000);
 
+test("a plugin that crashes at startup: check shows its last stderr and how it exited", async () => {
+  const crashy = await variant("crashy", (dir) => Bun.write(`${dir}/plugin.ts`, `console.error("CRASH-MARKER: boom at startup");\nprocess.exit(1);\n`));
+  expect(crashy.code).toBe(1);
+  expect(crashy.stdout).toContain("✗ starts and connects");
+  expect(crashy.stdout).toContain("exit code 1");
+  expect(crashy.stdout).toContain("exited with 1");
+  expect(crashy.stdout).toContain("CRASH-MARKER: boom at startup");
+  expect(crashy.stdout).not.toContain("log may be incomplete");
+}, 60000);
+
+test("a plugin that exits while a child holds its output open fails within the drain deadline, says its log may be incomplete, and the child goes with its group", async () => {
+  const started = Date.now();
+  const leaky = await variant("leaky", (dir) => Bun.write(`${dir}/plugin.json`, JSON.stringify({ name: "leaky", protocol: 1, run: ["sh", "-c", "sleep 37 & echo LEAK-MARKER >&2; exit 1"] })));
+  expect(leaky.code).toBe(1);
+  expect(Date.now() - started).toBeLessThan(9000); // well within check's 10s wait: the failure shows after the ~1s drain
+  expect(leaky.stdout).toContain("exit code 1");
+  expect(leaky.stdout).toContain("log may be incomplete");
+  expect(leaky.stdout).toContain("LEAK-MARKER");
+  // the child in its process group is ended by the owned-group cleanup
+  for (let i = 0; i < 30 && (await Bun.$`pgrep -f "sleep 37"`.quiet().nothrow()).exitCode === 0; i++) await Bun.sleep(100);
+  expect((await Bun.$`pgrep -f "sleep 37"`.quiet().nothrow()).exitCode).not.toBe(0);
+}, 60000);
+
 test("a large action result (over 2 MB, non-ASCII) reaches the caller intact, and the connection keeps working", async () => {
   const check = await variant("big-reply", async (dir) => {
     const source = await Bun.file(`${dir}/plugin.ts`).text();

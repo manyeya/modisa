@@ -20,7 +20,7 @@ export type PluginStatus = {
   name: string;
   source: "linked" | "config"; // a linked plugin.json, or a [[plugin]] run line in config.toml
   dir?: string;
-  status: "running" | "exited" | "failed" | "stopped";
+  status: "starting" | "running" | "exited" | "failed" | "stopped"; // starting: known to the server, not launched yet
   pid?: number;
   exitCode?: number;
   signal?: string;

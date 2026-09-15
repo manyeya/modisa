@@ -19,7 +19,7 @@ async function plugin(name: string, links: object[]) {
   await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
   await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./shepherd-plugin";\nrunPlugin(async (shepherd) => { await shepherd.hello({ open: (p, call) => "${name} got " + call.link + " params " + JSON.stringify(p) }); });\n`);
   expect((await run("plugin", "link", dir)).code).toBe(0);
-  for (let i = 0; i < 100 && !JSON.parse((await run("plugin", "list", "--json")).stdout).find((p: any) => p.name === name)?.connected; i++) await Bun.sleep(100);
+  for (let i = 0; i < 100 && !(await sb.json(S, ["plugin", "list"], { retry: "startup" })).find((p: any) => p.name === name)?.connected; i++) await Bun.sleep(100);
 }
 
 // Ctrl+click (SGR mouse, left button with ctrl) `offset` cells into text on screen; columns are cells, not characters

@@ -36,6 +36,7 @@ const installOf = async (name: string, dir: string) => {
 const STOP_MS = 2000;
 const INVOKE_MS = Number(Bun.env.SHEPHERD_PLUGIN_INVOKE_MS) || 30_000;
 const LOG_LIMIT = 5 * 1024 * 1024; // per run; past it the rest is read and dropped, so the plugin never blocks on output
+const DRAIN_MS = 1000; // after a run exits, how long its log waits for output still in the pipes
 
 type Kill = { kill(pid: number, signal: NodeJS.Signals | 0): void };
 
@@ -113,7 +114,8 @@ export function createPluginHost(ctx: ServerContext) {
   let invocations = 0;
 
   const add = (name: string, source: Plugin["source"], dir?: string): Plugin => {
-    const pl: Plugin = { name, source, dir, status: "failed", log: `${DIR}/plugins/${ctx.session}.${name}.log`, connected: false, actions: [], ui: emptyUi() };
+    // starting until it's launched or fails to: never reported as failed before it has had a chance to run
+    const pl: Plugin = { name, source, dir, status: "starting", log: `${DIR}/plugins/${ctx.session}.${name}.log`, connected: false, actions: [], ui: emptyUi() };
     plugins.set(name, pl);
     return pl;
   };
@@ -190,25 +192,49 @@ export function createPluginHost(ctx: ServerContext) {
     };
     const run: Run = { id: crypto.randomUUID().slice(0, 8), group: new OwnedGroup(proc.pid), token, revoked: false, note: (line) => write(`${line}\n`) };
     Object.assign(pl, { run, status: "running", pid: proc.pid, ui: emptyUi() });
-    Promise.all([pump(proc.stdout), pump(proc.stderr)]).catch(() => {});
-    proc.exited.then((code) => {
+    const drained = Promise.all([pump(proc.stdout), pump(proc.stderr)]).catch(() => {});
+    proc.exited.then(async (code) => {
       if (pl.run !== run) return; // started again since
+      // At once: the exit's facts, and the run loses its token, connection and UI; the group is watched from now on.
       revoke(pl);
       pl.exitCode = code;
       pl.signal = proc.signalCode ?? undefined;
-      pl.status = pl.stopping ? "stopped" : code === 0 ? "exited" : "failed";
-      if (pl.status === "failed") pl.error = `exited with ${proc.signalCode ?? code}; see ${pl.log}`;
+      const outcome = pl.stopping ? "stopped" : code === 0 ? "exited" : "failed";
       // retire the group's id as soon as it's gone (its children can outlive the leader)
       const watch = setInterval(() => run.group.alive() || clearInterval(watch), 1000);
+      // Then the log gets a moment to take the last of its output, so a crash's final stderr is there when the failure
+      // shows; a child holding the pipes open only delays that by DRAIN_MS, and the log says it may be incomplete.
+      const complete = await Promise.race([drained.then(() => true), Bun.sleep(DRAIN_MS).then(() => false)]);
+      if (!complete) write(`[shepherd: output still open after exit; log may be incomplete]\n`);
+      if (pl.run !== run) return;
+      pl.status = outcome;
+      if (outcome === "failed") pl.error = `exited with ${proc.signalCode ?? code}${complete ? "" : " (output still open after exit; log may be incomplete)"}; see ${pl.log}`;
     });
   };
 
+  // Tests only: hold each linked plugin, before its manifest is read, until this file exists, so the starting state can
+  // be seen deterministically. Unset, it does nothing.
+  const hold = async () => {
+    const file = Bun.env.SHEPHERD_TEST_PLUGIN_HOLD;
+    while (file && !(await Bun.file(file).exists())) await Bun.sleep(20);
+  };
+
   const start = async () => {
-    for (const l of await linkedPlugins()) {
-      const pl = add(l.name, "linked", l.dir);
-      pl.install = await installOf(l.name, l.dir);
-      if (l.error) await failed(pl, l.error);
-      else if (await prepare(pl)) await launch(pl);
+    const linked = await linkedPlugins();
+    // all listed as starting at once, and flagged so plugin.start answers already_running until each is launched or not
+    for (const l of linked) add(l.name, "linked", l.dir).starting = true;
+    for (const l of linked) {
+      const pl = plugins.get(l.name)!;
+      try {
+        pl.install = await installOf(l.name, l.dir);
+        await hold();
+        if (pl.stopping) pl.status = "stopped"; // stopped before it was launched
+        else if (l.error) await failed(pl, l.error);
+        else if ((await prepare(pl)) && !pl.stopping) await launch(pl);
+        else if (pl.stopping) pl.status = "stopped";
+      } finally {
+        pl.starting = false;
+      }
     }
     for (const [i, c] of ctx.cfg.plugin.entries()) {
       const pl = add(`config-${i + 1}`, "config");
@@ -221,6 +247,7 @@ export function createPluginHost(ctx: ServerContext) {
     const targets = only ? [only] : [...plugins.values()];
     for (const p of targets) {
       p.stopping = true;
+      if (p.status === "starting" && !p.run) p.status = "stopped"; // not launched yet: the server's start won't now
       revoke(p);
     }
     const live = targets.filter((p) => p.run?.group.alive());

@@ -17,8 +17,8 @@ const screens: Screen[] = [];
 const sessions = new Set<string>([S]);
 const cli = (session: string) => (...args: string[]) => sb.run(session, args);
 const run = cli(S);
-const list = async (session = S) => JSON.parse((await sb.run(session, ["pane", "list", "--json"])).stdout) as any[];
-const plugins = async (session = S) => JSON.parse((await sb.run(session, ["plugin", "list", "--json"])).stdout) as any[];
+const list = async (session = S) => sb.json<any[]>(session, ["pane", "list"], { retry: "startup" });
+const plugins = async (session = S) => sb.json<any[]>(session, ["plugin", "list"], { retry: "startup" });
 const connected = async (name: string, session = S) => {
   for (let i = 0; i < 100 && !(await plugins(session)).find((p) => p.name === name)?.connected; i++) await Bun.sleep(100);
 };
@@ -76,14 +76,14 @@ afterAll(async () => {
 test("split, tab and zoomed open ordinary panes with the plugin's environment, and outlive the plugin", async () => {
   const session = "placements";
   const here = await fresh(session);
-  const side = JSON.parse((await here("plugin", "pane", "demo", "side", "--json")).stdout);
+  const side = await sb.json(session, ["plugin", "pane", "demo", "side"]);
   expect(side).toMatchObject({ placement: "split", title: "Side" });
   expect((await here("wait", side.pane, "--match", "side:demo:config", "--timeout", "10")).code).toBe(0);
   expect((await list(session)).find((p) => p.id === side.pane)).toMatchObject({ createdBy: "plugin:demo", title: "Side" });
-  const tabs = JSON.parse((await here("workspace", "list", "--json")).stdout)[0].tabs;
-  expect(JSON.parse((await here("plugin", "pane", "demo", "board", "--json")).stdout).placement).toBe("tab");
-  expect(JSON.parse((await here("workspace", "list", "--json")).stdout)[0].tabs).toBe(tabs + 1);
-  expect(JSON.parse((await here("plugin", "pane", "demo", "focus", "--json")).stdout).placement).toBe("zoomed");
+  const tabs = (await sb.json(session, ["workspace", "list"]))[0].tabs;
+  expect((await sb.json(session, ["plugin", "pane", "demo", "board"])).placement).toBe("tab");
+  expect((await sb.json(session, ["workspace", "list"]))[0].tabs).toBe(tabs + 1);
+  expect((await sb.json(session, ["plugin", "pane", "demo", "focus"])).placement).toBe("zoomed");
 
   expect((await here("plugin", "stop", "demo")).code).toBe(0);
   expect((await list(session)).some((p) => p.id === side.pane)).toBe(true); // the session's now
@@ -129,7 +129,7 @@ test("an overlay doesn't take focus back if the user focused another pane in tha
   const here = await fresh(session);
   const other = (await here("pane", "split", "--name", "elsewhere", "sleep 120")).stdout;
   await here("pane", "focus", "p1");
-  const overlay = JSON.parse((await here("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
+  const overlay = (await sb.json(session, ["plugin", "pane", "demo", "peek"])).pane;
   await here("pane", "focus", other); // the user moves on, in the same tab
   await here("pane", "close", overlay);
   await Bun.sleep(500);
@@ -140,7 +140,7 @@ test("an overlay doesn't take focus back if the user switched tabs meanwhile", a
   const session = "overlay-tab-switch";
   const here = await fresh(session);
   await here("pane", "focus", "p1");
-  const overlay = JSON.parse((await here("plugin", "pane", "demo", "peek", "--json")).stdout).pane;
+  const overlay = (await sb.json(session, ["plugin", "pane", "demo", "peek"])).pane;
   await here("tab", "create", "away"); // switches to the new tab
   const away = (await list(session)).find((p) => p.focused);
   expect(away.id).not.toBe(overlay);

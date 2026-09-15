@@ -21,9 +21,9 @@ const state = async () => {
   return parsed;
 };
 // have the plugin make these ui.* calls from its bound connection; each gives "ok" or the error code
-const apply = async (...calls: [string, object][]) => JSON.parse((await run("plugin", "run", "ui-demo", "apply", JSON.stringify({ calls }))).stdout) as string[];
+const apply = async (...calls: [string, object][]) => (await sb.json<string[]>(S, ["plugin", "run", "ui-demo", "apply", JSON.stringify({ calls })]));
 const connected = async () => {
-  for (let i = 0; i < 100; i++, await Bun.sleep(100)) if (JSON.parse((await run("plugin", "list", "--json")).stdout).find((p: any) => p.name === "ui-demo")?.connected) return;
+  for (let i = 0; i < 100; i++, await Bun.sleep(100)) if ((await sb.json(S, ["plugin", "list"], { retry: "startup" })).find((p: any) => p.name === "ui-demo")?.connected) return;
   throw new Error("ui-demo never connected");
 };
 
@@ -63,7 +63,7 @@ afterAll(async () => {
 });
 
 test("a plugin's status, sidebar, badge and menu are kept as it set them: plain text, cut to length, with its actions", async () => {
-  const p1 = JSON.parse((await run("pane", "read", "p1", "--json")).stdout);
+  const p1 = await sb.json(S, ["pane", "read", "p1"]);
   expect(
     await apply(
       ["ui.status.set", { id: "count", text: "\x1b[31m2 need you\x07", tone: "warn", action: "hello" }],
@@ -92,10 +92,10 @@ test("references are checked: an action it didn't offer, a badge for another pro
 });
 
 test("a pane target is tied to its process: a row, action or pane for a closed pane is refused on the server", async () => {
-  const p1 = JSON.parse((await run("pane", "read", "p1", "--json")).stdout);
+  const p1 = await sb.json(S, ["pane", "read", "p1"]);
   const p1Instance = () => p1.instance as string;
   const id = (await run("pane", "split", "--name", "shortlived", "sleep 60")).stdout;
-  const { instance } = JSON.parse((await run("pane", "read", id, "--json")).stdout);
+  const { instance } = await sb.json(S, ["pane", "read", id]);
   expect(await apply(["ui.sidebar.set", { title: "Attention", rows: [{ text: "no instance", pane: id }] }])).toEqual(["pane_gone"]);
   expect((await run("pane", "close", id)).code).toBe(0);
   expect(await apply(["ui.sidebar.set", { title: "Attention", rows: [{ text: "closed", pane: id, instance }] }])).toEqual(["pane_gone"]);
@@ -121,7 +121,7 @@ test("only a plugin's bound connection can change the TUI", async () => {
 
 test("the TUI draws it, runs a palette action and shows a plugin toast, attributed; stopping the plugin clears it all", async () => {
   await Bun.sleep(3000); // let the plugin's update budget refill
-  const p1 = JSON.parse((await run("pane", "read", "p1", "--json")).stdout);
+  const p1 = await sb.json(S, ["pane", "read", "p1"]);
   expect(
     await apply(
       ["ui.status.set", { id: "count", text: "2 need you", tone: "warn", action: "hello" }],

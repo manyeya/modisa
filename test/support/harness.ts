@@ -32,17 +32,44 @@ export function sandbox(name: string) {
     return { out: (stdout + stderr).trim(), stdout: stdout.trim(), stderr: stderr.trim(), code: await p.exited };
   };
   const cli = async (session: string, args: string[], extra: Record<string, string> = {}) => (await run(session, args, extra)).out;
+  // `shepherd -s <session> <args…> --json`, parsed. With retry "startup", a session that isn't answering yet (exit 3,
+  // unreachable: no socket yet, or a connection refused or closed while it starts) is tried again until `ms` runs out.
+  // Anything else fails at once, as the regression it is: another exit status, a zero exit with nothing on stdout,
+  // or stdout that isn't JSON. Every failure names the command, its exit status, stdout and stderr.
+  const json = async <T = any>(session: string, args: string[], options: { retry?: "startup" | "none"; ms?: number; env?: Record<string, string> } = {}): Promise<T> => {
+    const argv = args.includes("--json") ? args : [...args, "--json"];
+    const limit = options.ms ?? 15000;
+    const end = Date.now() + limit;
+    for (;;) {
+      const r = await run(session, argv, options.env);
+      const failure = (what: string) => new Error(`shepherd -s ${session} ${argv.join(" ")}: ${what}\n  exit status: ${r.code}\n  stdout: ${r.stdout.slice(0, 2000) || "(empty)"}\n  stderr: ${r.stderr.slice(0, 2000) || "(empty)"}`);
+      if (r.code === 3) {
+        if (options.retry === "startup" && Date.now() < end) {
+          await Bun.sleep(100);
+          continue;
+        }
+        throw failure(options.retry === "startup" ? `still unreachable after ${limit}ms` : "unreachable");
+      }
+      if (r.code !== 0) throw failure("failed");
+      if (!r.stdout) throw failure("exit 0 but nothing on stdout");
+      try {
+        return JSON.parse(r.stdout) as T;
+      } catch {
+        throw failure("exit 0 but stdout isn't JSON");
+      }
+    }
+  };
   const cleanup = async () => {
     await Bun.$`rm -rf ${root}`.nothrow().quiet();
   };
-  return { root, env, cli, run, cleanup };
+  return { root, env, cli, run, json, cleanup };
 }
 
 // A session server with no client attached; resolves once its first pane exists.
 export async function startServer(sb: Sandbox, session: string, extra: Record<string, string> = {}) {
   await Bun.$`mkdir -p ${sb.root}`.quiet();
   const proc = Bun.spawn(["bun", MAIN, "server", "-s", session], { env: { ...sb.env, ...extra }, cwd: sb.root, stdout: "ignore", stderr: "ignore" });
-  for (let i = 0; i < 50 && !(await sb.cli(session, ["pane", "list"])).includes("p1"); i++) await Bun.sleep(100);
+  for (let i = 0; i < 150 && !(await sb.cli(session, ["pane", "list"])).includes("p1"); i++) await Bun.sleep(100); // up to 15s on a loaded machine
   return proc;
 }
 

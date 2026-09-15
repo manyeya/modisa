@@ -22,7 +22,7 @@ const alive = (pid: number) => {
     return false;
   }
 };
-const list = async () => JSON.parse((await run("plugin", "list", "--json")).stdout) as any[];
+const list = async () => sb.json<any[]>(S, ["plugin", "list"], { retry: "startup" });
 const plugin = async (name: string) => (await list()).find((p) => p.name === name);
 const until = async (what: string, ok: () => Promise<boolean>, ms = 15000) => {
   for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(100)) if (await ok()) return;

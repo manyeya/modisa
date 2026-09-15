@@ -109,7 +109,7 @@ const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string()
 const pluginKey = z.strictObject({ key: z.string(), action: z.string().optional(), pane: z.string().optional(), description: z.string(), state: z.enum(["active", "disabled"]), reason: z.string().optional() });
 const pluginStatus = z.strictObject({
   keys: z.array(pluginKey).optional(),
-  name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["running", "exited", "failed", "stopped"]),
+  name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["starting", "running", "exited", "failed", "stopped"]),
   pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
   connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
   install: z.strictObject({ source: z.string(), ref: z.string().nullable(), commit: z.string() }).optional(),

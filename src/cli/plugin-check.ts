@@ -99,10 +99,12 @@ export async function checkPlugin(arg: string): Promise<number> {
     let state: any;
     for (const end = Date.now() + 10_000; Date.now() < end; await Bun.sleep(200)) {
       state = await me();
-      if (state?.connected || (state && state.status !== "running")) break;
+      // starting (not launched yet) and running are still on their way; failed, exited and stopped are final
+      if (state?.connected || (state && state.status !== "running" && state.status !== "starting")) break;
     }
     if (!state?.connected) {
-      pass = bad("starts and connects", `${state ? `status ${state.status}${state.error ? `: ${state.error}` : ""}` : "shepherd didn't find it"}. Within 10s it should connect and call hello (runPlugin and shepherd.hello do).\nits log:\n${await tail(state?.log)}`);
+      const how = state ? `status ${state.status}${state.exitCode !== undefined ? `, exit code ${state.exitCode}` : ""}${state.signal ? `, signal ${state.signal}` : ""}${state.error ? `: ${state.error}` : ""}` : "shepherd didn't find it";
+      pass = bad("starts and connects", `${how}. Within 10s it should connect and call hello (runPlugin and shepherd.hello do).\nits log:\n${await tail(state?.log)}`);
       if (state?.pid) group = new OwnedGroup(state.pid);
     } else {
       ok("starts and connects", `actions: ${state.actions.join(", ") || "none"}`);

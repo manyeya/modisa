@@ -15,7 +15,7 @@ const S = "inst";
 const MANAGED = `${sb.root}/state/plugins-src`;
 const LINKS = `${sb.root}/config/plugins`;
 const git = (cwd: string, ...args: string[]) => Bun.$`git -c user.name=test -c user.email=test@example.com -c init.defaultBranch=main ${args}`.cwd(cwd).quiet();
-const list = async (session = S) => JSON.parse((await sb.run(session, ["plugin", "list", "--json"])).stdout) as any[];
+const list = async (session = S) => sb.json<any[]>(session, ["plugin", "list"], { retry: "startup" });
 const exists = async (path: string) => (await Bun.$`test -e ${path}`.quiet().nothrow()).exitCode === 0;
 const staging = async () => (await Bun.$`ls -A ${MANAGED}`.quiet().nothrow().text()).split("\n").filter((e) => e.startsWith(".staging"));
 const until = async (what: string, ok: () => Promise<boolean>, ms = 15000) => {

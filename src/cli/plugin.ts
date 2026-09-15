@@ -101,7 +101,7 @@ export async function startIn(session: string | undefined, name: string) {
     for (const end = Date.now() + HELLO_MS; ; await Bun.sleep(200)) {
       const s = (await listed()) ?? status;
       if (s.connected) return { session: where, state: "started" as const, pid: s.pid, log: s.log, disabledKeys: offKeys(s) };
-      if (s.status !== "running") return { session: where, state: "failed" as const, reason: s.error ?? `it ${s.status}`, pid: s.pid, log: s.log };
+      if (s.status !== "running" && s.status !== "starting") return { session: where, state: "failed" as const, reason: s.error ?? `it ${s.status}`, pid: s.pid, log: s.log };
       if (Date.now() > end) return { session: where, state: "no-hello" as const, reason: `it started but didn't connect within ${HELLO_MS / 1000}s`, pid: s.pid, log: s.log };
     }
   } finally {

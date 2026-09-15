@@ -21,9 +21,9 @@ let remote: Screen;
 let local: Screen | undefined;
 
 // have the plugin make these ui.* calls from its bound connection; each gives "ok" or the error code
-const apply = async (...calls: [string, object][]) => JSON.parse((await run("plugin", "run", "rui-demo", "apply", JSON.stringify({ calls }))).stdout) as string[];
+const apply = async (...calls: [string, object][]) => (await sb.json<string[]>(S, ["plugin", "run", "rui-demo", "apply", JSON.stringify({ calls })]));
 const marks = async () => (await Bun.file(MARKS).text().catch(() => "")).split("\n").filter(Boolean).map((l) => JSON.parse(l) as { target: { pane: string; instance: string } | null });
-const focused = async () => (JSON.parse((await run("pane", "list", "--json")).stdout) as any[]).find((p) => p.focused);
+const focused = async () => (await sb.json<any[]>(S, ["pane", "list"], { retry: "startup" })).find((p) => p.focused);
 const untilMarks = async (n: number) => {
   for (let i = 0; i < 100 && (await marks()).length < n; i++) await Bun.sleep(100);
   expect((await marks()).length).toBe(n);
@@ -63,7 +63,7 @@ runPlugin(async (shepherd) => {
   await Bun.write(`${sb.root}/config/config.toml`, `theme = "gruvbox"\n`);
   await startServer(sb, S);
   expect((await run("plugin", "link", dir)).code).toBe(0);
-  for (let i = 0; i < 100 && !JSON.parse((await run("plugin", "list", "--json")).stdout).find((p: any) => p.name === "rui-demo")?.connected; i++) await Bun.sleep(100);
+  for (let i = 0; i < 100 && !(await sb.json(S, ["plugin", "list"], { retry: "startup" })).find((p: any) => p.name === "rui-demo")?.connected; i++) await Bun.sleep(100);
   expect(await apply(["ui.status.set", { id: "count", text: "1 waiting", tone: "warn" }], ["ui.sidebar.set", { title: "Remote queue", rows: [{ text: "@far blocked", tone: "warn" }] }])).toEqual(["ok", "ok"]);
 
   // fake ssh: drop "-T" and the host, and run the rest as the far side would, with the server's roots
@@ -111,7 +111,7 @@ test("the remote client draws in its own theme and binds plugin keys with its ow
   // the plugin's files are the server's: nothing under the client's roots
   expect((await Bun.$`find ${CLIENT} -name marks.log`.text()).trim()).toBe("");
   // and the server's own table, which only its CLI reports, still binds G
-  expect(JSON.parse((await run("plugin", "list", "--json")).stdout).find((p: any) => p.name === "rui-demo").keys).toContainEqual(expect.objectContaining({ key: "G", state: "active" }));
+  expect((await sb.json(S, ["plugin", "list"])).find((p: any) => p.name === "rui-demo").keys).toContainEqual(expect.objectContaining({ key: "G", state: "active" }));
 }, 40000);
 
 test("a second client with its own remap uses its own binding, without changing the remote client's", async () => {

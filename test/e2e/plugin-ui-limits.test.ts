@@ -9,10 +9,10 @@ const REPO = `${import.meta.dir}/../..`;
 const NAMES = ["pa", "pb", "pc", "pd", "pe", "pf", "pg"];
 const run = (...args: string[]) => sb.run(S, args);
 // have one plugin make these ui.* calls from its bound connection; each gives "ok" or the error code
-const apply = async (name: string, ...calls: [string, object][]) => JSON.parse((await run("plugin", "run", name, "apply", JSON.stringify({ calls }))).stdout) as string[];
+const apply = async (name: string, ...calls: [string, object][]) => (await sb.json<string[]>(S, ["plugin", "run", name, "apply", JSON.stringify({ calls })]));
 const connected = async (names: string[]) => {
   for (let i = 0; i < 150; i++, await Bun.sleep(100)) {
-    const list = JSON.parse((await run("plugin", "list", "--json")).stdout) as any[];
+    const list = (await sb.json<any[]>(S, ["plugin", "list"], { retry: "startup" }));
     if (names.every((n) => list.find((p) => p.name === n)?.connected)) return;
   }
   throw new Error(`not all of ${names.join(", ")} connected`);
@@ -42,7 +42,7 @@ runPlugin(async (shepherd) => {
     );
     expect((await run("plugin", "link", dir)).code).toBe(0);
   }
-  p1 = JSON.parse((await run("pane", "read", "p1", "--json")).stdout);
+  p1 = await sb.json(S, ["pane", "read", "p1"]);
 }, 60000);
 
 // every test starts from fresh runs of every plugin (nothing shown), and the session's budgets refilled
