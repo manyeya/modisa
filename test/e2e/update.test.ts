@@ -1,15 +1,15 @@
-// Updates: a release build finds a newer release in its channel's manifest, `shepherd update`
+// Updates: a release build finds a newer release in its channel's manifest, `modisa update`
 // replaces the binary only when the download matches its checksum, and the TUI shows the ↑ badge.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { MAIN, Screen, sandbox } from "../support/harness";
 
 const sb = sandbox("update");
-const bin = `${sb.root}/bin/shepherd`;
+const bin = `${sb.root}/bin/modisa`;
 const plat = (() => {
   const [os, arch] = Bun.spawnSync(["uname", "-sm"]).stdout.toString().trim().split(/\s+/);
   return `${os === "Darwin" ? "darwin" : "linux"}-${arch === "x86_64" ? "x64" : "arm64"}`;
 })();
-const newBuild = new TextEncoder().encode("#!/bin/sh\necho i am shepherd 9.9.9\n");
+const newBuild = new TextEncoder().encode("#!/bin/sh\necho i am modisa 9.9.9\n");
 const sha = (b: Uint8Array) => new Bun.CryptoHasher("sha256").update(b).digest("hex");
 let manifest: any;
 let server: ReturnType<typeof Bun.serve>;
@@ -20,12 +20,12 @@ beforeAll(async () => {
     fetch: (req) => {
       const path = new URL(req.url).pathname;
       if (path === "/manifest.json") return new Response(JSON.stringify(manifest, null, 2)); // as the release workflow writes it
-      if (path === "/shepherd") return new Response(newBuild);
+      if (path === "/modisa") return new Response(newBuild);
       return new Response("not found", { status: 404 });
     },
   });
   const url = `http://localhost:${server.port}`;
-  manifest = { version: "9.9.9", channel: "stable", notes: "### Added\n- everything", assets: { [plat]: { url: `${url}/shepherd`, sha256: sha(newBuild) } } };
+  manifest = { version: "9.9.9", channel: "stable", notes: "### Added\n- everything", assets: { [plat]: { url: `${url}/modisa`, sha256: sha(newBuild) } } };
   // a release build of this checkout, as the installer would put it
   await Bun.$`bun build --compile --define BUILD_VERSION='"0.0.1"' ${MAIN} --outfile ${bin}`.quiet();
   if (Bun.which("codesign")) await Bun.$`codesign --remove-signature ${bin} && codesign -s - ${bin}`.quiet().nothrow();
@@ -37,7 +37,7 @@ afterAll(async () => {
 });
 
 const run = async (args: string[], extra: Record<string, string> = {}) => {
-  const r = await Bun.$`${bin} ${args}`.env({ ...sb.env, SHEPHERD_UPDATE_URL: `http://localhost:${server.port}/manifest.json`, ...extra }).nothrow().quiet();
+  const r = await Bun.$`${bin} ${args}`.env({ ...sb.env, MODISA_UPDATE_URL: `http://localhost:${server.port}/manifest.json`, ...extra }).nothrow().quiet();
   return r.stdout.toString() + r.stderr.toString();
 };
 // what the fancy output reads as once its colours, cursor moves and spinner redraws are taken out
@@ -45,7 +45,7 @@ const readable = (s: string) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace
 
 test("a release build reports its version and the newer release", async () => {
   const out = await run(["--version"]);
-  expect(out).toContain("shepherd 0.0.1");
+  expect(out).toContain("modisa 0.0.1");
   expect(out).toContain("update available: 9.9.9");
 });
 
@@ -57,19 +57,19 @@ test("a download that doesn't match its checksum is refused and nothing changes"
   manifest.assets[plat].sha256 = sha(newBuild);
 }, 20000);
 
-test("shepherd update replaces the binary with the new release, with the show on a colour terminal", async () => {
-  const out = await run(["update"], { SHEPHERD_FANCY: "1", COLORTERM: "truecolor" });
+test("modisa update replaces the binary with the new release, with the show on a colour terminal", async () => {
+  const out = await run(["update"], { MODISA_FANCY: "1", COLORTERM: "truecolor" });
   expect(out).toContain("\x1b[38;2;"); // the gradient
-  expect(readable(out)).toContain("▄▀▀▀▀ █   █ █▀▀▀▀"); // the wordmark
+  expect(readable(out)).toContain("█▄ ▄█ ▄▀▀▀▄ █▀▀▀▄"); // the wordmark
   expect(readable(out)).toContain("checksum verified");
-  expect(readable(out)).toContain("updated shepherd 0.0.1 → 9.9.9");
+  expect(readable(out)).toContain("updated modisa 0.0.1 → 9.9.9");
   expect(out.lastIndexOf("\x1b[?25h")).toBeGreaterThan(out.lastIndexOf("\x1b[?25l")); // the cursor is back
   expect(await Bun.file(bin).bytes()).toEqual(newBuild);
-  expect(await Bun.$`${bin}`.text()).toBe("i am shepherd 9.9.9\n");
+  expect(await Bun.$`${bin}`.text()).toBe("i am modisa 9.9.9\n");
 }, 20000);
 
 test("the TUI shows the ↑ badge for a newer release, and none without one", async () => {
-  const env = (url: string) => ({ ...sb.env, SHEPHERD_UPDATE_URL: url });
+  const env = (url: string) => ({ ...sb.env, MODISA_UPDATE_URL: url });
   let ui = new Screen(["-s", "upd"], env(`http://localhost:${server.port}/manifest.json`), sb.root);
   await ui.until("update badge", (s) => s.split("\n").at(-1)!.includes("↑ 9.9.9"), 10000);
   ui.write("\x02d");
@@ -89,20 +89,20 @@ test("install.sh installs the release for this platform, and refuses a bad check
   manifest.version = "9.9.9";
   const url = `http://localhost:${server.port}/manifest.json`;
   const dir = `${sb.root}/installed`;
-  const install = () => Bun.$`sh ${import.meta.dir}/../../install.sh`.env({ ...sb.env, SHEPHERD_MANIFEST_URL: url, SHEPHERD_INSTALL_DIR: dir }).nothrow().quiet();
+  const install = () => Bun.$`sh ${import.meta.dir}/../../install.sh`.env({ ...sb.env, MODISA_MANIFEST_URL: url, MODISA_INSTALL_DIR: dir }).nothrow().quiet();
   // the workflow writes the manifest pretty-printed, one field per line, which the installer reads
   const serve = manifest;
   manifest = JSON.parse(JSON.stringify(serve));
   let r = await install();
   expect(r.exitCode).toBe(0);
   expect(r.stdout.toString()).toContain("installing for");
-  expect(await Bun.file(`${dir}/shepherd`).bytes()).toEqual(newBuild);
-  await Bun.file(`${dir}/shepherd`).delete();
+  expect(await Bun.file(`${dir}/modisa`).bytes()).toEqual(newBuild);
+  await Bun.file(`${dir}/modisa`).delete();
   manifest.assets[plat].sha256 = "0".repeat(64);
   r = await install();
   expect(r.exitCode).not.toBe(0);
   expect(r.stderr.toString()).toContain("doesn't match its published checksum");
-  expect(await Bun.file(`${dir}/shepherd`).exists()).toBe(false);
+  expect(await Bun.file(`${dir}/modisa`).exists()).toBe(false);
 }, 20000);
 
 test("install.sh puts on a show on a colour terminal: the wordmark, spinners and a ready panel, and always gives the cursor back", async () => {
@@ -110,16 +110,16 @@ test("install.sh puts on a show on a colour terminal: the wordmark, spinners and
   manifest.assets[plat].sha256 = sha(newBuild);
   const url = `http://localhost:${server.port}/manifest.json`;
   const dir = `${sb.root}/installed-fancy`;
-  const install = () => Bun.$`sh ${import.meta.dir}/../../install.sh`.env({ ...sb.env, SHEPHERD_MANIFEST_URL: url, SHEPHERD_INSTALL_DIR: dir, SHEPHERD_FANCY: "1", COLORTERM: "truecolor" }).nothrow().quiet();
+  const install = () => Bun.$`sh ${import.meta.dir}/../../install.sh`.env({ ...sb.env, MODISA_MANIFEST_URL: url, MODISA_INSTALL_DIR: dir, MODISA_FANCY: "1", COLORTERM: "truecolor" }).nothrow().quiet();
   let r = await install();
   let out = r.stdout.toString();
   expect(r.exitCode, r.stderr.toString()).toBe(0);
   expect(out).toContain("\x1b[38;2;"); // the gradient
-  for (const text of ["▄▀▀▀▀", "█▀▀▀▄", "a terminal for your agents", "installing for", "✓ verifying its SHA-256 checksum", "shepherd 9.9.9 installed", "shepherd update"]) expect(readable(out)).toContain(text);
+  for (const text of ["█▄ ▄█", "█ ▀ █", "a terminal for your agents", "installing for", "✓ verifying its SHA-256 checksum", "modisa 9.9.9 installed", "modisa update"]) expect(readable(out)).toContain(text);
   expect(out.lastIndexOf("\x1b[?25h")).toBeGreaterThan(out.lastIndexOf("\x1b[?25l"));
-  expect(await Bun.file(`${dir}/shepherd`).bytes()).toEqual(newBuild);
+  expect(await Bun.file(`${dir}/modisa`).bytes()).toEqual(newBuild);
 
-  await Bun.file(`${dir}/shepherd`).delete();
+  await Bun.file(`${dir}/modisa`).delete();
   manifest.assets[plat].sha256 = "0".repeat(64);
   r = await install();
   out = r.stdout.toString();
@@ -127,6 +127,6 @@ test("install.sh puts on a show on a colour terminal: the wordmark, spinners and
   expect(readable(out)).toContain("✗ verifying its SHA-256 checksum");
   expect(r.stderr.toString()).toContain("doesn't match its published checksum");
   expect(out.lastIndexOf("\x1b[?25h")).toBeGreaterThan(out.lastIndexOf("\x1b[?25l")); // back even on failure
-  expect(await Bun.file(`${dir}/shepherd`).exists()).toBe(false);
+  expect(await Bun.file(`${dir}/modisa`).exists()).toBe(false);
   manifest.assets[plat].sha256 = sha(newBuild);
 }, 30000);

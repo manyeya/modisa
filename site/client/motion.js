@@ -33,7 +33,7 @@ export function initMotion() {
     closeMenu();
     destroyPage = undefined;
   };
-  window.shepherdMotion = { destroy: () => destroyPage?.(), init: initMotion, inspect: () => ({ triggers: 0, smooth: false }) };
+  window.modisaMotion = { destroy: () => destroyPage?.(), init: initMotion, inspect: () => ({ triggers: 0, smooth: false }) };
 }
 initMotion();
 window.addEventListener('pagehide', () => destroyPage?.());

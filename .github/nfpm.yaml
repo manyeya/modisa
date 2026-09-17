@@ -1,21 +1,21 @@
 # .deb and .rpm packages from a release binary, built by the release workflow. nfpm expands the
 # environment in fields like version and arch but not in file paths, so the binary is staged first:
-#   cp dist/shepherd-linux-x64 build/shepherd
+#   cp dist/modisa-linux-x64 build/modisa
 #   VERSION=0.2.0 ARCH=amd64 nfpm package --config .github/nfpm.yaml --packager deb --target dist/
-name: shepherd
+name: modisa
 arch: ${ARCH}
 platform: linux
 version: ${VERSION}
 version_schema: semver
 maintainer: manyeya <siemakhutso@gmail.com>
 description: An agent-aware terminal multiplexer
-vendor: shepherd
-homepage: https://manyeya.github.io/shepherd/
+vendor: modisa
+homepage: https://manyeya.github.io/modisa/
 license: MIT
 contents:
-  - src: build/shepherd
-    dst: /usr/bin/shepherd
+  - src: build/modisa
+    dst: /usr/bin/modisa
     file_info:
       mode: 0755
   - src: LICENSE
-    dst: /usr/share/licenses/shepherd/LICENSE
+    dst: /usr/share/licenses/modisa/LICENSE

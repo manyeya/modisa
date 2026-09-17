@@ -7,7 +7,7 @@ import { sandbox } from "../support/harness";
 
 const sb = sandbox("plugin-authoring");
 const REPO = `${import.meta.dir}/../..`;
-const shepherd = (...args: string[]) => sb.run("unused", args);
+const modisa = (...args: string[]) => sb.run("unused", args);
 
 beforeAll(async () => {
   await Bun.$`mkdir -p ${sb.root}`.quiet(); // commands run there
@@ -16,14 +16,14 @@ afterAll(() => sb.cleanup());
 
 test("plugin new scaffolds a plugin that plugin check passes", async () => {
   const dir = `${sb.root}/demo`;
-  const made = await shepherd("plugin", "new", "demo", "--dir", dir);
+  const made = await modisa("plugin", "new", "demo", "--dir", dir);
   expect(made.code).toBe(0);
-  for (const file of ["plugin.json", "plugin.ts", "plugin.test.ts", "shepherd-plugin.ts", "AGENTS.md", "CLAUDE.md"]) expect(await Bun.file(`${dir}/${file}`).exists()).toBe(true);
+  for (const file of ["plugin.json", "plugin.ts", "plugin.test.ts", "modisa-plugin.ts", "AGENTS.md", "CLAUDE.md"]) expect(await Bun.file(`${dir}/${file}`).exists()).toBe(true);
   expect(await Bun.file(`${dir}/plugin.json`).json()).toMatchObject({ name: "demo", protocol: 1 });
   expect(await Bun.file(`${dir}/plugin.ts`).text()).not.toContain("{{name}}");
-  expect((await shepherd("plugin", "new", "demo", "--dir", dir)).code).toBe(1); // never overwrites
+  expect((await modisa("plugin", "new", "demo", "--dir", dir)).code).toBe(1); // never overwrites
 
-  const check = await shepherd("plugin", "check", dir);
+  const check = await modisa("plugin", "check", dir);
   expect(check.code, check.out).toBe(0);
   for (const step of ["manifest", "client library", "builds", "starts and connects", "its tests", "exits when the session dies"]) expect(check.stdout).toContain(`✓ ${step}`);
 }, 90000);
@@ -31,9 +31,9 @@ test("plugin new scaffolds a plugin that plugin check passes", async () => {
 // a scaffolded plugin with one file changed
 async function variant(name: string, change: (dir: string) => Promise<unknown>) {
   const dir = `${sb.root}/${name}`;
-  expect((await shepherd("plugin", "new", name, "--dir", dir)).code).toBe(0);
+  expect((await modisa("plugin", "new", name, "--dir", dir)).code).toBe(0);
   await change(dir);
-  return shepherd("plugin", "check", dir);
+  return modisa("plugin", "check", dir);
 }
 
 test("check's failures say what to fix", async () => {
@@ -49,7 +49,7 @@ test("check's failures say what to fix", async () => {
 
   const clingy = await variant("clingy", async (dir) => {
     const source = await Bun.file(`${dir}/plugin.ts`).text();
-    await Bun.write(`${dir}/plugin.ts`, source.replace(`import { runPlugin`, `import { connect as _connect, runPlugin`).replace("runPlugin(async (shepherd) => {", "_connect().then(async (shepherd) => {\n  process.on(\"SIGTERM\", () => {});\n  setInterval(() => {}, 1000);"));
+    await Bun.write(`${dir}/plugin.ts`, source.replace(`import { runPlugin`, `import { connect as _connect, runPlugin`).replace("runPlugin(async (modisa) => {", "_connect().then(async (modisa) => {\n  process.on(\"SIGTERM\", () => {});\n  setInterval(() => {}, 1000);"));
   });
   expect(clingy.code).toBe(1);
   expect(clingy.stdout).toContain("✗ exits when the session dies");
@@ -90,13 +90,13 @@ test("a large action result (over 2 MB, non-ASCII) reaches the caller intact, an
     await Bun.write(
       `${dir}/plugin.test.ts`,
       `import { test, expect } from "bun:test";
-import { checkSession } from "./shepherd-plugin";
+import { checkSession } from "./modisa-plugin";
 const s = checkSession();
 test("big arrives whole, and the next action still works", async () => {
-  const r = await s.shepherd("plugin", "run", s.plugin, "big");
+  const r = await s.modisa("plugin", "run", s.plugin, "big");
   expect(r.code).toBe(0);
   expect(JSON.parse(r.stdout).text).toBe("é✓ 日本 ".repeat(400_000));
-  expect((await s.shepherd("plugin", "run", s.plugin, "status")).code).toBe(0);
+  expect((await s.modisa("plugin", "run", s.plugin, "status")).code).toBe(0);
 });
 `,
     );
@@ -106,13 +106,13 @@ test("big arrives whole, and the next action still works", async () => {
 }, 90000);
 
 test("the attention-log example passes plugin check, including its own behavioural tests", async () => {
-  const check = await shepherd("plugin", "check", `${REPO}/examples/plugins/attention-log`);
+  const check = await modisa("plugin", "check", `${REPO}/examples/plugins/attention-log`);
   expect(check.code, check.out).toBe(0);
   expect(check.stdout).toContain("✓ its tests");
 }, 120000);
 
 test("every copy of the client library is the maintained one", async () => {
-  const maintained = await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text();
-  expect((await shepherd("plugin", "sdk")).stdout).toBe(maintained.trim());
-  expect(await Bun.file(`${REPO}/examples/plugins/attention-log/shepherd-plugin.ts`).text()).toBe(maintained);
+  const maintained = await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text();
+  expect((await modisa("plugin", "sdk")).stdout).toBe(maintained.trim());
+  expect(await Bun.file(`${REPO}/examples/plugins/attention-log/modisa-plugin.ts`).text()).toBe(maintained);
 });

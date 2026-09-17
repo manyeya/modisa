@@ -83,7 +83,7 @@ export class PtyPane {
         ...Bun.env,
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
-        SHEPHERD_PANE_ID: opts.id,
+        MODISA_PANE_ID: opts.id,
         PWD: opts.cwd,
         ...opts.env,
       },

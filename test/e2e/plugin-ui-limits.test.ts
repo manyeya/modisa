@@ -24,16 +24,16 @@ beforeAll(async () => {
   for (const name of NAMES) {
     const dir = `${sb.root}/${name}`;
     await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: 1, run: ["bun", "plugin.ts"], actions: [{ id: "hello", title: "Hello" }, { id: "apply", title: "Apply" }] }));
-    await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
+    await Bun.write(`${dir}/modisa-plugin.ts`, await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text());
     await Bun.write(
       `${dir}/plugin.ts`,
-      `import { runPlugin } from "./shepherd-plugin";
-runPlugin(async (shepherd) => {
-  await shepherd.hello({
+      `import { runPlugin } from "./modisa-plugin";
+runPlugin(async (modisa) => {
+  await modisa.hello({
     hello: () => "hi",
     apply: async (p) => {
       const out: string[] = [];
-      for (const [method, params] of p.calls as [string, any][]) out.push(await shepherd.request(method, params).then(() => "ok", (e) => e.code));
+      for (const [method, params] of p.calls as [string, any][]) out.push(await modisa.request(method, params).then(() => "ok", (e) => e.code));
       return out;
     },
   });

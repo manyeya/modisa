@@ -1,7 +1,7 @@
-// `shepherd hook <agent> <action>`: what an agent's hook runs. It reads the hook's JSON on stdin,
+// `modisa hook <agent> <action>`: what an agent's hook runs. It reads the hook's JSON on stdin,
 // keeps only the events and fields that mean something for that agent, and reports to the pane's
 // server. It never prints (some agents feed hook output back into the conversation) and always exits
-// 0, so a hook can't break the agent — outside shepherd it does nothing.
+// 0, so a hook can't break the agent — outside modisa it does nothing.
 import { connectUnix } from "../protocol/transport";
 
 export type HookReport = { state?: "working" | "blocked" | "idle"; session?: string };
@@ -60,13 +60,13 @@ async function stdin(): Promise<Input> {
 
 let seq = 0;
 export async function runHook(agent: string | undefined, action: string | undefined): Promise<number> {
-  const pane = Bun.env.SHEPHERD_PANE_ID, socket = Bun.env.SHEPHERD_SOCKET;
+  const pane = Bun.env.MODISA_PANE_ID, socket = Bun.env.MODISA_SOCKET;
   if (!agent || !action || !pane || !socket) return 0;
   const report = interpret(agent, action, await stdin(), Bun.env);
   if (!report) return 0;
   try {
     const conn = await connectUnix(socket);
-    const params = { pane, source: `shepherd:${agent}`, agent, state: report.state, session: report.session, seq: Date.now() * 1000 + ++seq };
+    const params = { pane, source: `modisa:${agent}`, agent, state: report.state, session: report.session, seq: Date.now() * 1000 + ++seq };
     await Promise.race([conn.request("report", params), Bun.sleep(1500)]);
     conn.close();
   } catch {}

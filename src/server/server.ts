@@ -26,7 +26,7 @@ export async function runServer(session: string) {
   const other = await connectUnix(sock).catch(() => undefined);
   if (other) {
     other.close();
-    console.log(`shepherd server "${session}" is already running`);
+    console.log(`modisa server "${session}" is already running`);
     return;
   }
   // Running but unreachable from here (a sandbox): taking its socket over would orphan every pane in it.
@@ -93,7 +93,7 @@ export async function runServer(session: string) {
     await plugins.stop(); // each plugin's whole process group, within its time limit
     ctx.s.destroy();
     // The pid file goes first, so nothing mistakes this exiting server for a running one it can't reach.
-    // Then the socket file, while it's still ours: once the listener stops, `shepherd restart` starts the
+    // Then the socket file, while it's still ours: once the listener stops, `modisa restart` starts the
     // next server at this same path, and deleting it after that would cut the new server off.
     if ((await Bun.file(pidFile).text().catch(() => "")) === String(process.pid)) await Bun.file(pidFile).delete().catch(() => {});
     await Bun.file(sock).delete().catch(() => {});
@@ -104,9 +104,9 @@ export async function runServer(session: string) {
     setTimeout(() => process.exit(0), 200);
   };
 
-  // ---------- initial contents: saved session, else shepherd.toml, else a shell ----------
+  // ---------- initial contents: saved session, else modisa.toml, else a shell ----------
   const saved = await load(session);
   if (saved?.workspaces.length) restore(ctx.s, saved, ctx.adapters);
   else if (!(await applyTemplate(ctx.s, cwd(), ctx.adapters))) ctx.s.newWorkspace(undefined, cwd());
-  console.log(`shepherd server "${session}" listening on ${sock}`);
+  console.log(`modisa server "${session}" listening on ${sock}`);
 }

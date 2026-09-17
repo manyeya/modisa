@@ -1,11 +1,11 @@
-// `shepherd plugin dev`: a throwaway session with the plugin running and the TUI attached; detaching ends the
+// `modisa plugin dev`: a throwaway session with the plugin running and the TUI attached; detaching ends the
 // session and removes its files, and the user's own state and config directories are left alone.
 import { test, expect, afterAll } from "bun:test";
 import { Screen, sandbox } from "../support/harness";
 
 const sb = sandbox("plugin-dev");
 const TMP = Bun.env.TMPDIR ?? "/tmp";
-const throwaways = async () => (await Bun.$`ls -d ${TMP}/shepherd-plugin-*`.quiet().nothrow().text()).split("\n").map((d) => d.replace(/\/$/, "")).filter(Boolean);
+const throwaways = async () => (await Bun.$`ls -d ${TMP}/modisa-plugin-*`.quiet().nothrow().text()).split("\n").map((d) => d.replace(/\/$/, "")).filter(Boolean);
 let ui: Screen | undefined;
 
 afterAll(async () => {
@@ -25,7 +25,7 @@ test("plugin dev runs the plugin in a throwaway session and cleans it up on exit
   expect(root).toBeDefined();
 
   // the throwaway session has the plugin, connected
-  const env = { SHEPHERD_DIR: `${root}/state`, SHEPHERD_CONFIG_DIR: `${root}/config` };
+  const env = { MODISA_DIR: `${root}/state`, MODISA_CONFIG_DIR: `${root}/config` };
   let demo: any;
   for (let i = 0; i < 100 && !demo?.connected; i++) {
     await Bun.sleep(100);

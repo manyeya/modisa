@@ -16,8 +16,8 @@ let ui: Screen;
 async function plugin(name: string, links: object[]) {
   const dir = `${sb.root}/${name}`;
   await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: 1, run: ["bun", "plugin.ts"], actions: [{ id: "open", title: "Open" }], links: links.map((l) => ({ ...l, action: "open" })) }));
-  await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
-  await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./shepherd-plugin";\nrunPlugin(async (shepherd) => { await shepherd.hello({ open: (p, call) => "${name} got " + call.link + " params " + JSON.stringify(p) }); });\n`);
+  await Bun.write(`${dir}/modisa-plugin.ts`, await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text());
+  await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./modisa-plugin";\nrunPlugin(async (modisa) => { await modisa.hello({ open: (p, call) => "${name} got " + call.link + " params " + JSON.stringify(p) }); });\n`);
   expect((await run("plugin", "link", dir)).code).toBe(0);
   for (let i = 0; i < 100 && !(await sb.json(S, ["plugin", "list"], { retry: "startup" })).find((p: any) => p.name === name)?.connected; i++) await Bun.sleep(100);
 }

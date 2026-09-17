@@ -1,16 +1,16 @@
-// {{name}}: a shepherd plugin. Read AGENTS.md before changing it.
-import { runPlugin, type Pane } from "./shepherd-plugin";
+// {{name}}: a modisa plugin. Read AGENTS.md before changing it.
+import { runPlugin, type Pane } from "./modisa-plugin";
 
-runPlugin(async (shepherd) => {
+runPlugin(async (modisa) => {
   // what this plugin knows: each pane's detected agent, keyed by pane instance
   const agents = new Map<string, NonNullable<Pane["agent"]>>();
 
-  // offer actions to `shepherd plugin run {{name}} <action>`
-  await shepherd.hello({
+  // offer actions to `modisa plugin run {{name}} <action>`
+  await modisa.hello({
     status: () => ({ agents: Object.fromEntries(agents) }),
   });
 
-  await shepherd.subscribe({
+  await modisa.subscribe({
     // every pane as of now: this was already true when the plugin started, so it isn't news
     onSnapshot: (snapshot) => {
       for (const pane of snapshot.panes) if (pane.agent) agents.set(pane.instance, pane.agent);

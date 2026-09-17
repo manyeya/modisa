@@ -1,5 +1,5 @@
-// Keeping shepherd current: the release manifest for this install's channel, a cached "is there a
-// newer one?" for the TUI's update badge, and `shepherd update`, which replaces the binary with the
+// Keeping modisa current: the release manifest for this install's channel, a cached "is there a
+// newer one?" for the TUI's update badge, and `modisa update`, which replaces the binary with the
 // new release after checking its SHA-256.
 import { loadConfig } from "../config/config";
 import { DIR, self } from "../core/paths";
@@ -7,17 +7,17 @@ import { installedBy } from "../core/install";
 import { CHANNEL, FROM_SOURCE, REPO, VERSION, newer, platform } from "../core/version";
 import { RESET, banner, bar, dim, fancy, gradient, megabytes, red, showCursor, spinner } from "./flair";
 
-// What to run to update this install: its package manager's command, or `shepherd update`.
-export const updateCommand = () => installedBy(self()[0]!, FROM_SOURCE).upgrade ?? "shepherd update";
+// What to run to update this install: its package manager's command, or `modisa update`.
+export const updateCommand = () => installedBy(self()[0]!, FROM_SOURCE).upgrade ?? "modisa update";
 
 export type Manifest = { version: string; channel: string; notes: string; assets: Record<string, { url: string; sha256: string }> };
 
 const CACHE = `${DIR}/update.json`;
 const EVERY = 6 * 60 * 60 * 1000;
 
-// SHEPHERD_UPDATE_URL points elsewhere (a mirror, a test server) or turns checks "off".
+// MODISA_UPDATE_URL points elsewhere (a mirror, a test server) or turns checks "off".
 export function manifestUrl(channel: string): string | undefined {
-  const override = Bun.env.SHEPHERD_UPDATE_URL;
+  const override = Bun.env.MODISA_UPDATE_URL;
   if (override === "off") return;
   if (override) return override;
   return channel === "staging" ? `https://github.com/${REPO}/releases/download/staging/manifest.json` : `https://github.com/${REPO}/releases/latest/download/manifest.json`;
@@ -42,7 +42,7 @@ async function fetchManifest(url: string): Promise<Manifest | undefined> {
 export async function checkForUpdate(force = false): Promise<Manifest | undefined> {
   const cfg = await loadConfig();
   if (!force && !cfg.update.check) return;
-  if (FROM_SOURCE && !Bun.env.SHEPHERD_UPDATE_URL) return; // a checkout updates with git pull
+  if (FROM_SOURCE && !Bun.env.MODISA_UPDATE_URL) return; // a checkout updates with git pull
   const url = manifestUrl(CHANNEL === "staging" ? "staging" : cfg.update.channel);
   if (!url) return;
   const cached = await Bun.file(CACHE).json().catch(() => undefined);
@@ -55,7 +55,7 @@ export async function checkForUpdate(force = false): Promise<Manifest | undefine
 }
 
 export async function runVersion(): Promise<number> {
-  console.log(`shepherd ${VERSION}${CHANNEL === "staging" ? " (staging)" : ""}${FROM_SOURCE ? " (from source)" : ""}`);
+  console.log(`modisa ${VERSION}${CHANNEL === "staging" ? " (staging)" : ""}${FROM_SOURCE ? " (from source)" : ""}`);
   const m = await checkForUpdate();
   if (m) console.log(`update available: ${m.version} — run \`${updateCommand()}\``);
   return 0;
@@ -81,7 +81,7 @@ async function download(url: string, progress: (got: number, total: number) => v
   return bytes;
 }
 
-// What `shepherd update` shows: plain lines, or on a colour terminal the wordmark, spinners and a download bar.
+// What `modisa update` shows: plain lines, or on a colour terminal the wordmark, spinners and a download bar.
 type Reporter = {
   banner: (subtitle: string) => Promise<void>;
   step: <T>(label: string, work: () => Promise<T>, verdict?: (result: T) => string | false) => Promise<T>;
@@ -150,34 +150,34 @@ export async function runUpdate(): Promise<number> {
 
 async function update(ui: Reporter): Promise<number> {
   if (FROM_SOURCE) {
-    ui.say(`shepherd ${VERSION} runs from source: update it with git pull`);
+    ui.say(`modisa ${VERSION} runs from source: update it with git pull`);
     return 0;
   }
   // replacing a binary a package manager owns would leave the manager's records wrong
   const how = installedBy(self()[0]!, FROM_SOURCE);
   if (how.upgrade) {
-    ui.fail(`shepherd was installed with ${how.manager}: update it with \`${how.upgrade}\`, then \`shepherd restart\``);
+    ui.fail(`modisa was installed with ${how.manager}: update it with \`${how.upgrade}\`, then \`modisa restart\``);
     return 1;
   }
   const plat = platform();
   if (!plat) {
-    ui.fail("there's no shepherd release for this platform; run it from source");
+    ui.fail("there's no modisa release for this platform; run it from source");
     return 1;
   }
-  await ui.banner(`shepherd ${VERSION} · ${plat}`);
-  const m = await ui.step("looking for a newer release", () => checkForUpdate(true), (found) => (found ? `found shepherd ${found.version}` : "no newer release"));
+  await ui.banner(`modisa ${VERSION} · ${plat}`);
+  const m = await ui.step("looking for a newer release", () => checkForUpdate(true), (found) => (found ? `found modisa ${found.version}` : "no newer release"));
   if (!m) {
-    ui.say(`shepherd ${VERSION} is up to date`);
+    ui.say(`modisa ${VERSION} is up to date`);
     return 0;
   }
   const asset = m.assets[plat];
   if (!asset) {
-    ui.fail(`shepherd ${m.version} has no build for ${plat}`);
+    ui.fail(`modisa ${m.version} has no build for ${plat}`);
     return 1;
   }
   let bytes: Uint8Array;
   try {
-    bytes = await ui.download(`downloading shepherd ${m.version} for ${plat}`, asset.url);
+    bytes = await ui.download(`downloading modisa ${m.version} for ${plat}`, asset.url);
   } catch (e) {
     ui.fail((e as Error).message);
     return 1;
@@ -202,6 +202,6 @@ async function update(ui: Reporter): Promise<number> {
     ui.fail(`couldn't replace ${target}: ${moved.stderr.toString().trim()}`);
     return 1;
   }
-  ui.finale(`updated shepherd ${VERSION} → ${m.version}`, "Run `shepherd restart` to load it into running sessions.", m.notes.trim().split("\n").filter(Boolean).slice(0, 8));
+  ui.finale(`updated modisa ${VERSION} → ${m.version}`, "Run `modisa restart` to load it into running sessions.", m.notes.trim().split("\n").filter(Boolean).slice(0, 8));
   return 0;
 }

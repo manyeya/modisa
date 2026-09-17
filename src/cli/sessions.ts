@@ -8,12 +8,12 @@ export async function attach(name: string, dir = cwd(), remote?: string) {
   if (!remote) {
     return runClient({ session: name, connect: (spawn) => (spawn ? ensureServer(name, dir) : connectUnix(socketPath(name))) });
   }
-  // ssh://user@host:port or an ~/.ssh/config alias; the far side runs `shepherd proxy`
+  // ssh://user@host:port or an ~/.ssh/config alias; the far side runs `modisa proxy`
   const u = /^ssh:\/\/([^/:]+)(?::(\d+))?/.exec(remote);
   const host = u ? u[1]! : remote;
   const port = u?.[2] ? ["-p", u[2]] : [];
   const cfg = await loadConfig();
-  const ssh = Bun.env.SHEPHERD_SSH ?? "ssh";
+  const ssh = Bun.env.MODISA_SSH ?? "ssh";
   return runClient({ session: name, remote: true, connect: async () => connectStdio([ssh, "-T", ...port, host, cfg.remote_command, "proxy", "-s", name]) });
 }
 
@@ -93,7 +93,7 @@ export async function killSession(name: string) {
   console.log(`killed ${name}`);
 }
 
-// `shepherd config [path|edit]`
+// `modisa config [path|edit]`
 export async function configCommand(sub?: string) {
   if (sub === "edit") await Bun.spawn([Bun.env.EDITOR || "vi", await ensureConfigFile()], { stdio: ["inherit", "inherit", "inherit"] }).exited;
   else console.log(sub === "path" ? CONFIG_PATH : await Bun.file(await ensureConfigFile()).text());

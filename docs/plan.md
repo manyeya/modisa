@@ -1,12 +1,12 @@
-# Shepherd — Agent-Native Terminal Multiplexer — Build Plan
+# Modisa — Agent-Native Terminal Multiplexer — Build Plan
 
 ## 1. Product Vision
 
-Shepherd is a terminal multiplexer built for running many coding agents at once — tmux rebuilt for the agent era.
+Modisa is a terminal multiplexer built for running many coding agents at once — tmux rebuilt for the agent era.
 
 > A terminal pane is an execution surface. It can contain a shell, a running process, a coding-agent harness, or any other interactive tool.
 
-What Shepherd does:
+What Modisa does:
 
 - runs shells, processes, and coding agents in real terminal panes, organised into workspaces and tabs
 - knows which panes are agents and shows their live state (blocked / working / done / idle) in a sidebar
@@ -16,7 +16,7 @@ What Shepherd does:
 - exposes a socket API + CLI so agents (and scripts) can drive panes
 - lets agents send messages to each other
 
-**Shepherd has no AI of its own.** No model, no built-in agent, no LLM calls. Intelligence comes entirely from external harnesses (Claude Code, Codex, Pi, …). Shepherd hosts, observes, and connects them.
+**Modisa has no AI of its own.** No model, no built-in agent, no LLM calls. Intelligence comes entirely from external harnesses (Claude Code, Codex, Pi, …). Modisa hosts, observes, and connects them.
 
 A typical workspace:
 
@@ -41,7 +41,7 @@ Runs inside your existing terminal (Ghostty, Kitty, WezTerm, iTerm2, Alacritty).
 
 ### Agent-aware, not agent-powered
 
-Shepherd never talks to a model. It understands agents — which panes they are, what state they're in, how to reach them — but the thinking is done by harnesses.
+Modisa never talks to a model. It understands agents — which panes they are, what state they're in, how to reach them — but the thinking is done by harnesses.
 
 ### Harness-agnostic
 
@@ -72,15 +72,15 @@ This is the target for 1.0. Agent messaging is one feature among these, not the 
 | **Sidebar** | workspaces list; agents list rolled up across all workspaces with state; click/jump to agent; collapsible |
 | **Notifications** | toast in-app, system notification, sound — when a background agent becomes blocked or done |
 | **Sessions** | background server; named sessions; detach/reattach; state survives client exit |
-| **Remote** | `shepherd --remote ssh://host`: local thin client, remote server; local keybindings/theme; handles slow links |
+| **Remote** | `modisa --remote ssh://host`: local thin client, remote server; local keybindings/theme; handles slow links |
 | **Input** | prefix keybindings (configurable); full mouse — click to focus, drag borders to resize, right-click context menu, scroll |
 | **Scrollback** | per-pane scrollback, copy mode, search |
 | **Layout** | adapts to narrow terminals |
-| **Config** | `~/.config/shepherd/config.toml`; hot reload; settings menu; themes (Catppuccin, Gruvbox, Nord, Dracula) |
+| **Config** | `~/.config/modisa/config.toml`; hot reload; settings menu; themes (Catppuccin, Gruvbox, Nord, Dracula) |
 | **Socket API + CLI** | create/split/close panes, run commands, read output, wait for state, manage workspaces/tabs, subscribe to events |
-| **Integrations** | `shepherd integration install <agent>` installs the shepherd skill and state-reporting hooks |
+| **Integrations** | `modisa integration install <agent>` installs the modisa skill and state-reporting hooks |
 | **Agent messaging** | agents send messages to each other, delivered when the recipient is idle |
-| **Skill** | a `shepherd` skill (Claude Code, Codex) teaches agents the CLI: panes, waiting, spawning and messaging agents |
+| **Skill** | a `modisa` skill (Claude Code, Codex) teaches agents the CLI: panes, waiting, spawning and messaging agents |
 | **Plugins** | later: extension points for sidebars, viewers, bridges |
 
 Supported agents (detection rules shipped): Claude Code, Codex, Pi, OpenCode, Gemini CLI, Copilot CLI, Cursor Agent, Amp, Droid, Aider, Kiro, and a generic fallback.
@@ -93,14 +93,14 @@ Client-server, like tmux. The server owns all state and PTYs; the TUI is a thin 
 
 ```text
  ┌──────────────────────┐   ┌──────────────┐   ┌──────────────┐
- │ TUI client (OpenTUI) │   │ shepherd CLI  │   │   plugins    │
+ │ TUI client (OpenTUI) │   │ modisa CLI  │   │   plugins    │
  │ local or over SSH    │   │ (agents,     │   │              │
  └──────────┬───────────┘   │  scripts)    │   └──────┬───────┘
             │               └──────┬───────┘          │
             └──────────────────────┼──────────────────┘
                                    │ unix socket, JSON-RPC
                         ┌──────────▼──────────┐
-                        │   Shepherd Server    │
+                        │   Modisa Server    │
                         │                     │
                         │ Workspaces / Tabs   │
                         │ Panes / Layout      │
@@ -249,7 +249,7 @@ Use `libghostty-vt`. The server keeps an emulator per pane, so:
 
 Agent TUIs (Claude Code, Codex) are the primary compatibility target, alongside vim, nvim, htop, less, ssh, git, and interactive shells.
 
-Known limitation: running tmux inside a Shepherd pane hides its contents from detection.
+Known limitation: running tmux inside a Modisa pane hides its contents from detection.
 
 ---
 
@@ -263,7 +263,7 @@ A pane is an agent if its foreground process matches an adapter (`claude`, `code
 
 ## State
 
-1. **Hooks** — installed via `shepherd integration install <agent>`. The agent's own hooks (Claude Code hooks, Codex `notify`) call `shepherd report --state working|blocked|done`. A dialog on screen still reads as blocked.
+1. **Hooks** — installed via `modisa integration install <agent>`. The agent's own hooks (Claude Code hooks, Codex `notify`) call `modisa report --state working|blocked|done`. A dialog on screen still reads as blocked.
 2. **Screen rules** — declarative TOML per adapter, matched against the bottom of the rendered screen (`region` = last N lines): the dialog key-hint footer → blocked, "esc to interrupt" → working, otherwise idle. Zero-config; verified against the real Claude Code and Codex, whose real screens are test fixtures.
 
 ```toml
@@ -297,9 +297,9 @@ Mostly data. Rules live in TOML so a harness UI change is a config fix, not a re
 Every pane receives:
 
 ```text
-SHEPHERD_SOCKET      path to the server socket
-SHEPHERD_PANE_ID     its own pane id
-SHEPHERD_WORKSPACE   workspace id
+MODISA_SOCKET      path to the server socket
+MODISA_PANE_ID     its own pane id
+MODISA_WORKSPACE   workspace id
 ```
 
 ---
@@ -329,17 +329,17 @@ Configurable per state in `config.toml`.
 
 # 9. Sessions and Persistence
 
-- `shepherd` starts or attaches to the default session
+- `modisa` starts or attaches to the default session
 - The server outlives clients; closing the terminal only detaches
 - Multiple clients may attach to the same session
 
 ```bash
-shepherd                       # attach default session (start if needed)
-shepherd new my-project
-shepherd attach my-project
-shepherd detach                # or prefix + d
-shepherd ls
-shepherd kill my-project
+modisa                       # attach default session (start if needed)
+modisa new my-project
+modisa attach my-project
+modisa detach                # or prefix + d
+modisa ls
+modisa kill my-project
 ```
 
 Persist to disk (for server restarts / reboots): sessions, workspaces, tabs, layouts, pane names, cwd, commands, harness + launch args. On restore, shells respawn and agents relaunch with their harness's resume flag where supported (`claude --continue`, `codex resume`).
@@ -349,8 +349,8 @@ Persist to disk (for server restarts / reboots): sessions, workspaces, tabs, lay
 # 10. Remote
 
 ```bash
-shepherd --remote ssh://user@host
-shepherd --remote myserver     # ~/.ssh/config alias
+modisa --remote ssh://user@host
+modisa --remote myserver     # ~/.ssh/config alias
 ```
 
 
@@ -391,7 +391,7 @@ Mouse: click to focus, drag borders to resize, scroll for scrollback, right-clic
 
 # 12. Config and Themes
 
-`~/.config/shepherd/config.toml`, hot-reloaded.
+`~/.config/modisa/config.toml`, hot-reloaded.
 
 ```toml
 prefix = "C-b"
@@ -415,22 +415,22 @@ Built-in themes: Catppuccin, Gruvbox, Nord, Dracula. Settings menu (`prefix + s`
 
 # 13. Socket API and CLI
 
-The same JSON-RPC API the TUI uses, available to anything with `SHEPHERD_SOCKET`. Every agent can already run shell commands, so the CLI works with any harness, zero integration.
+The same JSON-RPC API the TUI uses, available to anything with `MODISA_SOCKET`. Every agent can already run shell commands, so the CLI works with any harness, zero integration.
 
 ```bash
-shepherd workspace create api --cwd ~/code/api
-shepherd tab create agents
-shepherd pane split --right --name tests "pnpm test"
-shepherd pane run tests "pnpm test --watch"
-shepherd pane read tests --lines 50          # rendered screen / scrollback
-shepherd pane keys server C-c
-shepherd pane close tests
-shepherd agent spawn codex --name reviewer
-shepherd agent list                          # agents + state
-shepherd wait tests --exited
-shepherd wait @reviewer --state idle
-shepherd wait server --match "listening on"
-shepherd events --follow                     # stream state changes etc.
+modisa workspace create api --cwd ~/code/api
+modisa tab create agents
+modisa pane split --right --name tests "pnpm test"
+modisa pane run tests "pnpm test --watch"
+modisa pane read tests --lines 50          # rendered screen / scrollback
+modisa pane keys server C-c
+modisa pane close tests
+modisa agent spawn codex --name reviewer
+modisa agent list                          # agents + state
+modisa wait tests --exited
+modisa wait @reviewer --state idle
+modisa wait server --match "listening on"
+modisa events --follow                     # stream state changes etc.
 ```
 
 `read` returns a structured snapshot, small by default:
@@ -454,7 +454,7 @@ This is what enables lead-agent workflows: a Claude Code pane can split off test
 
 ## Skill
 
-Agents learn the CLI from a `shepherd` skill (`SKILL.md`, the format Claude Code and Codex share), installed by `shepherd integration install <agent>`. Every pane has `shepherd` on its PATH, so the skill's commands just work. No MCP server: the CLI already is the API, and a skill costs no tool slots.
+Agents learn the CLI from a `modisa` skill (`SKILL.md`, the format Claude Code and Codex share), installed by `modisa integration install <agent>`. Every pane has `modisa` on its PATH, so the skill's commands just work. No MCP server: the CLI already is the API, and a skill costs no tool slots.
 
 ---
 
@@ -463,8 +463,8 @@ Agents learn the CLI from a `shepherd` skill (`SKILL.md`, the format Claude Code
 A feature on top of the socket API: agents can send text to each other.
 
 ```bash
-shepherd send @reviewer "Review the diff in src/auth"
-shepherd inbox
+modisa send @reviewer "Review the diff in src/auth"
+modisa inbox
 ```
 
 - Messages go into the recipient's mailbox
@@ -472,7 +472,7 @@ shepherd inbox
 - Framed so the recipient knows who sent it and how to reply:
 
   ```text
-  [shepherd] message from @coder (reply: shepherd send @coder "..."):
+  [modisa] message from @coder (reply: modisa send @coder "..."):
   Review the diff in src/auth
   ```
 
@@ -485,7 +485,7 @@ Loop safety: hop limit on reply chains, per-pair rate limit, `prefix + m` pauses
 
 # 15. Permissions
 
-Harnesses keep their own approval systems for file edits and commands. Shepherd only governs cross-pane actions, which harnesses can't see:
+Harnesses keep their own approval systems for file edits and commands. Modisa only governs cross-pane actions, which harnesses can't see:
 
 | Action | Default |
 |--------|---------|
@@ -502,7 +502,7 @@ Harnesses keep their own approval systems for file edits and commands. Shepherd 
 
 # 16. Shared Event System
 
-Internal event bus inside the server; streamed to clients and `shepherd events`.
+Internal event bus inside the server; streamed to clients and `modisa events`.
 
 ```ts
 type Event =
@@ -545,7 +545,7 @@ PTY / Socket API
 
 - Background server owns PTYs and emulators
 - Client attaches over unix socket
-- Detach / reattach, named sessions, `shepherd ls/new/attach/kill`
+- Detach / reattach, named sessions, `modisa ls/new/attach/kill`
 - Workspaces
 
 It is now a usable tmux alternative.
@@ -562,13 +562,13 @@ It is now usable day to day. **This is the first real release.**
 ## Phase 4 — Socket API + CLI
 
 - Public JSON-RPC API
-- `shepherd pane / agent / workspace / wait / events`
-- `SHEPHERD_*` env in every pane
+- `modisa pane / agent / workspace / wait / events`
+- `MODISA_*` env in every pane
 - Permission check on every call
 
 ## Phase 5 — Integrations, Config, Themes
 
-- `shepherd integration install <agent>` (skill + hooks)
+- `modisa integration install <agent>` (skill + hooks)
 - `config.toml` + hot reload + settings menu
 - Themes
 - Scrollback copy mode + search
@@ -586,12 +586,12 @@ It is now usable day to day. **This is the first real release.**
 ## Phase 8 — Agent Messaging + Skill
 
 - Mailbox, `send`, `inbox`, idle-gated delivery, loop safety
-- `shepherd` skill for Claude Code and Codex
+- `modisa` skill for Claude Code and Codex
 
 ## Phase 9 — Templates and Plugins
 
 ```toml
-# shepherd.toml (per project)
+# modisa.toml (per project)
 [[pane]]
 name = "server"
 run = "pnpm dev"
@@ -612,9 +612,9 @@ Plugin extension points (sidebar sections, pane viewers, notification bridges) o
 # 18. Suggested Repository Structure
 
 ```text
-shepherd/
+modisa/
 ├── apps/
-│   └── shepherd/          single entry: server, client, CLI
+│   └── modisa/          single entry: server, client, CLI
 │
 ├── packages/
 │   ├── server/
@@ -672,7 +672,7 @@ Agent TUIs are the hardest, most important clients. Test them from Phase 1.
 
 ## Detection accuracy
 
-Screen rules break when harnesses change their UI. Keep rules in TOML, test them against real screens, and ship a `shepherd debug detect <pane>` command that shows which rule matched.
+Screen rules break when harnesses change their UI. Keep rules in TOML, test them against real screens, and ship a `modisa debug detect <pane>` command that shows which rule matched.
 
 ## Server/client split
 
@@ -690,11 +690,11 @@ Messaging needs hop limits, rate limits, and a pause switch before it ships.
 
 # 21. The Differentiator
 
-Not "tmux with AI" — Shepherd has no AI.
+Not "tmux with AI" — Modisa has no AI.
 
 > **A terminal multiplexer that knows what every agent is doing, tells you when one needs you, never loses a session, and gives agents the same control over the workspace that you have.**
 
-Agents from any vendor share one workspace. Shepherd watches the flock; it doesn't do the grazing.
+Agents from any vendor share one workspace. Modisa watches the flock; it doesn't do the grazing.
 
 ---
 
@@ -702,11 +702,11 @@ Agents from any vendor share one workspace. Shepherd watches the flock; it doesn
 
 ## Milestone 1 — It's a multiplexer
 
-`shepherd` opens a shell. Split, tab, zoom, resize with mouse. Claude Code renders perfectly in a pane.
+`modisa` opens a shell. Split, tab, zoom, resize with mouse. Claude Code renders perfectly in a pane.
 
 ## Milestone 2 — It never loses anything
 
-Close the terminal. Run `shepherd`. Everything is exactly where it was, agents still running.
+Close the terminal. Run `modisa`. Everything is exactly where it was, agents still running.
 
 ## Milestone 3 — It knows your agents
 
@@ -714,7 +714,7 @@ Open Claude Code, Codex, and Pi in three panes. Switch to another tab. When Code
 
 ## Milestone 4 — Agents drive it
 
-Ask Claude Code *"run the tests and tell me what's wrong."* It runs `shepherd pane split --name tests "pnpm test"`, `shepherd wait tests --exited`, `shepherd pane read tests`, and reports back. The test run is visible the whole time.
+Ask Claude Code *"run the tests and tell me what's wrong."* It runs `modisa pane split --name tests "pnpm test"`, `modisa wait tests --exited`, `modisa pane read tests`, and reports back. The test run is visible the whole time.
 
 ## Milestone 5 — Agents talk
 
@@ -725,7 +725,7 @@ Tell Claude Code *"when you're done, ask @reviewer to review."* The message land
 # 23. Definition of Success
 
 ```text
-shepherd --remote devbox
+modisa --remote devbox
      │
      ▼
 Session restored: my-project
@@ -749,6 +749,6 @@ Session restored: my-project
    Detach. Close laptop. Reattach tomorrow. Still there.
 ```
 
-Many agents, one terminal, nothing lost, nothing missed — and Shepherd never called a model once.
+Many agents, one terminal, nothing lost, nothing missed — and Modisa never called a model once.
 
 That is the product.

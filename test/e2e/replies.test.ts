@@ -20,8 +20,8 @@ async function spawn(...flags: string[]) {
 
 // send from a pane, then read the reply target the recipient was shown
 async function sendFrom(from: string, label: string, body: string) {
-  expect(await sb.cli(S, ["send", "@fake", body], { SHEPHERD_PANE_ID: from })).toContain("queued for @fake");
-  const hint = await cli("wait", "@fake", "--match", `message from @${label} \\(reply: shepherd send \\S+`, "--timeout", "10");
+  expect(await sb.cli(S, ["send", "@fake", body], { MODISA_PANE_ID: from })).toContain("queued for @fake");
+  const hint = await cli("wait", "@fake", "--match", `message from @${label} \\(reply: modisa send \\S+`, "--timeout", "10");
   return hint.split(" ").at(-1)!;
 }
 
@@ -42,7 +42,7 @@ test("send → rename the sender → reply to the hinted target → delivered", 
   const hint = await sendFrom(a, a, "hello-1");
   expect(hint).toMatch(new RegExp(`^${a}:\\w+$`));
   await cli("pane", "rename", a, "gary");
-  expect(await sb.cli(S, ["send", hint, "pong-1"], { SHEPHERD_PANE_ID: fake })).toContain(`queued for ${hint}`);
+  expect(await sb.cli(S, ["send", hint, "pong-1"], { MODISA_PANE_ID: fake })).toContain(`queued for ${hint}`);
   expect(await cli("wait", "@gary", "--match", "got: pong-1", "--timeout", "10")).toBe("got: pong-1");
   expect(await cli("pane", "read", `@${a}`)).toContain("pong-1"); // and @<id> still resolves once it has a name
 }, 60000);
@@ -52,7 +52,7 @@ test("send → close the sender → a new pane takes its name → the reply fail
   const hint = await sendFrom(b, "bob", "hello-2");
   await cli("pane", "close", b);
   await spawn("--name", "bob");
-  const r = await sb.run(S, ["send", hint, "pong-2"], { SHEPHERD_PANE_ID: fake });
+  const r = await sb.run(S, ["send", hint, "pong-2"], { MODISA_PANE_ID: fake });
   expect(r.code).toBe(1);
   expect(r.out).toContain(`${b} has gone`);
   expect(await cli("messages")).not.toContain("pong-2");
@@ -63,10 +63,10 @@ test("the pull flow (inbox, then reply) keeps its target through a rename, and f
   expect(await cli("pause")).toBe("messaging paused");
   try {
     const c = await spawn("--name", "carol");
-    const as = (id: string) => ({ SHEPHERD_PANE_ID: id });
+    const as = (id: string) => ({ MODISA_PANE_ID: id });
     await sb.cli(S, ["send", "@fake", "hello-3"], as(c));
     const plain = await sb.cli(S, ["inbox"], as(fake));
-    const hint = /from @carol \(reply: shepherd send (\S+) "\.\.\."\):\nhello-3/.exec(plain)?.[1];
+    const hint = /from @carol \(reply: modisa send (\S+) "\.\.\."\):\nhello-3/.exec(plain)?.[1];
     expect(hint).toMatch(new RegExp(`^${c}:\\w+$`));
     await cli("pane", "rename", c, "dave");
     await sb.cli(S, ["send", hint!, "pong-3"], as(fake));

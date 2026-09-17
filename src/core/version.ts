@@ -1,4 +1,4 @@
-// Which shepherd this is: the release version baked in at build time (--define BUILD_VERSION=…),
+// Which modisa this is: the release version baked in at build time (--define BUILD_VERSION=…),
 // or package.json's version + "-dev" when running from source; its update channel; and the platform
 // name release assets use.
 import pkg from "../../package.json";
@@ -7,7 +7,7 @@ declare const BUILD_VERSION: string;
 export const VERSION: string = typeof BUILD_VERSION === "string" ? BUILD_VERSION : `${pkg.version}-dev`;
 export const FROM_SOURCE = VERSION.endsWith("-dev");
 export const CHANNEL: "stable" | "staging" = VERSION.includes("-staging") ? "staging" : "stable";
-export const REPO = "manyeya/shepherd";
+export const REPO = "manyeya/modisa";
 
 // darwin-arm64, linux-x64, linux-arm64: the release assets there are (libghostty ships no Intel Mac build)
 export function platform(): string | undefined {

@@ -25,7 +25,7 @@ afterAll(async () => {
 test("agents need approval to type into panes they didn't create", async () => {
   const panes = JSON.parse(await cli("pane", "list", "--json"));
   const coder = panes.find((p: any) => p.name === "coder").id;
-  const asCoder = { SHEPHERD_PANE_ID: coder };
+  const asCoder = { MODISA_PANE_ID: coder };
   // approve
   const allowed = sb.cli(S, ["pane", "keys", "@server", "C-c"], asCoder);
   await ui.until("permission prompt", (s) => s.includes('@coder wants to keys pane "server"') && s.includes("[y] allow"));
@@ -49,10 +49,10 @@ test("refusing to type at another agent points at send", async () => {
   const coder = panes.find((p: any) => p.name === "coder").id;
   // a second agent, so the target is an agent pane the caller didn't create
   await cli("agent", "spawn", "fakeagent", "--name", "reviewer");
-  const denied = sb.cli(S, ["pane", "run", "@reviewer", "echo hi"], { SHEPHERD_PANE_ID: coder });
+  const denied = sb.cli(S, ["pane", "run", "@reviewer", "echo hi"], { MODISA_PANE_ID: coder });
   await ui.until("prompt for the agent pane", (s) => s.includes('@coder wants to run pane "reviewer"'));
   ui.write("n");
-  expect(await denied).toContain('shepherd send @reviewer');
+  expect(await denied).toContain('modisa send @reviewer');
   // messaging itself never asks
-  expect(await sb.cli(S, ["send", "@reviewer", "over the mailbox"], { SHEPHERD_PANE_ID: coder })).not.toContain("denied");
+  expect(await sb.cli(S, ["send", "@reviewer", "over the mailbox"], { MODISA_PANE_ID: coder })).not.toContain("denied");
 }, 30000);

@@ -1,16 +1,16 @@
 codex -a on-request -s read-only
-manyeya@manyeyas-MacBook-Air shepard % codex -a on-request -s read-only
+manyeya@manyeyas-MacBook-Air modisa % codex -a on-request -s read-only
 ╭────────────────────────────────────────────────╮
 │ >_ OpenAI Codex (v0.154.0)                     │
 │                                                │
 │ model:     gpt-6-astra high   /model to change │
-│ directory: ~/Documents/Code/shepard            │
+│ directory: ~/Documents/Code/modisa            │
 ╰────────────────────────────────────────────────╯
 
   Tip: Use /fork to branch the current chat into a new thread.
 
 
-› Run this exact shell command and nothing else: touch /tmp/shepherd-codex-test
+› Run this exact shell command and nothing else: touch /tmp/modisa-codex-test
 
 
 ■ You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit

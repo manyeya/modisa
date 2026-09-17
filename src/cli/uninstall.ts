@@ -1,4 +1,4 @@
-// `shepherd uninstall [--purge] [--yes]`: take shepherd back off this machine. Package managers only
+// `modisa uninstall [--purge] [--yes]`: take modisa back off this machine. Package managers only
 // remove the files they installed, so this does the rest: every agent integration and the shared
 // skill, running sessions and saved state (config too, with --purge). The binary goes as well when
 // install.sh put it there; otherwise the package manager's own remove command finishes the job.
@@ -10,8 +10,8 @@ import { integrationStatus, uninstallAll } from "../integrations";
 import { connectUnix } from "../protocol/transport";
 
 export async function runUninstall(o: { purge: boolean; yes: boolean }): Promise<number> {
-  if (Bun.env.SHEPHERD_SOCKET) {
-    console.error("run `shepherd uninstall` from a terminal outside shepherd: it stops every session, this one included");
+  if (Bun.env.MODISA_SOCKET) {
+    console.error("run `modisa uninstall` from a terminal outside modisa: it stops every session, this one included");
     return 1;
   }
   const exe = self()[0]!;
@@ -22,9 +22,9 @@ export async function runUninstall(o: { purge: boolean; yes: boolean }): Promise
   const hasConfig = await Bun.$`test -d ${CONFIG_DIR}`.quiet().nothrow().then((r) => r.exitCode === 0);
 
   if (!o.yes) {
-    console.log("shepherd uninstall will:");
+    console.log("modisa uninstall will:");
     if (sessions.length) console.log(`  stop running sessions: ${sessions.join(", ")}`);
-    if (agents.length) console.log(`  remove shepherd's hooks and skill from: ${agents.join(", ")}`);
+    if (agents.length) console.log(`  remove modisa's hooks and skill from: ${agents.join(", ")}`);
     console.log(`  delete saved sessions and state in ${DIR}`);
     if (hasConfig) console.log(o.purge ? `  delete your config in ${CONFIG_DIR}` : `  keep your config in ${CONFIG_DIR} (--purge deletes it)`);
     if (how.by === "script") console.log(`  delete ${exe}`);
@@ -55,7 +55,7 @@ export async function runUninstall(o: { purge: boolean; yes: boolean }): Promise
   if (how.by === "script") {
     const gone = await Bun.file(exe).delete().then(() => true, () => false);
     console.log(gone ? `deleted ${exe}` : `couldn't delete ${exe}: remove it by hand`);
-  } else if (how.remove) console.log(`shepherd was installed with ${how.manager}; finish with: ${how.remove}`);
-  else console.log("shepherd runs from source here: delete the checkout to finish");
+  } else if (how.remove) console.log(`modisa was installed with ${how.manager}; finish with: ${how.remove}`);
+  else console.log("modisa runs from source here: delete the checkout to finish");
   return failed.length ? 1 : 0;
 }

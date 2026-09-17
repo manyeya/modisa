@@ -5,7 +5,7 @@
     "bun",
     "plugin.ts"
   ],
-  "description": "logs agents that newly become blocked, and shows who's blocked in shepherd's TUI",
+  "description": "logs agents that newly become blocked, and shows who's blocked in modisa's TUI",
   "actions": [
     { "id": "summary", "title": "Attention summary", "description": "how many agents are blocked, and how many blocks were logged" },
     { "id": "clear", "title": "Clear the attention log" },
@@ -15,7 +15,7 @@
     {
       "id": "log",
       "title": "Attention log",
-      "run": ["sh", "-c", "touch \"$SHEPHERD_PLUGIN_DATA/attention.log\" && exec tail -n 100 -f \"$SHEPHERD_PLUGIN_DATA/attention.log\""],
+      "run": ["sh", "-c", "touch \"$MODISA_PLUGIN_DATA/attention.log\" && exec tail -n 100 -f \"$MODISA_PLUGIN_DATA/attention.log\""],
       "placement": "popup",
       "width": "80%",
       "height": 20

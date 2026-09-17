@@ -1,16 +1,16 @@
 // attention-log: when an agent newly becomes blocked, append one line to attention.log in the plugin's data
-// directory, and show who's blocked in shepherd's TUI: a count in the status row, a sidebar row per blocked agent
+// directory, and show who's blocked in modisa's TUI: a count in the status row, a sidebar row per blocked agent
 // (clicking it focuses that agent), and a badge on its pane until someone marks it seen from the pane's menu. Prefix A
 // shows the log in a popup. Agents already blocked in the startup snapshot are shown but not logged; an agent that
 // stops being blocked and blocks again is logged again. A disconnect is a gap: an agent that blocked and unblocked
 // while the plugin was away isn't logged. Read AGENTS.md before changing it.
-import { runPlugin } from "./shepherd-plugin";
+import { runPlugin } from "./modisa-plugin";
 
-const LOG = `${Bun.env.SHEPHERD_PLUGIN_DATA ?? import.meta.dir}/attention.log`;
+const LOG = `${Bun.env.MODISA_PLUGIN_DATA ?? import.meta.dir}/attention.log`;
 
 type Blocked = { pane: string; instance: string; name?: string; harness?: string };
 
-runPlugin(async (shepherd) => {
+runPlugin(async (modisa) => {
   const blocked = new Map<string, Blocked>(); // by pane instance: the agents blocked right now
   const seen = new Set<string>(); // instances whose badge the user dismissed while they stay blocked
   const badged = new Map<string, string>(); // pane → the instance its badge is for
@@ -25,18 +25,18 @@ runPlugin(async (shepherd) => {
       const agents = [...blocked.values()];
       try {
         if (agents.length) {
-          await shepherd.ui.status("blocked", `${agents.length} blocked`, { tone: "warn", action: "summary" });
-          await shepherd.ui.sidebar("Blocked agents", agents.map((a) => ({ text: [a.name ? `@${a.name}` : a.pane, a.harness].filter(Boolean).join(" "), tone: "warn", pane: a.pane, instance: a.instance })));
+          await modisa.ui.status("blocked", `${agents.length} blocked`, { tone: "warn", action: "summary" });
+          await modisa.ui.sidebar("Blocked agents", agents.map((a) => ({ text: [a.name ? `@${a.name}` : a.pane, a.harness].filter(Boolean).join(" "), tone: "warn", pane: a.pane, instance: a.instance })));
         } else {
-          await shepherd.ui.clearStatus("blocked");
-          await shepherd.ui.clearSidebar();
+          await modisa.ui.clearStatus("blocked");
+          await modisa.ui.clearSidebar();
         }
         const wanted = new Map(agents.filter((a) => !seen.has(a.instance)).map((a) => [a.pane, a.instance]));
-        for (const [pane, instance] of badged) if (wanted.get(pane) !== instance) (await shepherd.ui.clearBadge(pane), badged.delete(pane));
+        for (const [pane, instance] of badged) if (wanted.get(pane) !== instance) (await modisa.ui.clearBadge(pane), badged.delete(pane));
         for (const [pane, instance] of wanted) {
           if (badged.get(pane) === instance) continue;
           // a pane that closed meanwhile refuses its badge (pane_gone): nothing to show
-          await shepherd.ui.badge(pane, instance, "blocked", "warn").then(() => badged.set(pane, instance), () => {});
+          await modisa.ui.badge(pane, instance, "blocked", "warn").then(() => badged.set(pane, instance), () => {});
         }
       } catch (error) {
         console.error(`attention-log: couldn't update the TUI: ${error instanceof Error ? error.message : error}`);
@@ -49,14 +49,14 @@ runPlugin(async (shepherd) => {
     show();
   };
 
-  await shepherd.hello({
+  await modisa.hello({
     summary: () => ({ blocked: blocked.size, logged, log: LOG }),
     clear: async () => {
       await Bun.write(LOG, "");
       logged = 0;
       return "cleared";
     },
-    // from a pane's context menu (or a key or the palette): shepherd says which pane, already checked to be current
+    // from a pane's context menu (or a key or the palette): modisa says which pane, already checked to be current
     seen: (_params, call) => {
       if (!call.target) throw new Error("take this from a pane: its context menu, or the palette with that pane focused");
       seen.add(call.target.instance);
@@ -64,9 +64,9 @@ runPlugin(async (shepherd) => {
       return `${call.target.pane} marked seen`;
     },
   });
-  await shepherd.ui.menu([{ id: "seen", title: "Mark seen", action: "seen" }]);
+  await modisa.ui.menu([{ id: "seen", title: "Mark seen", action: "seen" }]);
 
-  await shepherd.subscribe({
+  await modisa.subscribe({
     // already blocked when the plugin started: shown, but not news for the log
     onSnapshot: (snapshot) => {
       for (const pane of snapshot.panes) {

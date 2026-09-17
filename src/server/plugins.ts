@@ -1,17 +1,17 @@
 // Plugins: programs started with the session server. Linked plugins (a plugin.json in a directory linked under
-// ~/.config/shepherd/plugins) start from their argv in their own directory; [[plugin]] run lines from config.toml
-// start through a login shell. Each gets $SHEPHERD_PLUGIN_DATA, a directory of its own, and a log file.
+// ~/.config/modisa/plugins) start from their argv in their own directory; [[plugin]] run lines from config.toml
+// start through a login shell. Each gets $MODISA_PLUGIN_DATA, a directory of its own, and a log file.
 //
 // Every start is a run: its own token, its own process group. Stopping a run (plugin stop, unlink, session stop) or
 // its process exiting first revokes it: the token stops binding, its connection is closed, and everything it showed in
 // the TUI is cleared. Then its group gets TERM, and KILL after STOP_MS, but only while the group is provably still that
 // run's (see OwnedGroup).
 //
-// A run's connection binds with its token (plugin.hello) and can offer actions, which plugin.invoke (`shepherd plugin
+// A run's connection binds with its token (plugin.hello) and can offer actions, which plugin.invoke (`modisa plugin
 // run`, the palette, a status segment, a sidebar row, a menu entry) calls. An action that doesn't answer in time has an
 // unknown outcome: the plugin is told to cancel (advisory), a late reply is logged, and nothing retries. The bound
 // connection can also put data into the TUI (ui.*): status segments, a sidebar section, pane badges, menu entries and
-// toasts, which shepherd draws itself. Nothing restarts a plugin; plugin.start does, when asked.
+// toasts, which modisa draws itself. Nothing restarts a plugin; plugin.start does, when asked.
 import { DIR } from "../core/paths";
 import { CONFIG_DIR } from "../config/config";
 import { bindPluginKeys } from "../config/keys";
@@ -34,7 +34,7 @@ const installOf = async (name: string, dir: string) => {
 };
 
 const STOP_MS = 2000;
-const INVOKE_MS = Number(Bun.env.SHEPHERD_PLUGIN_INVOKE_MS) || 30_000;
+const INVOKE_MS = Number(Bun.env.MODISA_PLUGIN_INVOKE_MS) || 30_000;
 const LOG_LIMIT = 5 * 1024 * 1024; // per run; past it the rest is read and dropped, so the plugin never blocks on output
 const DRAIN_MS = 1000; // after a run exits, how long its log waits for output still in the pipes
 
@@ -66,7 +66,7 @@ export class OwnedGroup {
 }
 
 // ---------- what a run shows in the TUI ----------
-// Limits keep a plugin from crowding out shepherd's own chrome or flooding clients with redraws.
+// Limits keep a plugin from crowding out modisa's own chrome or flooding clients with redraws.
 const LIMIT = { statusSegments: 4, statusText: 32, sidebarTitle: 30, sidebarRows: 20, rowText: 60, badgeText: 12, badges: 50, menuItems: 8, menuTitle: 40, toastText: 120 };
 const UPDATES = { burst: 30, perSecond: 10 }; // ui.* calls per run
 const TOASTS = { burst: 3, windowMs: 10_000 };
@@ -92,9 +92,9 @@ export { cleanText };
 type Run = { id: string; group: OwnedGroup; token: string; revoked: boolean; note(line: string): void };
 type Plugin = PluginStatus & { run?: Run; argv?: string[]; manifest?: PluginManifest; client?: Client; stopping?: boolean; starting?: boolean; ui: UiState };
 
-// A plugin's own directories: DATA for its state (under shepherd's state directory), CONFIG for settings the user
-// edits (under ~/.config/shepherd/plugin-config).
-const dirsOf = (name: string) => ({ SHEPHERD_PLUGIN: name, SHEPHERD_PLUGIN_DATA: `${DIR}/plugins/${name}`, SHEPHERD_PLUGIN_CONFIG: `${CONFIG_DIR}/plugin-config/${name}` });
+// A plugin's own directories: DATA for its state (under modisa's state directory), CONFIG for settings the user
+// edits (under ~/.config/modisa/plugin-config).
+const dirsOf = (name: string) => ({ MODISA_PLUGIN: name, MODISA_PLUGIN_DATA: `${DIR}/plugins/${name}`, MODISA_PLUGIN_CONFIG: `${CONFIG_DIR}/plugin-config/${name}` });
 
 // Placements. split, tab and zoomed are ordinary panes in the layout (zoomed: split, then the tab zoomed); they belong
 // to the session and outlive the plugin. overlay is a temporary zoomed pane over its origin, closed when its process
@@ -121,7 +121,7 @@ export function createPluginHost(ctx: ServerContext) {
   };
   const need = (name: string) => {
     const pl = plugins.get(name);
-    if (!pl) throw fail("no_such_plugin", `no plugin named ${name} (see shepherd plugin list)`);
+    if (!pl) throw fail("no_such_plugin", `no plugin named ${name} (see modisa plugin list)`);
     return pl;
   };
 
@@ -143,7 +143,7 @@ export function createPluginHost(ctx: ServerContext) {
   const failed = async (pl: Plugin, error: string) => {
     Object.assign(pl, { status: "failed", error, pid: undefined });
     await Bun.$`mkdir -p ${DIR}/plugins`.quiet();
-    await Bun.write(pl.log, `shepherd: ${error}\n`).catch(() => {});
+    await Bun.write(pl.log, `modisa: ${error}\n`).catch(() => {});
   };
 
   // A linked plugin's manifest is read again on every start, so edits to plugin.json apply.
@@ -152,7 +152,7 @@ export function createPluginHost(ctx: ServerContext) {
     const { manifest, error } = await readManifest(pl.dir!);
     const why = !manifest ? error!
       : manifest.name !== pl.name ? `linked as ${pl.name}, but plugin.json names it ${manifest.name}`
-      : manifest.protocol !== PROTOCOL ? `plugin.json says protocol ${manifest.protocol}; this shepherd speaks protocol ${PROTOCOL}`
+      : manifest.protocol !== PROTOCOL ? `plugin.json says protocol ${manifest.protocol}; this modisa speaks protocol ${PROTOCOL}`
       : undefined;
     if (why) {
       await failed(pl, why);
@@ -165,25 +165,25 @@ export function createPluginHost(ctx: ServerContext) {
 
   const launch = async (pl: Plugin) => {
     const dirs = dirsOf(pl.name);
-    await Bun.$`mkdir -p ${dirs.SHEPHERD_PLUGIN_DATA} ${dirs.SHEPHERD_PLUGIN_CONFIG}`.quiet();
+    await Bun.$`mkdir -p ${dirs.MODISA_PLUGIN_DATA} ${dirs.MODISA_PLUGIN_CONFIG}`.quiet();
     await Bun.write(pl.log, "");
     Object.assign(pl, { stopping: false, pid: undefined, exitCode: undefined, signal: undefined, error: undefined });
     const token = crypto.randomUUID();
     let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
     try {
       // detached: a new session and process group, led by the plugin, so the whole group can be signalled
-      proc = Bun.spawn(pl.argv!, { cwd: pl.dir, env: { ...Bun.env, ...dirs, SHEPHERD_PLUGIN_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+      proc = Bun.spawn(pl.argv!, { cwd: pl.dir, env: { ...Bun.env, ...dirs, MODISA_PLUGIN_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     } catch (e) {
       return failed(pl, `couldn't start ${pl.argv![0]}: ${(e as Error).message}`);
     }
-    // both streams, and shepherd's own notes, into one log in the order they happen
+    // both streams, and modisa's own notes, into one log in the order they happen
     const sink = Bun.file(pl.log).writer();
     let written = 0;
     const write = (chunk: Uint8Array | string) => {
       if (written > LOG_LIMIT) return;
       written += chunk.length;
       try {
-        sink.write(written > LOG_LIMIT ? `\n[shepherd: log truncated at ${LOG_LIMIT / 1024 / 1024} MB]\n` : chunk);
+        sink.write(written > LOG_LIMIT ? `\n[modisa: log truncated at ${LOG_LIMIT / 1024 / 1024} MB]\n` : chunk);
         sink.flush();
       } catch {} // the log was closed
     };
@@ -205,7 +205,7 @@ export function createPluginHost(ctx: ServerContext) {
       // Then the log gets a moment to take the last of its output, so a crash's final stderr is there when the failure
       // shows; a child holding the pipes open only delays that by DRAIN_MS, and the log says it may be incomplete.
       const complete = await Promise.race([drained.then(() => true), Bun.sleep(DRAIN_MS).then(() => false)]);
-      if (!complete) write(`[shepherd: output still open after exit; log may be incomplete]\n`);
+      if (!complete) write(`[modisa: output still open after exit; log may be incomplete]\n`);
       if (pl.run !== run) return;
       pl.status = outcome;
       if (outcome === "failed") pl.error = `exited with ${proc.signalCode ?? code}${complete ? "" : " (output still open after exit; log may be incomplete)"}; see ${pl.log}`;
@@ -215,7 +215,7 @@ export function createPluginHost(ctx: ServerContext) {
   // Tests only: hold each linked plugin, before its manifest is read, until this file exists, so the starting state can
   // be seen deterministically. Unset, it does nothing.
   const hold = async () => {
-    const file = Bun.env.SHEPHERD_TEST_PLUGIN_HOLD;
+    const file = Bun.env.MODISA_TEST_PLUGIN_HOLD;
     while (file && !(await Bun.file(file).exists())) await Bun.sleep(20);
   };
 
@@ -356,7 +356,7 @@ export function createPluginHost(ctx: ServerContext) {
       let pl = plugins.get(p.name);
       if (!pl || pl.source === "linked") {
         const linked = (await linkedPlugins()).find((l) => l.name === p.name);
-        if (!linked) throw fail("no_such_plugin", `no plugin named ${p.name} is linked (shepherd plugin link <dir>)`);
+        if (!linked) throw fail("no_such_plugin", `no plugin named ${p.name} is linked (modisa plugin link <dir>)`);
         pl = plugins.get(p.name) ?? add(linked.name, "linked", linked.dir);
         pl.dir = linked.dir;
         pl.install = await installOf(linked.name, linked.dir);
@@ -384,7 +384,7 @@ export function createPluginHost(ctx: ServerContext) {
       pl.client = c;
       c.plugin = pl.name;
       pl.actions = p.actions ?? [];
-      c.conn.onLateReply = (m) => run.note(`shepherd: a late reply from ${pl.name}, after its invocation had timed out (dropped): ${JSON.stringify(m).slice(0, 500)}`);
+      c.conn.onLateReply = (m) => run.note(`modisa: a late reply from ${pl.name}, after its invocation had timed out (dropped): ${JSON.stringify(m).slice(0, 500)}`);
       ctx.changed(); // its actions reach the palette
       return { name: pl.name, protocol: PROTOCOL, session: ctx.session, epoch: ctx.epoch };
     },
@@ -405,7 +405,7 @@ export function createPluginHost(ctx: ServerContext) {
       } catch (e) {
         if ((e as { code?: string }).code === "timeout") {
           conn.notify("plugin.cancel", { invocation, action: p.action }); // advisory: nothing proves the action stopped
-          run.note(`shepherd: ${p.action} (invocation ${invocation}) didn't answer within ${INVOKE_MS / 1000}s; its outcome is unknown`);
+          run.note(`modisa: ${p.action} (invocation ${invocation}) didn't answer within ${INVOKE_MS / 1000}s; its outcome is unknown`);
           throw fail("timeout", `${p.plugin} didn't answer ${p.action} within ${INVOKE_MS / 1000}s. Its outcome is unknown: it may still finish, and running it again can repeat its effects`);
         }
         if (e instanceof ConnectionClosedError) throw fail("plugin_unavailable", `${p.plugin} disconnected before answering ${p.action}; its outcome is unknown`);
@@ -491,7 +491,7 @@ export function createPluginHost(ctx: ServerContext) {
       if (p.from?.instance && s.panes.get(p.from.pane)?.info.instance !== p.from.instance) throw fail("pane_gone", `pane ${p.from.pane} has closed or restarted since`);
       const origin = p.from ? s.panes.get(p.from.pane) : s.focusedId ? s.panes.get(s.focusedId) : undefined;
       const context = { plugin: pl.name, pane: origin?.id, instance: origin?.info.instance, params: p.params ?? {} };
-      const opts: SpawnOpts = { command: def.run.map(quote).join(" "), cwd: pl.dir, createdBy: `plugin:${pl.name}`, env: { ...dirsOf(pl.name), SHEPHERD_PLUGIN_CONTEXT: JSON.stringify(context) } };
+      const opts: SpawnOpts = { command: def.run.map(quote).join(" "), cwd: pl.dir, createdBy: `plugin:${pl.name}`, env: { ...dirsOf(pl.name), MODISA_PLUGIN_CONTEXT: JSON.stringify(context) } };
       const inLayout = origin && s.locate(origin.id) ? origin.id : s.focusedId;
       let pane: PtyPane | undefined;
       switch (def.placement) {
@@ -513,7 +513,7 @@ export function createPluginHost(ctx: ServerContext) {
         }
         case "popup":
           if (!c.attached) throw fail("usage", "a popup opens in a TUI client (a key or the palette); from the CLI use a split, tab or zoomed pane");
-          if (!understandsPlugins(c)) throw fail("usage", "this client is from before plugin popups: update shepherd on this machine, or use a split, tab or zoomed pane");
+          if (!understandsPlugins(c)) throw fail("usage", "this client is from before plugin popups: update modisa on this machine, or use a split, tab or zoomed pane");
           if (popups.size) throw fail("ui_busy", "a popup is already open in this session");
           pane = s.spawnHidden(opts);
           popups.set(pane.id, { plugin: pl.name, client: c });

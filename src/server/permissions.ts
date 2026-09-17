@@ -10,7 +10,7 @@ export function installPermissions(ctx: ServerContext) {
     const policy = ctx.cfg.permissions[`${action}_foreign`];
     if (policy === "allow" || always.has(`${caller}:${action}:${target.id}`)) return;
     // Typing at another agent is what the mailbox is for: say so, or every exchange interrupts the user.
-    const instead = action !== "close" && (target.info.agent || target.info.harness) ? `; to talk to it use: shepherd send @${ctx.name(target.id)} "…"` : "";
+    const instead = action !== "close" && (target.info.agent || target.info.harness) ? `; to talk to it use: modisa send @${ctx.name(target.id)} "…"` : "";
     if (policy === "deny") throw new Error(`permission denied: ${action} on ${ctx.name(target.id)}${instead}`);
     const to = ctx.attached();
     if (!to.length) throw new Error(`permission needed for ${action} on ${ctx.name(target.id)}, but no one is attached to approve it${instead}`);

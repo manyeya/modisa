@@ -1,5 +1,5 @@
-// `shepherd uninstall`: asks first, then takes out every integration and the skill, stops running
-// sessions and deletes state, keeping config unless --purge. Never from inside a shepherd pane.
+// `modisa uninstall`: asks first, then takes out every integration and the skill, stops running
+// sessions and deletes state, keeping config unless --purge. Never from inside a modisa pane.
 import { test, expect, afterAll } from "bun:test";
 import { sandbox, startServer } from "../support/harness";
 
@@ -19,25 +19,25 @@ test("uninstall removes integrations, sessions and state, and keeps config unles
   await Bun.write(`${home}/.claude/settings.json`, JSON.stringify({ model: "opus" }));
   await Bun.$`mkdir -p ${`${home}/.config/opencode`}`;
   await run("integration", "install", "all");
-  expect(await exists(`${home}/.agents/skills/shepherd/SKILL.md`)).toBe(true);
+  expect(await exists(`${home}/.agents/skills/modisa/SKILL.md`)).toBe(true);
   await Bun.write(`${sb.root}/config/config.toml`, 'theme = "nord"\n');
   const server = await startServer(sb, "gone", env);
 
   // without --yes it asks, and with no answer nothing changes
   expect(await run("uninstall")).toContain("nothing removed");
-  expect(await exists(`${home}/.config/opencode/plugins/shepherd-agent-state.js`)).toBe(true);
+  expect(await exists(`${home}/.config/opencode/plugins/modisa-agent-state.js`)).toBe(true);
 
-  // inside a shepherd pane it refuses: it would stop its own session
-  expect(await sb.cli("gone", ["uninstall", "--yes"], { ...env, SHEPHERD_SOCKET: `${sb.root}/state/gone.sock` })).toContain("outside shepherd");
+  // inside a modisa pane it refuses: it would stop its own session
+  expect(await sb.cli("gone", ["uninstall", "--yes"], { ...env, MODISA_SOCKET: `${sb.root}/state/gone.sock` })).toContain("outside modisa");
 
   const out = await run("uninstall", "--yes");
   expect(out).toContain("Claude Code: removed");
   expect(out).toContain("stopped session gone");
   expect(out).toContain("runs from source");
   expect(await Bun.file(`${home}/.claude/settings.json`).json()).toEqual({ model: "opus" });
-  expect(await exists(`${home}/.config/opencode/plugins/shepherd-agent-state.js`)).toBe(false);
-  expect(await exists(`${home}/.claude/skills/shepherd`)).toBe(false);
-  expect(await exists(`${home}/.agents/skills/shepherd`)).toBe(false);
+  expect(await exists(`${home}/.config/opencode/plugins/modisa-agent-state.js`)).toBe(false);
+  expect(await exists(`${home}/.claude/skills/modisa`)).toBe(false);
+  expect(await exists(`${home}/.agents/skills/modisa`)).toBe(false);
   expect(await exists(`${sb.root}/state`)).toBe(false);
   expect(await Promise.race([server.exited.then(() => "exited"), Bun.sleep(5000).then(() => "running")])).toBe("exited");
   expect(await Bun.file(`${sb.root}/config/config.toml`).text()).toBe('theme = "nord"\n');

@@ -95,7 +95,7 @@ test("done means finished while unfocused, and clears on focus", () => {
   expect(nextState("idle", "blocked", true)).toBe("blocked");
 });
 
-// Screens captured from the real Claude Code v2.1.268 running in a shepherd pane.
+// Screens captured from the real Claude Code v2.1.268 running in a modisa pane.
 test("claude-code rules on real screens", async () => {
   const screen = (name: string) => Bun.file(`${import.meta.dir}/../fixtures/claude-code/${name}.txt`).text();
   const expected: Record<string, string> = {

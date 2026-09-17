@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { Client, connect, writeQueue } from "../../src/plugins/shepherd-plugin";
+import { Client, connect, writeQueue } from "../../src/plugins/modisa-plugin";
 
 test("a write that fails while draining drops the connection once, rejects what's pending, and doesn't escape", async () => {
   let handlers: Record<string, (...args: any[]) => void> = {};
@@ -172,12 +172,12 @@ test("event handlers run one at a time, in order, and one that throws doesn't st
   expect(order).toEqual(["start 1", "end 1", "start 2", "end 2", "start 3", "end 3"]);
 });
 
-test("malformed lines are ignored, and errors carry shepherd's code", async () => {
+test("malformed lines are ignored, and errors carry modisa's code", async () => {
   const { client, sent, line } = fake();
   const reading = client.request("pane.read", { target: "nope" });
   client.feed("not json\n\n42\n");
   line({ id: sent[0].id, error: { code: -32000, message: "no such pane: nope", data: { code: "no_such_pane" } } });
-  await expect(reading).rejects.toMatchObject({ name: "ShepherdError", code: "no_such_pane", message: "no such pane: nope" });
+  await expect(reading).rejects.toMatchObject({ name: "ModisaError", code: "no_such_pane", message: "no such pane: nope" });
 });
 
 test("actions answer with their result or error, and an unknown action gets an error", async () => {

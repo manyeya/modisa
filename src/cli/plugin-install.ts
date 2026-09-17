@@ -1,7 +1,7 @@
-// `shepherd plugin install <git-url> [--ref r] [--subdir d]`, and unlinking what it installed.
+// `modisa plugin install <git-url> [--ref r] [--subdir d]`, and unlinking what it installed.
 //
 // An install clones into a staging directory, resolves the ref to a commit, checks the directory and plugin.json, and
-// only then takes the name: the checkout moves to <state>/plugins-src/<name>, beside shepherd's install record, and is
+// only then takes the name: the checkout moves to <state>/plugins-src/<name>, beside modisa's install record, and is
 // linked and started exactly like `plugin link`. No dependencies are installed and no build scripts run; the plugin's
 // own entrypoint starts in the running session reached. A failure before the name is taken leaves nothing behind.
 import { socketPath } from "../core/paths";
@@ -37,16 +37,16 @@ const real = async (path: string) => (await Bun.$`realpath ${path}`.quiet().noth
 const inside = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 const isDir = async (path: string) => (await Bun.$`test -d ${path}`.quiet().nothrow()).exitCode === 0;
 
-// setup shepherd doesn't do for you; its own wording, never commands from the plugin
+// setup modisa doesn't do for you; its own wording, never commands from the plugin
 async function setupHints(dir: string, name: string) {
   const pkg = await Bun.file(`${dir}/package.json`).json().catch(() => undefined);
   const deps = pkg ? Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).length : 0;
-  return deps && !(await isDir(`${dir}/node_modules`)) ? [`it has package.json dependencies, which install doesn't fetch: run bun install in ${dir}, then shepherd plugin start ${name}`] : [];
+  return deps && !(await isDir(`${dir}/node_modules`)) ? [`it has package.json dependencies, which install doesn't fetch: run bun install in ${dir}, then modisa plugin start ${name}`] : [];
 }
 
 function report(result: InstallResult, json: boolean) {
   if (json) console.log(JSON.stringify(result, null, 2));
-  else if (!result.installed && !result.alreadyInstalled) console.error(`shepherd: not installed (${result.stage}): ${result.reason}`);
+  else if (!result.installed && !result.alreadyInstalled) console.error(`modisa: not installed (${result.stage}): ${result.reason}`);
   else {
     const at = `${result.ref ? `ref ${result.ref}, ` : ""}commit ${result.commit}`;
     console.log(`${result.alreadyInstalled ? "already installed" : "installed"} ${result.name} from ${result.source} (${at})\n  ${result.dir}`);
@@ -59,7 +59,7 @@ function report(result: InstallResult, json: boolean) {
 
 export async function install(url: string | undefined, options: { ref?: string; subdir?: string; session?: string; json: boolean }): Promise<number> {
   if (!url) {
-    console.error("usage: shepherd plugin install <git-url> [--ref branch|tag|commit] [--subdir path] [--json]");
+    console.error("usage: modisa plugin install <git-url> [--ref branch|tag|commit] [--subdir path] [--json]");
     return 2;
   }
   const source = withoutCredentials(url);
@@ -114,8 +114,8 @@ export async function install(url: string | undefined, options: { ref?: string; 
     return report({ installed: false, alreadyInstalled: true, name, source, ref: existing.ref, commit: existing.commit, checkout: existing.checkout, dir: existing.dir, start, hints: [] }, json);
   }
   const linkedTo = (await Bun.$`readlink ${link}`.quiet().nothrow().text()).trim();
-  if (existing) return failed("collision", `${name} is already installed from ${existing.source}; shepherd plugin unlink ${name} first`);
-  if (linkedTo) return failed("collision", `${name} is already linked to ${linkedTo}; shepherd plugin unlink ${name} first`);
+  if (existing) return failed("collision", `${name} is already installed from ${existing.source}; modisa plugin unlink ${name} first`);
+  if (linkedTo) return failed("collision", `${name} is already linked to ${linkedTo}; modisa plugin unlink ${name} first`);
 
   // Take the name. mkdir and ln -s both refuse to overwrite, so two installs racing for it can't both get it.
   const home = `${MANAGED_DIR}/${name}`;
@@ -138,19 +138,19 @@ export async function install(url: string | undefined, options: { ref?: string; 
   return report({ installed: true, name, source, ref, commit, checkout: finalCheckout, dir: finalDir, start, hints }, json);
 }
 
-// running sessions shepherd can see: each socket in the state directory (as `shepherd ls` finds them)
+// running sessions modisa can see: each socket in the state directory (as `modisa ls` finds them)
 async function sessions() {
   return (await Bun.$`ls -1 ${DIR}`.quiet().nothrow().text()).split("\n").filter((f) => f.endsWith(".sock")).map((f) => f.slice(0, -5)).sort();
 }
 
 export async function unlinkPlugin(name: string | undefined, session: string | undefined, json: boolean): Promise<number> {
   if (!name) {
-    console.error("usage: shepherd plugin unlink <name> [--json]");
+    console.error("usage: modisa plugin unlink <name> [--json]");
     return 2;
   }
   const link = `${PLUGINS_DIR}/${name}`;
   if ((await Bun.$`test -L ${link}`.quiet().nothrow()).exitCode !== 0) {
-    console.error(`shepherd: no linked plugin named ${name} in ${PLUGINS_DIR}`);
+    console.error(`modisa: no linked plugin named ${name} in ${PLUGINS_DIR}`);
     return 1;
   }
   const record = await readInstall(name);
@@ -169,7 +169,7 @@ export async function unlinkPlugin(name: string | undefined, session: string | u
     return 0;
   }
 
-  // installed by shepherd: stop it everywhere, and delete the checkout only once nothing runs it
+  // installed by modisa: stop it everywhere, and delete the checkout only once nothing runs it
   for (const s of await sessions()) {
     const sock = socketPath(s);
     const conn = await connectUnix(sock).catch(() => undefined);

@@ -1,17 +1,17 @@
 #!/usr/bin/env bun
-// A shepherd plugin: shout when an agent gets blocked, with the last few lines of its screen.
+// A modisa plugin: shout when an agent gets blocked, with the last few lines of its screen.
 //
-// Run it from ~/.config/shepherd/config.toml:
+// Run it from ~/.config/modisa/config.toml:
 //
 //   [[plugin]]
-//   run = "bun ~/code/shepherd/examples/plugins/blocked-notifier/plugin.ts"
+//   run = "bun ~/code/modisa/examples/plugins/blocked-notifier/plugin.ts"
 //
-// The server starts this with $SHEPHERD_SOCKET set and restarts nothing if it dies, so it keeps its
-// own reconnect loop. It talks the same JSON-RPC the CLI does — no shepherd import, no dependencies.
+// The server starts this with $MODISA_SOCKET set and restarts nothing if it dies, so it keeps its
+// own reconnect loop. It talks the same JSON-RPC the CLI does — no modisa import, no dependencies.
 
-const SOCKET = Bun.env.SHEPHERD_SOCKET;
+const SOCKET = Bun.env.MODISA_SOCKET;
 if (!SOCKET) {
-  console.error("blocked-notifier: no $SHEPHERD_SOCKET — run me from [[plugin]], not by hand");
+  console.error("blocked-notifier: no $MODISA_SOCKET — run me from [[plugin]], not by hand");
   process.exit(1);
 }
 

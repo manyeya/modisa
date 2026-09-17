@@ -23,12 +23,12 @@ export function drawStatus(app: App) {
     segment(` ${app.icon("working")} ${running} working `, th.focus, th.bar, () => app.actions["working-agents"]!.run());
     segment(` ${app.icon("blocked")} ${blocked} need you `, blocked ? th.warn : th.dim, th.bar, () => app.actions["blocked-agents"]!.run());
   }
-  // plugins' segments while there's room; shepherd's own come first, and the right side keeps its space
+  // plugins' segments while there's room; modisa's own come first, and the right side keeps its space
   if (r.width >= 110) {
     let room = r.width - 100;
     for (const plugin of pluginUi(app)) {
       for (const s of plugin.status) {
-        const text = ` ${plugin.plugin}: ${fit(s.text, 24)} `; // named, so it can't pass for shepherd's own
+        const text = ` ${plugin.plugin}: ${fit(s.text, 24)} `; // named, so it can't pass for modisa's own
         const width = Bun.stringWidth(text);
         if (width > room) break;
         room -= width;
@@ -39,7 +39,7 @@ export function drawStatus(app: App) {
   telemetry.add(new BoxRenderable(r, { flexGrow: 1, height: 1 }));
   if (app.view?.paused && r.width >= 120) segment(" PAUSED ", th.warn, th.bar, () => app.actions["toggle-messaging"]!.run());
   // right: a newer release, then the pane count next to the theme changer
-  if (app.update) segment(` ↑ ${app.update.version} `, th.bg, th.warn, () => app.actions["update-shepherd"]!.run());
+  if (app.update) segment(` ↑ ${app.update.version} `, th.bg, th.warn, () => app.actions["update-modisa"]!.run());
   if (r.width >= 50) segment(` ${count} ${count === 1 ? "pane" : "panes"} `, th.fg, th.bar, () => app.actions["pane-picker"]!.run());
   if (r.width >= 60) segment(` ◐ ${app.cfg.theme} `, th.bg, th.warn, () => app.actions["theme-picker"]!.run());
 }

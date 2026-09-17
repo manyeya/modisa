@@ -39,7 +39,7 @@ export function installKeyboard(app: App) {
       app.prefixArmed = false;
       if (isPrefix) app.focusedPane()?.term.handleKeyPress(k); // prefix twice sends it through
       else if (bindings[keyName(k)]) app.actions[bindings[keyName(k)]!]?.run();
-      else pluginKey(app, keyName(k)); // shepherd's keys first; a plugin never gets one of them
+      else pluginKey(app, keyName(k)); // modisa's keys first; a plugin never gets one of them
       render(app);
     } else if (isPrefix) {
       k.preventDefault();

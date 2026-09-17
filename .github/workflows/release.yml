@@ -1,7 +1,7 @@
 # Every push to main is a release; every push to staging replaces the rolling "staging" prerelease.
 #   test → version (from git tags; see .github/scripts/next-version.ts) → a native build per
-#   platform → release with SHA256SUMS + manifest.json (what `shepherd update` and install.sh read),
-#   .deb/.rpm packages and signed build provenance (`gh attestation verify <file> -R manyeya/shepherd`)
+#   platform → release with SHA256SUMS + manifest.json (what `modisa update` and install.sh read),
+#   .deb/.rpm packages and signed build provenance (`gh attestation verify <file> -R manyeya/modisa`)
 #   → on main, the Homebrew formula in manyeya/homebrew-tap (when the HOMEBREW_TAP_TOKEN secret is set)
 #   and the docs site on GitHub Pages. A push that only changes docs skips the release.
 name: Release
@@ -55,7 +55,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
-      OUT: shepherd-${{ matrix.platform }}
+      OUT: modisa-${{ matrix.platform }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
       - name: Smoke test
         run: |
           ./"$OUT" --version | tee version.txt
-          grep -F "shepherd $VERSION" version.txt
+          grep -F "modisa $VERSION" version.txt
           ./"$OUT" integration status > /dev/null
       - uses: actions/upload-artifact@v4
         with:
@@ -96,7 +96,7 @@ jobs:
           bun-version: 1.3.12
       - uses: actions/download-artifact@v4
         with:
-          pattern: shepherd-*
+          pattern: modisa-*
           merge-multiple: true
           path: dist
       - name: Checksums and manifest
@@ -109,7 +109,7 @@ jobs:
         run: |
           mkdir -p build
           for target in linux-x64:amd64 linux-arm64:arm64; do
-            cp "dist/shepherd-${target%%:*}" build/shepherd
+            cp "dist/modisa-${target%%:*}" build/modisa
             for packager in deb rpm; do
               docker run --rm -v "$PWD:/work" -w /work -e VERSION -e ARCH="${target##*:}" \
                 goreleaser/nfpm:v2.47.0 package --config .github/nfpm.yaml --packager "$packager" --target dist/
@@ -124,30 +124,30 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-path: |
-            dist/shepherd-darwin-*
-            dist/shepherd-linux-*
+            dist/modisa-darwin-*
+            dist/modisa-linux-*
             dist/*.deb
             dist/*.rpm
       - name: Release
         if: env.CHANNEL == 'stable'
-        run: gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "shepherd $VERSION" --notes-file notes.md --latest
+        run: gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "modisa $VERSION" --notes-file notes.md --latest
       - name: Staging prerelease
         if: env.CHANNEL == 'staging'
         run: |
           gh release delete staging --cleanup-tag --yes || true
-          gh release create staging dist/* --target "$GITHUB_SHA" --title "shepherd $VERSION (staging)" --notes-file notes.md --prerelease
+          gh release create staging dist/* --target "$GITHUB_SHA" --title "modisa $VERSION (staging)" --notes-file notes.md --prerelease
       - name: Homebrew tap
         if: env.CHANNEL == 'stable' && env.TAP_TOKEN != ''
         run: |
-          bun .github/scripts/homebrew-formula.ts dist/manifest.json shepherd.rb
+          bun .github/scripts/homebrew-formula.ts dist/manifest.json modisa.rb
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/manyeya/homebrew-tap.git" tap
           mkdir -p tap/Formula
-          cp shepherd.rb tap/Formula/shepherd.rb
+          cp modisa.rb tap/Formula/modisa.rb
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/shepherd.rb
-          git diff --cached --quiet || { git commit -m "shepherd $VERSION" && git push; }
+          git add Formula/modisa.rb
+          git diff --cached --quiet || { git commit -m "modisa $VERSION" && git push; }
 
   pages:
     needs: [test, version, publish]
@@ -168,7 +168,7 @@ jobs:
       - name: Build the site (and check every link)
         run: bun site/build.ts
         env:
-          SHEPHERD_VERSION: ${{ needs.publish.result == 'success' && needs.version.outputs.version || needs.version.outputs.last }}
+          MODISA_VERSION: ${{ needs.publish.result == 'success' && needs.version.outputs.version || needs.version.outputs.last }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/out

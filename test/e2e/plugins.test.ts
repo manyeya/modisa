@@ -1,4 +1,4 @@
-// Plugins: commands from [[plugin]] start with the server and get $SHEPHERD_SOCKET, and the example
+// Plugins: commands from [[plugin]] start with the server and get $MODISA_SOCKET, and the example
 // plugin in examples/plugins really does react to an agent getting blocked.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { Screen, sandbox } from "../support/harness";
@@ -14,7 +14,7 @@ beforeAll(async () => {
   await installFakeAgent(sb.root);
   await Bun.write(
     `${sb.root}/config/config.toml`,
-    `[[plugin]]\nrun = "echo $SHEPHERD_SOCKET > ${sb.root}/plugin.out"\n\n[[plugin]]\nrun = "bun ${EXAMPLE} >> ${sb.root}/notifier.log 2>&1"\n`,
+    `[[plugin]]\nrun = "echo $MODISA_SOCKET > ${sb.root}/plugin.out"\n\n[[plugin]]\nrun = "bun ${EXAMPLE} >> ${sb.root}/notifier.log 2>&1"\n`,
   );
   ui = new Screen(["-s", S], sb.env, sb.root);
   await ui.until("attached", (s) => s.includes("SPACES"), 15000);
@@ -32,7 +32,7 @@ const until = async (what: string, ok: (s: string) => boolean, ms = 20000) => {
   throw new Error(`timed out waiting for ${what}; log so far:\n${await log()}`);
 };
 
-test("plugins start with SHEPHERD_SOCKET", async () => {
+test("plugins start with MODISA_SOCKET", async () => {
   for (let i = 0; i < 50 && !(await Bun.file(`${sb.root}/plugin.out`).exists()); i++) await Bun.sleep(100);
   expect((await Bun.file(`${sb.root}/plugin.out`).text()).trim()).toBe(`${sb.root}/state/${S}.sock`);
 }, 15000);

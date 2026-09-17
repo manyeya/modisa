@@ -42,7 +42,7 @@ export class Mailbox {
 
   static frame(m: Message) {
     const from = m.from === "user" ? "the user" : `@${m.fromName}`;
-    const reply = m.from === "user" ? "" : ` (reply: shepherd send ${m.replyTo ?? m.from} "...")`;
-    return `[shepherd] message from ${from}${reply}:\n${m.body}`;
+    const reply = m.from === "user" ? "" : ` (reply: modisa send ${m.replyTo ?? m.from} "...")`;
+    return `[modisa] message from ${from}${reply}:\n${m.body}`;
   }
 }

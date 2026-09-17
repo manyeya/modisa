@@ -1,6 +1,6 @@
 // The CLI's exit status tells scripts what happened: failures exit nonzero, each kind with its own status
 // and a stable error code under --json, and `wait --exited` passes along the pane's exit code. A child's own
-// code can equal one of shepherd's; stdout (the child's result) and stderr (shepherd's error) tell them apart.
+// code can equal one of modisa's; stdout (the child's result) and stderr (modisa's error) tell them apart.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { sandbox, startServer } from "../support/harness";
 
@@ -24,7 +24,7 @@ test("success exits 0", async () => {
 });
 
 test("an unknown pane exits 1, with a stable code under --json", async () => {
-  expect(await run("pane", "read", "no-such-pane")).toMatchObject({ code: 1, out: "shepherd: no such pane: no-such-pane" });
+  expect(await run("pane", "read", "no-such-pane")).toMatchObject({ code: 1, out: "modisa: no such pane: no-such-pane" });
   const j = await run("pane", "read", "no-such-pane", "--json");
   expect(j).toMatchObject({ code: 1, stdout: "" });
   expect(JSON.parse(j.stderr).error.code).toBe("no_such_pane");
@@ -37,13 +37,13 @@ test("an unknown command exits 2", async () => {
 });
 
 test("a wait that times out exits 124", async () => {
-  expect(await run("wait", "p1", "--match", "never-printed-xyz", "--timeout", "1")).toMatchObject({ code: 124, out: "shepherd: timeout" });
+  expect(await run("wait", "p1", "--match", "never-printed-xyz", "--timeout", "1")).toMatchObject({ code: 124, out: "modisa: timeout" });
 });
 
 test("an unreachable server exits 3", async () => {
   const r = await sb.run("no-server-here", ["pane", "list"]);
   expect(r.code).toBe(3);
-  expect(r.out).toContain('no shepherd server for session "no-server-here"');
+  expect(r.out).toContain('no modisa server for session "no-server-here"');
   expect(JSON.parse((await sb.run("no-server-here", ["pane", "list", "--json"])).stderr).error.code).toBe("unreachable");
 });
 
@@ -55,7 +55,7 @@ test("wait --exited exits with the pane's exit code, in plain and --json output"
   expect(JSON.parse(j.stdout)).toEqual({ exitCode: 7 });
 });
 
-test("a child exiting 1, 2, 3 or 124 is told apart from shepherd's own failures by stdout vs stderr", async () => {
+test("a child exiting 1, 2, 3 or 124 is told apart from modisa's own failures by stdout vs stderr", async () => {
   for (const code of [1, 2, 3, 124]) {
     await run("pane", "split", "--name", `child${code}`, `exit ${code}`);
     const j = await run("wait", `@child${code}`, "--exited", "--timeout", "10", "--json");

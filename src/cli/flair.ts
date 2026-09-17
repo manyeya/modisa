@@ -1,7 +1,7 @@
-// Terminal flair for shepherd's own commands (`shepherd update`): the wordmark in the brand gradient, spinners and a
+// Terminal flair for modisa's own commands (`modisa update`): the wordmark in the brand gradient, spinners and a
 // download bar. Only on a terminal that takes colour: plain lines when the output is piped, NO_COLOR is set or TERM is
-// dumb; SHEPHERD_FANCY=1 forces it. install.sh draws the same wordmark.
-export const fancy = () => Bun.env.SHEPHERD_FANCY === "1" || (!!process.stdout.isTTY && !Bun.env.NO_COLOR && (Bun.env.TERM ?? "dumb") !== "dumb");
+// dumb; MODISA_FANCY=1 forces it. install.sh draws the same wordmark.
+export const fancy = () => Bun.env.MODISA_FANCY === "1" || (!!process.stdout.isTTY && !Bun.env.NO_COLOR && (Bun.env.TERM ?? "dumb") !== "dumb");
 
 const ESC = "\x1b[";
 export const RESET = `${ESC}0m`;
@@ -31,9 +31,9 @@ export function gradient(text: string) {
 }
 
 export const WORDMARK = [
-  "▄▀▀▀▀ █   █ █▀▀▀▀ █▀▀▀▄ █   █ █▀▀▀▀ █▀▀▀▄ █▀▀▀▄",
-  " ▀▀▀▄ █▀▀▀█ █▀▀▀  █▄▄▄▀ █▀▀▀█ █▀▀▀  █▄▄▄▀ █   █",
-  "▄▄▄▄▀ █   █ █▄▄▄▄ █     █   █ █▄▄▄▄ █  ▀▄ █▄▄▄▀",
+  "█▄ ▄█ ▄▀▀▀▄ █▀▀▀▄ ▀▀█▀▀ ▄▀▀▀▀ ▄▀▀▀▄",
+  "█ ▀ █ █   █ █   █   █    ▀▀▀▄ █▀▀▀█",
+  "█   █ ▀▄▄▄▀ █▄▄▄▀ ▄▄█▄▄ ▄▄▄▄▀ █   █",
 ];
 
 const write = (s: string) => process.stdout.write(s);

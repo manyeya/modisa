@@ -134,21 +134,21 @@ export function createActions(app: App): Record<string, Action> {
       run: async () => app.call("newTab", { name: "settings", command: `${Bun.env.EDITOR || "vi"} ${await ensureConfigFile()}`, ephemeral: true }),
     },
     "reload-config": { label: "Reload config", run: () => reload(app, true) },
-    "update-shepherd": {
-      label: "Update shepherd",
+    "update-modisa": {
+      label: "Update modisa",
       run: async () => {
         const m = app.update ?? (await checkForUpdate(true));
-        if (!m) return app.toast(`shepherd ${VERSION} is up to date`, app.th.done);
+        if (!m) return app.toast(`modisa ${VERSION} is up to date`, app.th.done);
         const managed = updateCommand(); // Homebrew or mise installed it: their command, not ours
-        if (managed !== "shepherd update") return app.toast(`shepherd ${m.version} is out: run ${managed}, then shepherd restart`, app.th.warn);
+        if (managed !== "modisa update") return app.toast(`modisa ${m.version} is out: run ${managed}, then modisa restart`, app.th.warn);
         const notes = m.notes.trim().split("\n").filter(Boolean).slice(0, 6).map((l) => fit(l, 60));
-        const ok = await confirm(app, `UPDATE / ${m.version}`, [`shepherd ${VERSION} → ${m.version}`, ...(notes.length ? ["", ...notes] : []), "", "Downloads it, then restarts the server; agents resume."].join("\n"), "update and restart");
+        const ok = await confirm(app, `UPDATE / ${m.version}`, [`modisa ${VERSION} → ${m.version}`, ...(notes.length ? ["", ...notes] : []), "", "Downloads it, then restarts the server; agents resume."].join("\n"), "update and restart");
         if (!ok) return;
         const cmd = self().join(" ");
         app.call("newTab", { name: "update", command: `${cmd} update && ${cmd} restart`, ephemeral: true });
       },
     },
-    "restart-server": { label: "Restart server (load updated shepherd; panes are restored)", run: () => { app.restartedByUs = app.restarting = true; app.conn.request("restart").catch(() => {}); } },
+    "restart-server": { label: "Restart server (load updated modisa; panes are restored)", run: () => { app.restartedByUs = app.restarting = true; app.conn.request("restart").catch(() => {}); } },
     "toggle-messaging": { label: "Pause/resume agent messaging", run: () => app.call("pause") },
     "message-log": { label: "Message log", run: () => app.call("newTab", { name: "messages", command: `${self().join(" ")} messages --follow`, ephemeral: true }) },
     "send-message": {

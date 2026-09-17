@@ -1,5 +1,5 @@
 // Plays cuelume sounds through OpenTUI's native audio engine. The output device opens on the first
-// sound; each sound is rendered once and kept. No device (or SHEPHERD_SOUND=off) means silence.
+// sound; each sound is rendered once and kept. No device (or MODISA_SOUND=off) means silence.
 import { Audio, type AudioSound } from "@opentui/core";
 import { RECIPES, isSound } from "./recipes";
 import { render, toWav } from "./synth";
@@ -9,7 +9,7 @@ const loaded = new Map<string, AudioSound>();
 
 function engine() {
   if (audio !== undefined) return audio;
-  if (Bun.env.SHEPHERD_SOUND === "off") return (audio = null);
+  if (Bun.env.MODISA_SOUND === "off") return (audio = null);
   try {
     const a = Audio.create({ autoStart: false });
     a.on("error", () => {}); // failed calls return false/null, which is all we need

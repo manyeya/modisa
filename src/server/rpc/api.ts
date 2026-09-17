@@ -96,7 +96,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
         if (agent) pane.info.session = { agent, id: p.session, source };
         ctx.changed(); // saved, so a restart resumes this exact session
       }
-      // state needs a named source: hooks from older shepherd versions sent none and are ignored
+      // state needs a named source: hooks from older modisa versions sent none and are ignored
       if (p.state && p.source) detector.report(pane, { source: p.source, agent: p.agent, state: p.state, seq: p.seq });
       ctx.tick();
       return true;

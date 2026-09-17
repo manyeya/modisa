@@ -15,7 +15,7 @@ export const ERROR_CODES = ["error", "usage", "unreachable", "timeout", "invalid
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 // A plugin as its host sees it. status: running; exited (code 0), failed (nonzero, or it couldn't start: a bad
-// manifest, another protocol version, a missing program) or stopped (by shepherd, when the session stopped).
+// manifest, another protocol version, a missing program) or stopped (by modisa, when the session stopped).
 export type PluginStatus = {
   name: string;
   source: "linked" | "config"; // a linked plugin.json, or a [[plugin]] run line in config.toml
@@ -27,14 +27,14 @@ export type PluginStatus = {
   error?: string;
   log: string;
   connected: boolean; // it has said plugin.hello on a connection that's still open
-  actions: string[]; // what `shepherd plugin run` can call
-  group?: "running" | "gone"; // its process group: children can outlive the process shepherd started
+  actions: string[]; // what `modisa plugin run` can call
+  group?: "running" | "gone"; // its process group: children can outlive the process modisa started
   invocations?: number; // action calls sent to it and not yet answered or timed out
   keys?: PluginKey[]; // its keys as the server's config binds them: active, or disabled and why
-  install?: { source: string; ref: string | null; commit: string }; // fetched with `shepherd plugin install`
+  install?: { source: string; ref: string | null; commit: string }; // fetched with `modisa plugin install`
 };
 
-// A plugin key: `key` after the prefix runs `action` or opens `pane`. Disabled when it's one of shepherd's keys or
+// A plugin key: `key` after the prefix runs `action` or opens `pane`. Disabled when it's one of modisa's keys or
 // reserved, when another plugin wants the same key (both are disabled), or when [plugin_keys] turns it off.
 export type PluginKey = { key: string; action?: string; pane?: string; description: string; state: "active" | "disabled"; reason?: string };
 
@@ -59,7 +59,7 @@ export type PaneInfo = {
 export type TabView = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
 export type WorkspaceView = { id: string; name: string; cwd: string; active: number; tabs: TabView[] };
 
-// What a plugin's current run shows in the TUI, from its ui.* calls: drawn by shepherd, in the user's theme.
+// What a plugin's current run shows in the TUI, from its ui.* calls: drawn by modisa, in the user's theme.
 export type Tone = "fg" | "dim" | "accent" | "warn";
 export type PluginUiView = {
   plugin: string;

@@ -1,4 +1,4 @@
-// A remote client (ssh running `shepherd proxy` on the far side) gets plugins' UI like a local one, bound and drawn by
+// A remote client (ssh running `modisa proxy` on the far side) gets plugins' UI like a local one, bound and drawn by
 // its own config: its theme, and its own [plugin_keys]. The plugin, its processes and its files stay with the server.
 // When the connection drops, what plugins showed is hidden until the attach snapshot brings it back, without replaying
 // a toast shown before and without moving focus.
@@ -38,20 +38,20 @@ beforeAll(async () => {
       keys: [{ key: "G", action: "mark", description: "mark the focused pane" }],
     }),
   );
-  await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
+  await Bun.write(`${dir}/modisa-plugin.ts`, await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text());
   await Bun.write(
     `${dir}/plugin.ts`,
-    `import { runPlugin } from "./shepherd-plugin";
-runPlugin(async (shepherd) => {
-  await shepherd.hello({
+    `import { runPlugin } from "./modisa-plugin";
+runPlugin(async (modisa) => {
+  await modisa.hello({
     hello: () => "hi from the far side",
     apply: async (p) => {
       const out: string[] = [];
-      for (const [method, params] of p.calls as [string, any][]) out.push(await shepherd.request(method, params).then(() => "ok", (e) => e.code));
+      for (const [method, params] of p.calls as [string, any][]) out.push(await modisa.request(method, params).then(() => "ok", (e) => e.code));
       return out;
     },
     mark: async (_p, call) => {
-      const file = Bun.env.SHEPHERD_PLUGIN_DATA + "/marks.log";
+      const file = Bun.env.MODISA_PLUGIN_DATA + "/marks.log";
       await Bun.write(file, (await Bun.file(file).text().catch(() => "")) + JSON.stringify({ target: call.target ?? null }) + "\\n");
       return "marked " + (call.target?.pane ?? "nothing");
     },
@@ -67,10 +67,10 @@ runPlugin(async (shepherd) => {
   expect(await apply(["ui.status.set", { id: "count", text: "1 waiting", tone: "warn" }], ["ui.sidebar.set", { title: "Remote queue", rows: [{ text: "@far blocked", tone: "warn" }] }])).toEqual(["ok", "ok"]);
 
   // fake ssh: drop "-T" and the host, and run the rest as the far side would, with the server's roots
-  await Bun.write(`${sb.root}/bin/fakessh`, `#!/bin/sh\nshift; shift\nexport SHEPHERD_DIR='${sb.root}/state' SHEPHERD_CONFIG_DIR='${sb.root}/config'\neval "$@"\n`);
+  await Bun.write(`${sb.root}/bin/fakessh`, `#!/bin/sh\nshift; shift\nexport MODISA_DIR='${sb.root}/state' MODISA_CONFIG_DIR='${sb.root}/config'\neval "$@"\n`);
   await Bun.$`chmod +x ${sb.root}/bin/fakessh`;
   await Bun.write(`${CLIENT}/config/config.toml`, `remote_command = "bun ${MAIN}"\ntheme = "nord"\n\n[plugin_keys]\n"rui-demo.mark" = "Y"\n`);
-  remote = new Screen(["-s", S, "--remote", "ssh://devbox"], { ...sb.env, SHEPHERD_DIR: `${CLIENT}/state`, SHEPHERD_CONFIG_DIR: `${CLIENT}/config`, SHEPHERD_SSH: `${sb.root}/bin/fakessh` }, sb.root);
+  remote = new Screen(["-s", S, "--remote", "ssh://devbox"], { ...sb.env, MODISA_DIR: `${CLIENT}/state`, MODISA_CONFIG_DIR: `${CLIENT}/config`, MODISA_SSH: `${sb.root}/bin/fakessh` }, sb.root);
   await remote.until("the remote client", (s) => s.includes("SPACES") && s.includes("+ agent"), 20000);
 }, 60000);
 
@@ -116,7 +116,7 @@ test("the remote client draws in its own theme and binds plugin keys with its ow
 
 test("a second client with its own remap uses its own binding, without changing the remote client's", async () => {
   await Bun.write(`${LOCAL}/config/config.toml`, `theme = "tokyonight"\n\n[plugin_keys]\n"rui-demo.mark" = "Q"\n`);
-  local ??= new Screen(["-s", S], { ...sb.env, SHEPHERD_CONFIG_DIR: `${LOCAL}/config` }, sb.root);
+  local ??= new Screen(["-s", S], { ...sb.env, MODISA_CONFIG_DIR: `${LOCAL}/config` }, sb.root);
   await ready(local);
   expect(local.text()).toContain("◐ tokyonight");
   const before = (await marks()).length;

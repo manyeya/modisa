@@ -1,4 +1,4 @@
-/* Shepherd: an open field for focused work. Paper, ink, and an electric signal. */
+/* Modisa: an open field for focused work. Paper, ink, and an electric signal. */
 .is-landing { --bg:#f6f6f9; --fg:#1e1f2a; --mist:#5d5f6a; --dim:#696a76; --line:#dadbe1; --signal:#7aa2f7; --amber:#3055a6; --amber-ink:#1c1e29; background:var(--bg); color:var(--fg); }
 .is-landing .top { background:#f6f6f9ed; border-color:var(--line); }
 .landing-top { position:relative; height:88px; max-width:1440px; margin:auto; padding:0 5%; }

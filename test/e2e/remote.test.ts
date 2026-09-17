@@ -1,4 +1,4 @@
-// --remote: a local client, the server on the far side of ssh via `shepherd proxy`.
+// --remote: a local client, the server on the far side of ssh via `modisa proxy`.
 import { test, expect, afterAll } from "bun:test";
 import { MAIN, Screen, sandbox } from "../support/harness";
 
@@ -9,12 +9,12 @@ afterAll(async () => {
   await sb.cleanup();
 });
 
-test("--remote attaches through ssh running `shepherd proxy` on the far side", async () => {
+test("--remote attaches through ssh running `modisa proxy` on the far side", async () => {
   // fake ssh: drop "-T" and the host, run the rest locally like a remote shell would
   await Bun.write(`${sb.root}/bin/fakessh`, `#!/bin/sh\nshift; shift; eval "$@"\n`);
   await Bun.$`chmod +x ${sb.root}/bin/fakessh`;
   await Bun.write(`${sb.root}/config/config.toml`, `remote_command = "bun ${MAIN}"\n`);
-  const remote = new Screen(["-s", "remote", "--remote", "ssh://devbox"], { ...sb.env, SHEPHERD_SSH: `${sb.root}/bin/fakessh` }, sb.root);
+  const remote = new Screen(["-s", "remote", "--remote", "ssh://devbox"], { ...sb.env, MODISA_SSH: `${sb.root}/bin/fakessh` }, sb.root);
   await remote.until("remote client", (s) => s.includes("SPACES") && s.includes("+ agent"), 15000);
   remote.write("echo over-ssh\r");
   await remote.until("remote shell output", (s) => s.includes("over-ssh"));

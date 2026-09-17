@@ -1,5 +1,5 @@
 // The protocol as JSON Schema, generated from the schemas the server validates with: `protocol.describe` over the
-// socket, `shepherd plugin schema` without a server. `cli` is what `shepherd plugin … --json` prints.
+// socket, `modisa plugin schema` without a server. `cli` is what `modisa plugin … --json` prints.
 import { z } from "zod";
 import { api, cliResults, envelope, errorReply, events, PROTOCOL, results } from "./schema";
 

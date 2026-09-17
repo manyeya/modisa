@@ -1,4 +1,4 @@
-// `shepherd __pty-exec <cmd…>`: make the PTY our controlling terminal, then become <cmd>.
+// `modisa __pty-exec <cmd…>`: make the PTY our controlling terminal, then become <cmd>.
 // Bun.spawn({ terminal, detached }) gives the child a new session with the PTY on stdio but doesn't
 // claim it as the controlling tty; bash claims it itself, zsh doesn't — and without one there's no
 // job control, ^C, or foreground process group (which agent detection reads). So: TIOCSCTTY, execvp.

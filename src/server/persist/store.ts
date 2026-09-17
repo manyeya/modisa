@@ -31,12 +31,12 @@ async function cwds(pids: number[]): Promise<Map<number, string>> {
   return m;
 }
 
-// One row per session in ~/.local/state/shepherd/shepherd.db.
+// One row per session in ~/.local/state/modisa/modisa.db.
 let db: Database | undefined;
 async function store() {
   if (!db) {
     await Bun.$`mkdir -p ${DIR}`.quiet();
-    db = new Database(`${DIR}/shepherd.db`, { create: true });
+    db = new Database(`${DIR}/modisa.db`, { create: true });
     db.run("CREATE TABLE IF NOT EXISTS sessions (name TEXT PRIMARY KEY, data TEXT NOT NULL, saved_at INTEGER NOT NULL)");
   }
   return db;

@@ -140,10 +140,10 @@ export const results = {
   "plugin.hello": z.strictObject({ name: z.string(), protocol: z.number().int(), session: z.string(), epoch: z.string() }),
 };
 // A failed request's `error`: code is JSON-RPC's (-32601 unknown method, -32602 invalid params, -32000 the request
-// failed); data.code is shepherd's stable reason
+// failed); data.code is modisa's stable reason
 export const errorReply = z.strictObject({ code: z.number().int(), message: z.string(), data: z.strictObject({ code: z.enum(ERROR_CODES) }).optional() });
 
-// ---------- CLI results: what `shepherd plugin … --json` prints (an e2e test checks them) ----------
+// ---------- CLI results: what `modisa plugin … --json` prints (an e2e test checks them) ----------
 // Starting a plugin in the one session a command reaches: started (and connected), already running, not started (no
 // session running), failed (it didn't start, or exited), or no-hello (started, but never connected in time).
 export const pluginStart = z.strictObject({
@@ -175,7 +175,7 @@ export const cliResults = {
   }),
   // managed: installed with `plugin install` (stopped in every reachable session; its checkout deleted only if none
   // still runs it). Otherwise a directory you linked: stopped in the session reached, and never deleted.
-  // repositories with the shepherd-tui-plugin topic, most starred first; text is stripped of control characters
+  // repositories with the modisa-tui-plugin topic, most starred first; text is stripped of control characters
   "plugin search": z.strictObject({
     query: z.string(),
     total: z.number().int().nonnegative(),
@@ -218,7 +218,7 @@ export const api = {
   "plugin.start": z.object({ caller, name: z.string().min(1) }),
   // a plugin's own connection says which plugin it is (the token it was started with) and what actions it offers
   "plugin.hello": z.object({ caller, token: z.string().min(1), actions: z.array(z.string().min(1)).optional() }),
-  // call an action a connected plugin offers; shepherd sends it a plugin.action request ({ action, params })
+  // call an action a connected plugin offers; modisa sends it a plugin.action request ({ action, params })
   // run: the run whose UI the action was taken from (ui.state's `run`); refused if that run has since ended
   // target: the pane the action is for (a menu entry, key or palette entry), a complete pane + instance pair kept apart
   // from the plugin's own params; checked when invoked, and handed to the action as call.target

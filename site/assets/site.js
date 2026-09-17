@@ -12,7 +12,7 @@
   toggle?.addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "day" ? "night" : "day";
     document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("shepherd-theme", next); } catch {}
+    try { localStorage.setItem("modisa-theme", next); } catch {}
     paint();
   });
 

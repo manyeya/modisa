@@ -1,5 +1,5 @@
 // Plugin panes and keys. split, tab and zoomed open ordinary panes (with the plugin's environment) that outlive the
-// plugin; a popup only opens from a TUI client; keys that are shepherd's, or wanted by two plugins, are off, and a
+// plugin; a popup only opens from a TUI client; keys that are modisa's, or wanted by two plugins, are off, and a
 // [plugin_keys] remap wins; an overlay opens zoomed over its origin and gives focus and zoom back when it closes, but
 // only if it still had the focus; a popup shows only in the client that opened it, one per session, keeps Escape for its
 // program and closes on prefix x, on its process exiting, and when its plugin stops; output from the pane underneath
@@ -39,8 +39,8 @@ async function fresh(name: string, env: Record<string, string> = {}) {
 async function plugin(name: string, manifest: object) {
   const dir = `${sb.root}/${name}`;
   await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: 1, run: ["bun", "plugin.ts"], ...manifest }));
-  await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
-  await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./shepherd-plugin";\nrunPlugin(async (shepherd) => { await shepherd.hello({ hello: (_p, call) => "hi " + (call.target?.pane ?? "nobody") }); });\n`);
+  await Bun.write(`${dir}/modisa-plugin.ts`, await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text());
+  await Bun.write(`${dir}/plugin.ts`, `import { runPlugin } from "./modisa-plugin";\nrunPlugin(async (modisa) => { await modisa.hello({ hello: (_p, call) => "hi " + (call.target?.pane ?? "nobody") }); });\n`);
   expect((await run("plugin", "link", dir)).code).toBe(0);
 }
 
@@ -50,7 +50,7 @@ beforeAll(async () => {
   await plugin("demo", {
     actions: [{ id: "hello", title: "Say hello" }],
     panes: [
-      { id: "side", title: "Side", placement: "split", run: ["sh", "-c", "echo side:$SHEPHERD_PLUGIN:$(test -d \"$SHEPHERD_PLUGIN_CONFIG\" && echo config); sleep 120"] },
+      { id: "side", title: "Side", placement: "split", run: ["sh", "-c", "echo side:$MODISA_PLUGIN:$(test -d \"$MODISA_PLUGIN_CONFIG\" && echo config); sleep 120"] },
       { id: "board", title: "Board", placement: "tab", run: ["sh", "-c", "echo board; sleep 120"] },
       { id: "focus", title: "Focus", placement: "zoomed", run: ["sh", "-c", "echo zoomed-in; sleep 120"] },
       { id: "peek", title: "Peek", placement: "overlay", run: ["sh", "-c", "echo peeking; read x"] },
@@ -61,7 +61,7 @@ beforeAll(async () => {
       { key: "P", pane: "pop", description: "popup" },
       { key: "G", action: "hello", description: "greet" },
       { key: "Y", action: "hello", description: "wanted by the rival too" },
-      { key: "v", action: "hello", description: "shepherd's split-right" },
+      { key: "v", action: "hello", description: "modisa's split-right" },
     ],
   });
   await plugin("rival", { actions: [{ id: "hello", title: "Hello" }], keys: [{ key: "Y", action: "hello", description: "the same key" }] });
@@ -95,16 +95,16 @@ test("a popup only opens from a TUI client", async () => {
   expect(JSON.parse(r.stderr).error.code).toBe("usage");
 });
 
-test("keys: shepherd's own and one two plugins want are off, and a [plugin_keys] remap wins", async () => {
+test("keys: modisa's own and one two plugins want are off, and a [plugin_keys] remap wins", async () => {
   const all = await plugins();
   const keys = Object.fromEntries(all.find((p) => p.name === "demo").keys.map((k: any) => [`${k.key}`, k]));
-  expect(keys.v).toMatchObject({ state: "disabled", reason: "shepherd's split-right" });
+  expect(keys.v).toMatchObject({ state: "disabled", reason: "modisa's split-right" });
   expect(keys.Y).toMatchObject({ state: "disabled", reason: "also wanted by rival" });
   expect(all.find((p) => p.name === "rival").keys[0]).toMatchObject({ key: "Y", state: "disabled", reason: "also wanted by demo" });
   expect(keys.U).toMatchObject({ pane: "pop", state: "active" }); // remapped from P
   expect(keys.P).toBeUndefined();
   expect(keys.G).toMatchObject({ action: "hello", state: "active" });
-  expect((await run("plugin", "list")).stdout).toContain("demo: key v (hello) is off in the server's config: shepherd's split-right");
+  expect((await run("plugin", "list")).stdout).toContain("demo: key v (hello) is off in the server's config: modisa's split-right");
 });
 
 test("an overlay opens zoomed over the pane and gives focus and zoom back when it closes", async () => {

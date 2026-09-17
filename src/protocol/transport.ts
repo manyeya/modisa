@@ -20,7 +20,7 @@ export async function connectUnix(path: string): Promise<Conn> {
   return conn;
 }
 
-// Remote transport: `shepherd proxy` on the far side of ssh, same protocol over stdio.
+// Remote transport: `modisa proxy` on the far side of ssh, same protocol over stdio.
 export function connectStdio(cmd: string[]): Conn {
   const proc = Bun.spawn(cmd, { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
   const conn = new Conn((s) => { proc.stdin.write(s); proc.stdin.flush(); }, () => proc.kill());
@@ -39,7 +39,7 @@ export function connectStdio(cmd: string[]): Conn {
 // A server that's running but can't be reached, from the pid file next to its socket. Inside an agent's
 // sandbox (Codex's on macOS) connecting fails with ENOENT, just like a dead server's socket, but
 // signalling the process still says it exists (EPERM). So its socket must stay and no second server
-// start. Outside a sandbox, ps also checks the pid still belongs to a shepherd server.
+// start. Outside a sandbox, ps also checks the pid still belongs to a modisa server.
 export async function runningPid(sock: string): Promise<number | undefined> {
   const pid = Number(await Bun.file(sock.replace(/\.sock$/, ".pid")).text().catch(() => ""));
   if (!pid) return;
@@ -56,7 +56,7 @@ export async function runningPid(sock: string): Promise<number | undefined> {
 }
 
 export const unreachable = (pid: number) =>
-  `shepherd's server is running (pid ${pid}) but this process can't connect to its socket: a sandbox is blocking it. See https://manyeya.github.io/shepherd/docs/troubleshooting/#sandbox`;
+  `modisa's server is running (pid ${pid}) but this process can't connect to its socket: a sandbox is blocking it. See https://manyeya.github.io/modisa/docs/troubleshooting/#sandbox`;
 
 // Connect to a session's server, starting it if needed.
 export async function ensureServer(session: string, dir = cwd()): Promise<Conn> {
@@ -82,13 +82,13 @@ export async function ensureServer(session: string, dir = cwd()): Promise<Conn> 
   throw new Error(`server for session "${session}" did not start; see ${DIR}/${session}.log`);
 }
 
-// Inside a pane, SHEPHERD_SOCKET points at our own server unless a session is named explicitly.
+// Inside a pane, MODISA_SOCKET points at our own server unless a session is named explicitly.
 export async function connectExisting(session?: string): Promise<Conn> {
-  const path = !session && Bun.env.SHEPHERD_SOCKET ? Bun.env.SHEPHERD_SOCKET : socketPath(session ?? "default");
+  const path = !session && Bun.env.MODISA_SOCKET ? Bun.env.MODISA_SOCKET : socketPath(session ?? "default");
   try {
     return await connectUnix(path);
   } catch {
     const pid = await runningPid(path);
-    throw new Error(pid ? unreachable(pid) : `no shepherd server for session "${session ?? "default"}"`);
+    throw new Error(pid ? unreachable(pid) : `no modisa server for session "${session ?? "default"}"`);
   }
 }

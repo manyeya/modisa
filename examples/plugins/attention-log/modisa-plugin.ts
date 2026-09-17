@@ -1,8 +1,8 @@
-// shepherd-plugin.ts: shepherd's client library for plugins (protocol 1). No dependencies.
-// `shepherd plugin new` copies it into each plugin; refresh a plugin's copy with `shepherd plugin sdk > shepherd-plugin.ts`.
+// modisa-plugin.ts: modisa's client library for plugins (protocol 1). No dependencies.
+// `modisa plugin new` copies it into each plugin; refresh a plugin's copy with `modisa plugin sdk > modisa-plugin.ts`.
 //
 // It handles the protocol so a plugin only writes its own logic: newline-delimited JSON-RPC framing, request ids,
-// errors with shepherd's stable codes, binding to the host (hello) with actions, and starting a subscription with no
+// errors with modisa's stable codes, binding to the host (hello) with actions, and starting a subscription with no
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
@@ -11,7 +11,7 @@ export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
 // A pane: `id` (like p3) plus `instance`, unique to the process it was started with (ids come back after a restart).
-// `agent` is what shepherd's detection observed: its screen, or its integration's report. No `agent` means no agent
+// `agent` is what modisa's detection observed: its screen, or its integration's report. No `agent` means no agent
 // is detected, not that there isn't one.
 export type Pane = {
   id: string;
@@ -26,19 +26,19 @@ export type Pane = {
   workspace?: string;
   [field: string]: unknown;
 };
-// Every event has type, at (epoch ms), seq and epoch; `shepherd plugin schema` has each type's fields.
+// Every event has type, at (epoch ms), seq and epoch; `modisa plugin schema` has each type's fields.
 export type Event = { type: string; at: number; seq: number; epoch: string; pane?: string; instance?: string; name?: string; harness?: string; from?: AgentState; to?: AgentState; [field: string]: unknown };
 export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pane[] };
-// An action gets its params and the call: `invocation` names it, and `signal` aborts if shepherd gives up waiting
+// An action gets its params and the call: `invocation` names it, and `signal` aborts if modisa gives up waiting
 // (plugin.cancel, for that invocation only) or the connection goes. It's cooperative: an action that ignores it keeps
 // running, the caller has already been told the outcome is unknown, and neither the abort nor a rejection proves
 // that effects already started were undone.
 // `target` is the pane the user took the action from (a menu entry, key or palette entry), kept apart from params and
-// already checked by shepherd to be that pane's current process. `link` is the URL the user Ctrl+clicked, when one of
-// the manifest's links matched it (shepherd checks the pattern); treat it as data, never as a command.
+// already checked by modisa to be that pane's current process. `link` is the URL the user Ctrl+clicked, when one of
+// the manifest's links matched it (modisa checks the pattern); treat it as data, never as a command.
 export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string }) => unknown;
 
-// What a plugin shows in shepherd's TUI (see Client.ui). Tones map to the user's theme.
+// What a plugin shows in modisa's TUI (see Client.ui). Tones map to the user's theme.
 export type Tone = "fg" | "dim" | "accent" | "warn";
 // a row that focuses a pane names its instance too: clicking reaches that process, or tells the user it's gone
 export type SidebarRow = { text: string; tone?: Tone; action?: string; pane?: string; instance?: string };
@@ -55,10 +55,10 @@ export type UiState = {
   panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[];
 };
 
-export class ShepherdError extends Error {
+export class ModisaError extends Error {
   constructor(message: string, readonly code: string) {
     super(message);
-    this.name = "ShepherdError";
+    this.name = "ModisaError";
   }
 }
 
@@ -94,11 +94,11 @@ export class Client {
         const p = this.pending.get(m.id);
         if (!p) continue;
         this.pending.delete(m.id);
-        if (m.error) p.reject(new ShepherdError(String(m.error.message), m.error.data?.code ?? "error"));
+        if (m.error) p.reject(new ModisaError(String(m.error.message), m.error.data?.code ?? "error"));
         else p.resolve(m.result);
       } else if (m.method === "event" && m.params) for (const listen of this.listeners) listen(m.params);
       else if (m.method === "plugin.action" && m.id !== undefined) void this.answer(m.id, m.params ?? {});
-      else if (m.method === "plugin.cancel") this.running.get(m.params?.invocation)?.abort(new Error("shepherd stopped waiting for this action"));
+      else if (m.method === "plugin.cancel") this.running.get(m.params?.invocation)?.abort(new Error("modisa stopped waiting for this action"));
     }
   }
 
@@ -132,11 +132,11 @@ export class Client {
   name?: string;
 
   /**
-   * Bind this connection to the plugin shepherd started, offering actions to `shepherd plugin run <name> <action>`,
+   * Bind this connection to the plugin modisa started, offering actions to `modisa plugin run <name> <action>`,
    * the command palette, and the status segments, sidebar rows and menu entries that name them.
    */
-  async hello(actions: Record<string, Action> = {}, token = Bun.env.SHEPHERD_PLUGIN_TOKEN) {
-    if (!token) throw new ShepherdError("no $SHEPHERD_PLUGIN_TOKEN: shepherd starts plugins (shepherd plugin link), not a shell", "usage");
+  async hello(actions: Record<string, Action> = {}, token = Bun.env.MODISA_PLUGIN_TOKEN) {
+    if (!token) throw new ModisaError("no $MODISA_PLUGIN_TOKEN: modisa starts plugins (modisa plugin link), not a shell", "usage");
     this.actions = actions;
     const bound = await this.request<{ name: string; protocol: number; session: string; epoch: string }>("plugin.hello", { token, actions: Object.keys(actions) });
     this.name = bound.name;
@@ -144,7 +144,7 @@ export class Client {
   }
 
   /**
-   * What this plugin shows in shepherd's TUI, drawn by shepherd in the user's theme. Only after hello. Text is cleaned
+   * What this plugin shows in modisa's TUI, drawn by modisa in the user's theme. Only after hello. Text is cleaned
    * of control characters and cut to length; an `action` must be one offered in hello; updates are rate-limited
    * (errors: rate_limited, no_such_action). Everything is cleared when the plugin stops.
    */
@@ -185,7 +185,7 @@ export class Client {
     let queue: Promise<unknown> = Promise.resolve();
     const overflow = () => {
       this.transport.close();
-      this.drop(new ShepherdError(`more than ${max} events waiting for the plugin's handlers: disconnected, so everything after is a gap`, "backlog"));
+      this.drop(new ModisaError(`more than ${max} events waiting for the plugin's handlers: disconnected, so everything after is a gap`, "backlog"));
     };
     const deliver = (e: Event) => {
       if (e.epoch !== epoch || e.seq <= last) return; // another server run, in the snapshot already, or seen
@@ -277,9 +277,9 @@ export function writeQueue(write: (bytes: Uint8Array) => number, limit = 64 * 10
 type Socket = { write(data: Uint8Array): number; end(): void };
 type Connector = (options: { unix: string; socket: Record<string, (...args: any[]) => void> }) => Promise<Socket>;
 
-/** Connect to the session this plugin was started for ($SHEPHERD_SOCKET). (`open` is for tests: a fake socket.) */
-export async function connect(socket = Bun.env.SHEPHERD_SOCKET, open: Connector = Bun.connect as unknown as Connector): Promise<Client> {
-  if (!socket) throw new ShepherdError("no $SHEPHERD_SOCKET: shepherd starts plugins with it set", "usage");
+/** Connect to the session this plugin was started for ($MODISA_SOCKET). (`open` is for tests: a fake socket.) */
+export async function connect(socket = Bun.env.MODISA_SOCKET, open: Connector = Bun.connect as unknown as Connector): Promise<Client> {
+  if (!socket) throw new ModisaError("no $MODISA_SOCKET: modisa starts plugins with it set", "usage");
   let sock: Socket | undefined;
   let ended = false;
   const out = writeQueue((bytes) => sock?.write(bytes) ?? 0);
@@ -317,11 +317,11 @@ export async function connect(socket = Bun.env.SHEPHERD_SOCKET, open: Connector 
 }
 
 /** Run a plugin: connect, run `main`, and exit once the session's connection closes (the next server starts it again). */
-export async function runPlugin(main: (shepherd: Client) => unknown) {
+export async function runPlugin(main: (modisa: Client) => unknown) {
   try {
-    const shepherd = await connect();
-    await main(shepherd);
-    const why = await shepherd.closed;
+    const modisa = await connect();
+    await main(modisa);
+    const why = await modisa.closed;
     console.log(`session connection closed (${why.message}); exiting`);
     process.exit(0);
   } catch (error) {
@@ -331,22 +331,22 @@ export async function runPlugin(main: (shepherd: Client) => unknown) {
 }
 
 /**
- * For a plugin's own tests, run by `shepherd plugin check`: the throwaway session it started with this plugin running.
- * `shepherd(...args)` runs the CLI against it, `json(...args)` parses a --json reply, `data` is the plugin's data
+ * For a plugin's own tests, run by `modisa plugin check`: the throwaway session it started with this plugin running.
+ * `modisa(...args)` runs the CLI against it, `json(...args)` parses a --json reply, `data` is the plugin's data
  * directory, `until` waits for a condition.
  */
 export function checkSession() {
-  const raw = Bun.env.SHEPHERD_CHECK;
-  if (!raw) throw new Error("run these tests with `shepherd plugin check <dir>`: it starts a throwaway session with this plugin running");
+  const raw = Bun.env.MODISA_CHECK;
+  if (!raw) throw new Error("run these tests with `modisa plugin check <dir>`: it starts a throwaway session with this plugin running");
   const { bin, session, env, plugin, data } = JSON.parse(raw) as { bin: string[]; session: string; env: Record<string, string>; plugin: string; data: string };
-  const shepherd = async (...args: string[]) => {
-    const p = Bun.spawn([...bin, "-s", session, ...args], { env: { ...Bun.env, ...env, SHEPHERD_CHECK: "" }, stdout: "pipe", stderr: "pipe" });
+  const modisa = async (...args: string[]) => {
+    const p = Bun.spawn([...bin, "-s", session, ...args], { env: { ...Bun.env, ...env, MODISA_CHECK: "" }, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     return { code: await p.exited, stdout: stdout.trim(), stderr: stderr.trim() };
   };
   const json = async <T = any>(...args: string[]): Promise<T> => {
-    const r = await shepherd(...args, "--json");
-    if (r.code !== 0) throw new Error(`shepherd ${args.join(" ")} exited ${r.code}: ${r.stderr}`);
+    const r = await modisa(...args, "--json");
+    if (r.code !== 0) throw new Error(`modisa ${args.join(" ")} exited ${r.code}: ${r.stderr}`);
     return JSON.parse(r.stdout);
   };
   const until = async (what: string, ok: () => unknown, ms = 10_000) => {
@@ -355,5 +355,5 @@ export function checkSession() {
   };
   /** What the plugin shows in the TUI now (status, sidebar, badges, menu, palette actions). */
   const ui = () => json<UiState>("plugin", "ui", plugin);
-  return { plugin, session, data, shepherd, json, until, ui };
+  return { plugin, session, data, modisa, json, until, ui };
 }

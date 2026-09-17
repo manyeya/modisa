@@ -1,4 +1,4 @@
-// Every agent shepherd knows: the process names that identify it, how to launch and resume it, and
+// Every agent modisa knows: the process names that identify it, how to launch and resume it, and
 // the screen rules that read its state. The rules in ./manifests are third-party detection manifests
 // (Apache-2.0, see ./manifests/LICENSE), kept as close to upstream as possible so they can be
 // re-synced; `extra` adds rules of ours on top. Imported so a compiled binary carries them.
@@ -59,7 +59,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     id: "codex", name: "Codex", process: ["codex"], launch: "codex", resumeSession: "codex resume {id}", resume: "codex resume --last",
     rules: rules(codex, [
       // Codex's rate-limit "switch model" picker ends in "esc to go back", which the manifest misses.
-      { id: "shepherd_confirm_go_back", state: "blocked", priority: 900, region: "bottom_non_empty_lines(3)", visible_blocker: true, contains: ["press enter to confirm or esc to go back"] },
+      { id: "modisa_confirm_go_back", state: "blocked", priority: 900, region: "bottom_non_empty_lines(3)", visible_blocker: true, contains: ["press enter to confirm or esc to go back"] },
     ]),
   },
   { id: "gemini", name: "Gemini CLI", process: ["gemini"], launch: "gemini", resume: "gemini --resume", rules: rules(gemini) },
@@ -90,6 +90,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       { id: "working", state: "working", priority: 10, regex: ["(?im)esc to (interrupt|cancel)"] },
     ],
   },
-  // any agent spawned by name that shepherd doesn't know: output in the last 2s = working
+  // any agent spawned by name that modisa doesn't know: output in the last 2s = working
   { id: "generic", name: "Agent", process: [], launch: "", activity: true, rules: [] },
 ];

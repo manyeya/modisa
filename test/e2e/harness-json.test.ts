@@ -23,7 +23,7 @@ test("an unreachable session fails at once without retry, and after the deadline
   const quick = Date.now();
   const once = await sb.json("nobody-home", ["pane", "list"]).then(() => "ok", (e: Error) => e.message);
   expect(Date.now() - quick).toBeLessThan(3000);
-  expect(once).toContain("shepherd -s nobody-home pane list --json: unreachable");
+  expect(once).toContain("modisa -s nobody-home pane list --json: unreachable");
   expect(once).toContain("exit status: 3");
   expect(once).toContain("stderr:");
 

@@ -85,7 +85,7 @@ function rulesOf(a: Adapter): Rule[] {
   let rules = compiled.get(a);
   if (!rules) {
     try { rules = compileRules(a.rules); }
-    catch (e) { console.error(`shepherd: ${a.id} screen rules: ${(e as Error).message}`); rules = []; }
+    catch (e) { console.error(`modisa: ${a.id} screen rules: ${(e as Error).message}`); rules = []; }
     compiled.set(a, rules);
   }
   return rules;

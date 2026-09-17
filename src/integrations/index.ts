@@ -1,4 +1,4 @@
-// `shepherd integration status | install | uninstall <agent|all>`: connect agents to shepherd through
+// `modisa integration status | install | uninstall <agent|all>`: connect agents to modisa through
 // their own hooks or plugins (see ./targets.ts for what each one does).
 import { lstat, readlink } from "node:fs/promises"; // no Bun equivalent, and status must not spawn a process per agent
 import type { IntegrationStatus } from "../protocol/types";
@@ -11,7 +11,7 @@ export { TARGETS };
 // somewhere else. Agents whose skills directory *is* the shared one just find it there.
 // ponytail: symlinks only. An agent that doesn't follow them gets nothing; add a copy fallback if one
 // turns up.
-const linkPath = (t: Target) => (t.skills && t.skills() !== skillsHome() ? `${t.skills()}/shepherd` : undefined);
+const linkPath = (t: Target) => (t.skills && t.skills() !== skillsHome() ? `${t.skills()}/modisa` : undefined);
 // A directory of their own, as opposed to our symlink (lstat, so a link to a directory is not one).
 const isDir = (path: string) => lstat(path).then((s) => s.isDirectory()).catch(() => false);
 
@@ -67,11 +67,11 @@ export async function setIntegration(id: string, install: boolean): Promise<stri
   if (install && !t.create && !(await statusOf(t)).configured) throw new Error(`${t.name} isn't set up here (no ${t.dir()}); run it once, then install`);
   await (install ? t.install() : t.uninstall());
   await setSkill(t, install);
-  const what = (t.kind === "lifecycle" ? "state and session reports" : "session reports") + (t.skills ? " and the shepherd skill" : "");
+  const what = (t.kind === "lifecycle" ? "state and session reports" : "session reports") + (t.skills ? " and the modisa skill" : "");
   return install ? `${t.name}: installed ${what} (restart running ${t.name} sessions to load it)` : `${t.name}: removed`;
 }
 
-// Everything shepherd put into agents' configs, for `shepherd uninstall`: each installed integration,
+// Everything modisa put into agents' configs, for `modisa uninstall`: each installed integration,
 // then any skill link or shared skill copy an earlier install left without its hooks.
 export async function uninstallAll(): Promise<{ removed: string[]; failed: string[] }> {
   const removed: string[] = [], failed: string[] = [];
@@ -98,7 +98,7 @@ export async function runIntegration(verb: string | undefined, agent: string | u
     return 0;
   }
   if ((verb !== "install" && verb !== "uninstall") || !agent || (agent !== "all" && !find(agent))) {
-    console.error(`usage: shepherd integration status | install|uninstall <agent|all>\nagents: ${TARGETS.map((t) => t.id).join(", ")}\nevery agent's state is read from its screen with no setup; integrations add session resume, and exact state for ${TARGETS.filter((t) => t.kind === "lifecycle").map((t) => t.name).join(", ")}.`);
+    console.error(`usage: modisa integration status | install|uninstall <agent|all>\nagents: ${TARGETS.map((t) => t.id).join(", ")}\nevery agent's state is read from its screen with no setup; integrations add session resume, and exact state for ${TARGETS.filter((t) => t.kind === "lifecycle").map((t) => t.name).join(", ")}.`);
     return 2;
   }
   const all = agent === "all" ? await integrationStatus() : [];

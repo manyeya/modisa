@@ -50,11 +50,11 @@ async function helloWith(t: string) {
 beforeAll(async () => {
   // a well-behaved plugin with a grandchild: sh starts `sleep`, then execs a client that binds and offers actions
   await Bun.write(`${dir("probe")}/plugin.json`, JSON.stringify({ name: "probe", protocol: 1, run: ["sh", "start.sh"] }));
-  await Bun.write(`${dir("probe")}/start.sh`, `sleep 300 &\necho $! > child.pid\necho "$SHEPHERD_PLUGIN_TOKEN" > token\necho "probe starting"\nexec bun client.ts\n`);
+  await Bun.write(`${dir("probe")}/start.sh`, `sleep 300 &\necho $! > child.pid\necho "$MODISA_PLUGIN_TOKEN" > token\necho "probe starting"\nexec bun client.ts\n`);
   await Bun.write(
     `${dir("probe")}/client.ts`,
     `import { connectUnix } from "${REPO}/src/protocol/transport";
-const conn = await connectUnix(Bun.env.SHEPHERD_SOCKET!);
+const conn = await connectUnix(Bun.env.MODISA_SOCKET!);
 let hungUp = false;
 conn.onClose = () => { if (!hungUp) process.exit(0); };
 const reply = (id: number, x: object) => conn.send({ jsonrpc: "2.0", id, ...x } as any);
@@ -74,21 +74,21 @@ conn.onMessage = async (m) => {
     setTimeout(() => conn.close(), 100); // the process stays; only its connection goes
   } else reply(m.id, { error: { code: -32000, message: "it broke on purpose" } });
 };
-console.log("hello", JSON.stringify(await conn.request("plugin.hello", { token: Bun.env.SHEPHERD_PLUGIN_TOKEN, actions: ["echo", "boom", "slow", "silent", "impersonate", "hangup"] })));
+console.log("hello", JSON.stringify(await conn.request("plugin.hello", { token: Bun.env.MODISA_PLUGIN_TOKEN, actions: ["echo", "boom", "slow", "silent", "impersonate", "hangup"] })));
 setInterval(() => {}, 1 << 30);
 `,
   );
   // one that ignores TERM, so only the KILL after the time limit ends it
   await Bun.write(`${dir("stubborn")}/plugin.json`, JSON.stringify({ name: "stubborn", protocol: 1, run: ["sh", "-c", "trap '' TERM; echo $$ > pid; while :; do sleep 1; done"] }));
-  await Bun.write(`${dir("sleepy")}/plugin.json`, JSON.stringify({ name: "sleepy", protocol: 1, run: ["sh", "-c", `echo $$ > pid; echo "$SHEPHERD_PLUGIN_TOKEN" > token; while :; do sleep 1; done`] }));
-  await Bun.write(`${dir("crashy")}/plugin.json`, JSON.stringify({ name: "crashy", protocol: 1, run: ["sh", "-c", `echo "$SHEPHERD_PLUGIN_TOKEN" > token; echo oops >&2; exit 3`] }));
-  await Bun.write(`${dir("missing")}/plugin.json`, JSON.stringify({ name: "missing", protocol: 1, run: ["no-such-program-for-shepherd"] }));
+  await Bun.write(`${dir("sleepy")}/plugin.json`, JSON.stringify({ name: "sleepy", protocol: 1, run: ["sh", "-c", `echo $$ > pid; echo "$MODISA_PLUGIN_TOKEN" > token; while :; do sleep 1; done`] }));
+  await Bun.write(`${dir("crashy")}/plugin.json`, JSON.stringify({ name: "crashy", protocol: 1, run: ["sh", "-c", `echo "$MODISA_PLUGIN_TOKEN" > token; echo oops >&2; exit 3`] }));
+  await Bun.write(`${dir("missing")}/plugin.json`, JSON.stringify({ name: "missing", protocol: 1, run: ["no-such-program-for-modisa"] }));
   await Bun.write(`${dir("future")}/plugin.json`, JSON.stringify({ name: "future", protocol: 99, run: ["true"] }));
   await Bun.write(`${dir("broken")}/plugin.json`, JSON.stringify({ name: "broken", protocol: 1 }));
 
   for (const name of ["probe", "stubborn", "sleepy", "crashy", "missing", "future"]) expect((await run("plugin", "link", dir(name))).code).toBe(0);
   await Bun.$`ln -s ${dir("broken")} ${sb.root}/config/plugins/broken`; // the CLI refuses to link it (see below)
-  await startServer(sb, S, { SHEPHERD_PLUGIN_INVOKE_MS: "1000" });
+  await startServer(sb, S, { MODISA_PLUGIN_INVOKE_MS: "1000" });
 }, 30000);
 
 afterAll(async () => {
@@ -115,7 +115,7 @@ test("linked plugins start, log, and bind their connection; the rest show why th
   expect(await plugin("crashy")).toMatchObject({ exitCode: 3, connected: false });
   expect((await run("plugin", "logs", "crashy")).stdout).toContain("oops");
   expect(await plugin("missing")).toMatchObject({ status: "failed" });
-  expect((await plugin("missing")).error).toContain("no-such-program-for-shepherd");
+  expect((await plugin("missing")).error).toContain("no-such-program-for-modisa");
   expect((await plugin("future")).error).toContain("protocol 99");
   expect((await plugin("broken")).error).toContain("run");
 }, 30000);

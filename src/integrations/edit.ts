@@ -1,6 +1,6 @@
-// Editing agents' own config files: add shepherd's hook entries in each agent's native shape, and
-// remove only ours again. Ours are recognised by the SHEPHERD_HOOK=<version> marker in the command.
-export const MARK = "SHEPHERD_HOOK=";
+// Editing agents' own config files: add modisa's hook entries in each agent's native shape, and
+// remove only ours again. Ours are recognised by the MODISA_HOOK=<version> marker in the command.
+export const MARK = "MODISA_HOOK=";
 const COMMAND_KEYS = ["command", "bash", "powershell"];
 const isOurs = (value: unknown) => typeof value === "string" && value.includes(MARK);
 const entryOurs = (entry: any) => COMMAND_KEYS.some((k) => isOurs(entry?.[k]));

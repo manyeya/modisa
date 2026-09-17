@@ -30,4 +30,4 @@ jobs:
       - run: bun run typecheck
       - run: bun test
       - name: Compiled build runs
-        run: bun run build && ./dist/shepherd --version
+        run: bun run build && ./dist/modisa --version

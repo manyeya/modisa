@@ -1,4 +1,4 @@
-// The `shepherd plugin` commands that work without a session server (new, sdk, schema, check, dev), and link and
+// The `modisa plugin` commands that work without a session server (new, sdk, schema, check, dev), and link and
 // unlink, which change the global link and then act on the one running session they reach (the default, or -s).
 import { PLUGINS_DIR, readManifest } from "../config/plugins";
 import { connectExisting } from "../protocol/transport";
@@ -7,7 +7,7 @@ import { describeProtocol } from "../protocol/describe";
 import type { Conn } from "../protocol/conn";
 import { str, type Args } from "./args";
 // @ts-ignore: embedded as text (it's a .ts file, which would otherwise be imported as a module)
-import SDK from "../plugins/shepherd-plugin.ts" with { type: "text" };
+import SDK from "../plugins/modisa-plugin.ts" with { type: "text" };
 import PLUGIN from "../plugins/template/plugin.ts.txt" with { type: "text" };
 import TEST from "../plugins/template/plugin.test.ts.txt" with { type: "text" };
 import GUIDE from "../plugins/template/AGENTS.md" with { type: "text" };
@@ -50,30 +50,30 @@ export async function runPluginLocal(verb: string, args: string[], flags: Args["
 
 async function scaffold(name: string | undefined, dirFlag?: string) {
   if (!name || !/^[a-z0-9][a-z0-9-]*$/.test(name)) {
-    console.error("usage: shepherd plugin new <name> [--dir d]   (name: lowercase letters, digits and dashes)");
+    console.error("usage: modisa plugin new <name> [--dir d]   (name: lowercase letters, digits and dashes)");
     return 2;
   }
   const dir = dirFlag ?? name;
   const existing = (await Bun.$`ls -A ${dir}`.quiet().nothrow().text()).trim();
   if (existing) {
-    console.error(`shepherd: ${dir} already exists and isn't empty; plugin new never overwrites`);
+    console.error(`modisa: ${dir} already exists and isn't empty; plugin new never overwrites`);
     return 1;
   }
   const fill = (text: unknown) => String(text).replaceAll("{{name}}", name);
-  await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: PROTOCOL, run: ["bun", "plugin.ts"], description: `${name}: a shepherd plugin` }, null, 2) + "\n");
+  await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name, protocol: PROTOCOL, run: ["bun", "plugin.ts"], description: `${name}: a modisa plugin` }, null, 2) + "\n");
   await Bun.write(`${dir}/plugin.ts`, fill(PLUGIN));
   await Bun.write(`${dir}/plugin.test.ts`, fill(TEST));
-  await Bun.write(`${dir}/shepherd-plugin.ts`, SDK_TEXT);
+  await Bun.write(`${dir}/modisa-plugin.ts`, SDK_TEXT);
   await Bun.write(`${dir}/AGENTS.md`, fill(GUIDE));
-  await Bun.write(`${dir}/CLAUDE.md`, "Read AGENTS.md: it explains how to write, test and install this shepherd plugin.\n");
-  console.log(`created ${dir}: plugin.json, plugin.ts, plugin.test.ts, shepherd-plugin.ts, AGENTS.md
+  await Bun.write(`${dir}/CLAUDE.md`, "Read AGENTS.md: it explains how to write, test and install this modisa plugin.\n");
+  console.log(`created ${dir}: plugin.json, plugin.ts, plugin.test.ts, modisa-plugin.ts, AGENTS.md
 next: put the plugin's logic in plugin.ts (AGENTS.md explains how), then
-  shepherd plugin check ${dir}
-  shepherd plugin link ${dir}`);
+  modisa plugin check ${dir}
+  modisa plugin link ${dir}`);
   return 0;
 }
 
-export const sessionName = (session?: string) => session ?? Bun.env.SHEPHERD_SESSION ?? "default";
+export const sessionName = (session?: string) => session ?? Bun.env.MODISA_SESSION ?? "default";
 
 // "<key>: <why>" for each of a plugin's keys that's off in that session
 const offKeys = (status: any): string[] => (status?.keys ?? []).filter((k: any) => k.state === "disabled").map((k: any) => `${k.key || "(none)"}: ${k.reason}`);
@@ -131,23 +131,23 @@ export function describeStart(start: StartOutcome, what = "linked") {
 // start or connect.
 async function link(arg: string | undefined, session: string | undefined, json: boolean) {
   if (!arg) {
-    console.error("usage: shepherd plugin link <dir> [--json]");
+    console.error("usage: modisa plugin link <dir> [--json]");
     return 2;
   }
   const dir = (await Bun.$`realpath ${arg}`.quiet().nothrow().text()).trim();
   if (!dir) {
-    console.error(`shepherd: no such directory: ${arg}`);
+    console.error(`modisa: no such directory: ${arg}`);
     return 1;
   }
   const { manifest, error } = await readManifest(dir);
   if (!manifest) {
-    console.error(`shepherd: ${error}`);
+    console.error(`modisa: ${error}`);
     return 1;
   }
   const target = `${PLUGINS_DIR}/${manifest.name}`;
   const existing = (await Bun.$`readlink ${target}`.quiet().nothrow().text()).trim();
   if (existing && existing !== dir) {
-    console.error(`shepherd: ${manifest.name} is already linked to ${existing}; shepherd plugin unlink ${manifest.name} first`);
+    console.error(`modisa: ${manifest.name} is already linked to ${existing}; modisa plugin unlink ${manifest.name} first`);
     return 1;
   }
   if (!existing) {

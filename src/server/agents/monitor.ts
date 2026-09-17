@@ -15,7 +15,7 @@ export function startMonitor(ctx: ServerContext): { stop(): void } {
   let ids = 0;
   ctx.tick = async () => {
     if (running && Date.now() - startedAt < 10_000) return;
-    if (running) console.error(`shepherd: agent detection was stuck for ${Math.round((Date.now() - startedAt) / 1000)}s; starting over`);
+    if (running) console.error(`modisa: agent detection was stuck for ${Math.round((Date.now() - startedAt) / 1000)}s; starting over`);
     const id = (running = ++ids);
     startedAt = Date.now();
     try {
@@ -44,7 +44,7 @@ export function startMonitor(ctx: ServerContext): { stop(): void } {
       lastError = "";
     } catch (e) {
       const message = e instanceof Error ? e.stack ?? e.message : String(e);
-      if (message !== lastError) console.error(`shepherd: agent detection failed: ${message}`);
+      if (message !== lastError) console.error(`modisa: agent detection failed: ${message}`);
       lastError = message;
     } finally {
       if (running === id) running = 0; // a stuck tick that finishes late leaves the newer one alone

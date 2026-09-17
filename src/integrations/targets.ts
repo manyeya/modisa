@@ -1,4 +1,4 @@
-// Every agent integration: where the agent keeps its config, what shepherd adds there, and how to
+// Every agent integration: where the agent keeps its config, what modisa adds there, and how to
 // take it out again. Two kinds:
 //   lifecycle — hooks or a plugin that see every transition report working / blocked / idle
 //               (and the session); they are the pane's state authority while they report.
@@ -13,7 +13,7 @@ export const HOOK_VERSION = 2;
 export type Status = "current" | "outdated" | "none";
 
 export type Target = {
-  id: string; // the agent's id in shepherd
+  id: string; // the agent's id in modisa
   name: string;
   binaries: string[]; // the agent is "available" when one of these is on PATH
   kind: "lifecycle" | "session";
@@ -28,10 +28,10 @@ export type Target = {
   status: () => Promise<Status>;
 };
 
-// The shepherd skill lives here once; every agent that reads skills somewhere else gets a symlink to
+// The modisa skill lives here once; every agent that reads skills somewhere else gets a symlink to
 // it. This is also the directory Kimi and its family read natively, so they need no link.
 export const skillsHome = () => `${home()}/.agents/skills`;
-export const skillDir = () => `${skillsHome()}/shepherd`;
+export const skillDir = () => `${skillsHome()}/modisa`;
 
 // The common case: the agent reads skills from its own config directory.
 const skillsIn = (dir: () => string) => () => `${dir()}/skills`;
@@ -39,14 +39,14 @@ const skillsIn = (dir: () => string) => () => `${dir()}/skills`;
 const env = (name: string) => Bun.env[name] || undefined;
 const home = () => Bun.env.HOME ?? "/tmp";
 const sh = (arg: string) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`);
-// What an agent's hook runs: `shepherd hook <agent> <action>`, reading the agent's hook JSON on stdin.
+// What an agent's hook runs: `modisa hook <agent> <action>`, reading the agent's hook JSON on stdin.
 export const hookCommand = (agent: string, action: string) => `${MARK}${HOOK_VERSION} ${self().map(sh).join(" ")} hook ${agent} ${action}`;
 
 const exists = (path: string) => Bun.file(path).exists();
 const same = (found: string[], want: string[]): Status => (!found.length ? "none" : found.join("\n") === [...want].sort().join("\n") ? "current" : "outdated");
 
 // Agents whose hooks live in a JSON file: an events object (under `key`, or the file itself) holding
-// shepherd's entries next to the user's own.
+// modisa's entries next to the user's own.
 function jsonHooks(o: {
   file: () => string;
   key?: string | null; // null: events at the top level of the file
@@ -87,7 +87,7 @@ function jsonHooks(o: {
 }
 
 // Agents that load a file of ours (a plugin or extension): written whole, removed whole. Contents are
-// built only when needed (they embed the command that runs shepherd).
+// built only when needed (they embed the command that runs modisa).
 function pluginFiles(files: () => [path: string, content: () => string][], after?: (install: boolean) => Promise<void>) {
   return {
     install: async () => {
@@ -105,13 +105,6 @@ function pluginFiles(files: () => [path: string, content: () => string][], after
   };
 }
 
-// Older shepherds registered an MCP server here; the skill replaced it. Take the stale registration
-// out on install and on uninstall, so an upgrade doesn't leave a server behind that no longer exists.
-// Deletable once 0.1.x is gone.
-const dropMcp = (cli: string, remove: string[]) => async () => {
-  if (Bun.which(cli)) await Bun.$`${cli} ${remove}`.quiet().nothrow();
-};
-
 const claudeDir = () => env("CLAUDE_CONFIG_DIR") ?? `${home()}/.claude`;
 const codexDir = () => env("CODEX_HOME") ?? `${home()}/.codex`;
 const copilotDir = () => env("COPILOT_HOME") ?? `${home()}/.copilot`;
@@ -127,8 +120,8 @@ const kimiDir = () => env("KIMI_CODE_HOME") ?? `${home()}/.kimi-code`;
 const piDir = () => env("PI_CODING_AGENT_DIR") ?? `${home()}/.pi/agent`;
 const ompDir = () => env("PI_CODING_AGENT_DIR") ?? `${home()}/${env("PI_CONFIG_DIR") ?? ".omp"}/agent`;
 const hermesDir = () => env("HERMES_HOME") ?? `${home()}/.hermes`;
-const KIMI_BEGIN = "# >>> shepherd kimi integration (managed; reinstalling replaces this block)";
-const KIMI_END = "# <<< shepherd kimi integration";
+const KIMI_BEGIN = "# >>> modisa kimi integration (managed; reinstalling replaces this block)";
+const KIMI_END = "# <<< modisa kimi integration";
 const KIMI_EVENTS: [string, string, string?][] = [
   ["SessionStart", "session"], ["UserPromptSubmit", "working"],
   ["PreToolUse", "working", "^(?!AskUserQuestion$).*$"], ["PreToolUse", "blocked", "^AskUserQuestion$"],
@@ -150,7 +143,6 @@ export const TARGETS: Target[] = [
       file: () => `${claudeDir()}/settings.json`,
       entries: () => session("claude-code", "SessionStart"),
       add: (h, e, c) => addNested(h, e, c, { matcher: "*" }),
-      after: dropMcp("claude", ["mcp", "remove", "--scope", "user", "shepherd"]),
     }),
   },
   {
@@ -165,7 +157,6 @@ export const TARGETS: Target[] = [
         const kept = text.split("\n").filter((l) => !l.includes(MARK)).join("\n"); // our old notify line
         const next = install ? withCodexHooksFeature(kept) : kept;
         if (next !== text) await Bun.write(path, next);
-        await dropMcp("codex", ["mcp", "remove", "shepherd"])();
       },
     }),
   },
@@ -209,15 +200,15 @@ export const TARGETS: Target[] = [
   {
     // Grok merges every hooks/*.json, so ours is a file of its own
     id: "grok", name: "Grok CLI", binaries: ["grok"], kind: "session", dir: grokDir, skills: skillsIn(grokDir),
-    ...pluginFiles(() => [[`${grokDir()}/hooks/shepherd.json`, () => JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: hookCommand("grok", "session"), timeout: 10 }] }] } }, null, 2) + "\n"]]),
+    ...pluginFiles(() => [[`${grokDir()}/hooks/modisa.json`, () => JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: hookCommand("grok", "session"), timeout: 10 }] }] } }, null, 2) + "\n"]]),
   },
   {
-    // Antigravity keys hooks.json by hook name: the "shepherd" block is ours. Its skills live beside
+    // Antigravity keys hooks.json by hook name: the "modisa" block is ours. Its skills live beside
     // its config directory, not inside it.
     id: "antigravity", name: "Antigravity CLI", binaries: ["agy"], kind: "session", dir: antigravityDir, skills: () => `${home()}/.gemini/antigravity-cli/skills`,
     ...jsonHooks({
       file: () => `${antigravityDir()}/hooks.json`,
-      key: "shepherd",
+      key: "modisa",
       owned: true,
       entries: () => session("antigravity", "PreInvocation"),
       add: (h, e, c) => addFlat(h, e, c, { timeout: 10 }),
@@ -226,18 +217,18 @@ export const TARGETS: Target[] = [
   {
     id: "hermes", name: "Hermes Agent", binaries: ["hermes"], kind: "session", dir: hermesDir, skills: skillsIn(hermesDir),
     ...pluginFiles(
-      () => [[`${hermesDir()}/plugins/shepherd-agent-state/plugin.yaml`, () => hermesPlugin(self()).yaml], [`${hermesDir()}/plugins/shepherd-agent-state/__init__.py`, () => hermesPlugin(self()).py]],
+      () => [[`${hermesDir()}/plugins/modisa-agent-state/plugin.yaml`, () => hermesPlugin(self()).yaml], [`${hermesDir()}/plugins/modisa-agent-state/__init__.py`, () => hermesPlugin(self()).py]],
       async (install) => {
         const path = `${hermesDir()}/config.yaml`;
         const text = (await exists(path)) ? await Bun.file(path).text() : "";
-        const next = withHermesPlugin(text, "shepherd-agent-state", install);
+        const next = withHermesPlugin(text, "modisa-agent-state", install);
         if (next !== text) await Bun.write(path, next);
-        if (!install) await Bun.$`rm -rf ${`${hermesDir()}/plugins/shepherd-agent-state`}`.quiet().nothrow();
+        if (!install) await Bun.$`rm -rf ${`${hermesDir()}/plugins/modisa-agent-state`}`.quiet().nothrow();
       },
     ),
   },
   {
-    // Kimi reads the shared skills directory, which is where shepherd keeps the skill anyway: nothing
+    // Kimi reads the shared skills directory, which is where modisa keeps the skill anyway: nothing
     // to link, the skill is simply there.
     id: "kimi", name: "Kimi Code", binaries: ["kimi"], kind: "lifecycle", dir: kimiDir, skills: skillsHome,
     ...(() => {
@@ -262,17 +253,17 @@ export const TARGETS: Target[] = [
       file: () => `${home()}/.mastracode/hooks.json`,
       key: null,
       entries: () => MASTRA_EVENTS.map(([e, a]) => [e, hookCommand("mastracode", a)]),
-      add: (h, e, c) => addFlat(h, e, c, { timeout: 10_000, description: "Report MastraCode state to shepherd" }),
+      add: (h, e, c) => addFlat(h, e, c, { timeout: 10_000, description: "Report MastraCode state to modisa" }),
     }),
   },
-  { id: "opencode", name: "OpenCode", binaries: ["opencode"], kind: "lifecycle", dir: opencodeDir, skills: skillsIn(opencodeDir), ...pluginFiles(() => [[`${opencodeDir()}/plugins/shepherd-agent-state.js`, () => opencodePlugin("opencode", self())]]) },
+  { id: "opencode", name: "OpenCode", binaries: ["opencode"], kind: "lifecycle", dir: opencodeDir, skills: skillsIn(opencodeDir), ...pluginFiles(() => [[`${opencodeDir()}/plugins/modisa-agent-state.js`, () => opencodePlugin("opencode", self())]]) },
   // Kilo's plugin lives under ~/.config/kilo but it reads skills from ~/.kilo
-  { id: "kilo", name: "Kilo Code", binaries: ["kilo", "kilo-code"], kind: "lifecycle", dir: () => `${home()}/.config/kilo`, skills: () => `${home()}/.kilo/skills`, ...pluginFiles(() => [[`${home()}/.config/kilo/plugin/shepherd-agent-state.js`, () => opencodePlugin("kilo", self())]]) },
-  { id: "pi", name: "Pi", binaries: ["pi"], kind: "lifecycle", dir: piDir, skills: skillsIn(piDir), ...pluginFiles(() => [[`${piDir()}/extensions/shepherd-agent-state.ts`, () => piExtension("pi", self())]]) },
+  { id: "kilo", name: "Kilo Code", binaries: ["kilo", "kilo-code"], kind: "lifecycle", dir: () => `${home()}/.config/kilo`, skills: () => `${home()}/.kilo/skills`, ...pluginFiles(() => [[`${home()}/.config/kilo/plugin/modisa-agent-state.js`, () => opencodePlugin("kilo", self())]]) },
+  { id: "pi", name: "Pi", binaries: ["pi"], kind: "lifecycle", dir: piDir, skills: skillsIn(piDir), ...pluginFiles(() => [[`${piDir()}/extensions/modisa-agent-state.ts`, () => piExtension("pi", self())]]) },
   {
     id: "omp", name: "OMP", binaries: ["omp"], kind: "lifecycle", dir: ompDir,
     ...(() => {
-      const files = pluginFiles(() => [[`${ompDir()}/extensions/shepherd-omp-agent-state.ts`, () => piExtension("omp", self())]]);
+      const files = pluginFiles(() => [[`${ompDir()}/extensions/modisa-omp-agent-state.ts`, () => piExtension("omp", self())]]);
       const install = async () => {
         if (ompDir() === piDir()) throw new Error("OMP and Pi share an agent directory, so Pi would load OMP's extension; give them separate directories first");
         await files.install();

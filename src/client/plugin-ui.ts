@@ -1,6 +1,6 @@
 // What plugins contribute to the TUI, drawn in the user's theme from the data the server sends with the view, and
 // running their actions from a status segment, sidebar row, menu entry or the palette. Everything a plugin shows is
-// attributed to it by name, so none of it can pass for shepherd's own prompts.
+// attributed to it by name, so none of it can pass for modisa's own prompts.
 import { BoxRenderable } from "@opentui/core";
 import type { PluginUiView, Tone } from "../protocol/types";
 import { linkMatches } from "../protocol/links";

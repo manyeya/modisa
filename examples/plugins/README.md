@@ -1,21 +1,21 @@
-# Writing a shepherd plugin
+# Writing a modisa plugin
 
 ## Quick start
 
 ```sh
-shepherd plugin new my-plugin      # TypeScript, shepherd's client library, AGENTS.md (the guide), a test
+modisa plugin new my-plugin      # TypeScript, modisa's client library, AGENTS.md (the guide), a test
 cd my-plugin                       # put the logic in plugin.ts
-shepherd plugin check .            # manifest, build, then a throwaway session: starts, connects, your tests, exits
-shepherd plugin link .             # every session starts it; the running one starts it now
-shepherd plugin install <git-url>  # someone else's: --ref and --subdir pick a version and a directory
+modisa plugin check .            # manifest, build, then a throwaway session: starts, connects, your tests, exits
+modisa plugin link .             # every session starts it; the running one starts it now
+modisa plugin install <git-url>  # someone else's: --ref and --subdir pick a version and a directory
 ```
 
 `attention-log/` is a complete one made that way: when an agent newly becomes blocked, it appends a line to a log.
 The rest of this page is the protocol underneath, for plugins that don't use the client library.
 
-The client library (`shepherd plugin sdk`) is TypeScript, but nothing requires it: a plugin is a program shepherd
+The client library (`modisa plugin sdk`) is TypeScript, but nothing requires it: a plugin is a program modisa
 starts with the session and connects to its unix socket, so anything that speaks newline-delimited JSON can be one —
-Bun, Python, Go, or a shell script wrapping the `shepherd` CLI. What a plugin can show in the TUI, its links and its
+Bun, Python, Go, or a shell script wrapping the `modisa` CLI. What a plugin can show in the TUI, its links and its
 limits are explained in [`attention-log/AGENTS.md`](attention-log/AGENTS.md) (the guide `plugin new` writes); this
 page is the wire protocol under all of it.
 
@@ -34,30 +34,30 @@ A plugin is a directory with a `plugin.json`:
 protocol version the plugin speaks; one the server doesn't speak fails to start, and says so.
 
 ```sh
-shepherd plugin link ./attention-log    # checks plugin.json, links it for every session, starts it in the running one
-shepherd plugin install <git-url>       # or fetch one: https, ssh, git or file URL, --ref and --subdir
-shepherd plugin list                     # status, exit code, connected or not, actions, source, keys that are off
-shepherd plugin logs attention-log
-shepherd plugin run attention-log <action> '{"any":"params"}'
-shepherd plugin stop attention-log       # and plugin start attention-log
-shepherd plugin unlink attention-log     # removes the link; a directory you linked is never deleted
+modisa plugin link ./attention-log    # checks plugin.json, links it for every session, starts it in the running one
+modisa plugin install <git-url>       # or fetch one: https, ssh, git or file URL, --ref and --subdir
+modisa plugin list                     # status, exit code, connected or not, actions, source, keys that are off
+modisa plugin logs attention-log
+modisa plugin run attention-log <action> '{"any":"params"}'
+modisa plugin stop attention-log       # and plugin start attention-log
+modisa plugin unlink attention-log     # removes the link; a directory you linked is never deleted
 ```
 
-**Shepherd owns the process.** Each plugin runs in its own process group. When the session stops,
+**Modisa owns the process.** Each plugin runs in its own process group. When the session stops,
 the whole group gets TERM, and whatever is still running 2 seconds later gets KILL, so children and
-grandchildren go too. stdout and stderr go to `~/.local/state/shepherd/plugins/<session>.<name>.log`.
+grandchildren go too. stdout and stderr go to `~/.local/state/modisa/plugins/<session>.<name>.log`.
 Nothing restarts a plugin that exits: `plugin list` shows it `exited` or `failed`, with the reason.
 If the server itself is killed outright, it can't stop anyone, which is why a plugin must still exit
 when its socket closes (rule 1 below).
 
-**Actions.** To be callable with `shepherd plugin run`, call `plugin.hello` on your connection with
-the token shepherd started you with and the actions you offer:
+**Actions.** To be callable with `modisa plugin run`, call `plugin.hello` on your connection with
+the token modisa started you with and the actions you offer:
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"plugin.hello","params":{"token":"<$SHEPHERD_PLUGIN_TOKEN>","actions":["summary"]}}
+{"jsonrpc":"2.0","id":1,"method":"plugin.hello","params":{"token":"<$MODISA_PLUGIN_TOKEN>","actions":["summary"]}}
 ```
 
-Shepherd then sends `plugin.action` requests on that connection:
+Modisa then sends `plugin.action` requests on that connection:
 `{"action":"summary","params":{...},"invocation":"attention-log-7"}`, plus `"target":{"pane","instance"}` when the
 user took the action on a pane (a menu entry, key or palette entry; already checked to be that pane's current process)
 and `"link":"https://…"` when it came from a Ctrl+clicked URL. `target` and `link` are never inside `params`. Reply
@@ -65,7 +65,7 @@ with a result or an error on the request's `id`; the caller gets it, or `plugin_
 `no_such_action` or `timeout` (30s) as its error code.
 
 **A timeout means the outcome is unknown, not failed.** The plugin may still finish the action, and
-running it again can repeat its effects, so nothing retries it. Shepherd sends the plugin a
+running it again can repeat its effects, so nothing retries it. Modisa sends the plugin a
 `plugin.cancel` notification (`{invocation, action}`), which is advisory: nothing proves the action
 stopped. A reply that arrives after the timeout is dropped and noted in the plugin's log.
 
@@ -78,7 +78,7 @@ security boundary.** Anything running as you can reach the socket, and a plugin 
 the session stopping) or its process exiting revokes it and closes its connection; a new start gets a
 new token. Each plugin's log keeps the first 5 MB of output per run.
 
-`shepherd plugin unlink` removes the link, so no session starts the plugin again. For a directory you linked, it stops
+`modisa plugin unlink` removes the link, so no session starts the plugin again. For a directory you linked, it stops
 the running copy in the one session it reaches (the default, or `-s`); other running sessions keep theirs until they
 restart. For a plugin `plugin install` fetched, it stops it in every running session it can reach, then deletes the
 checkout (never the plugin's data or logs), or keeps the checkout and says why when a session still runs it or can't
@@ -86,15 +86,15 @@ be reached.
 
 ## Declare it in config.toml instead
 
-`~/.config/shepherd/config.toml`:
+`~/.config/modisa/config.toml`:
 
 ```toml
 [[plugin]]
-run = "bun ~/code/shepherd/examples/plugins/blocked-notifier/plugin.ts"
+run = "bun ~/code/modisa/examples/plugins/blocked-notifier/plugin.ts"
 ```
 
 `run` is a shell command line, so `~`, pipes and redirection all work. Add as many `[[plugin]]`
-blocks as you like. They start when the server starts, so after editing, run `shepherd restart`.
+blocks as you like. They start when the server starts, so after editing, run `modisa restart`.
 
 It runs through a **login** shell (`$SHELL -lc`), which means your `~/.zprofile` / `~/.bash_profile`
 is sourced first and can reorder or replace `PATH`. Don't assume a `PATH` you set elsewhere survives
@@ -106,21 +106,21 @@ The server starts your process with its own environment plus:
 
 | Variable | |
 |---|---|
-| `SHEPHERD_SOCKET` | absolute path to the session's unix socket — this is your API |
-| `SHEPHERD_SESSION` | the session name |
-| `SHEPHERD_PLUGIN` | a linked plugin's name |
-| `SHEPHERD_PLUGIN_TOKEN` | a linked plugin's token for `plugin.hello`, good for this run only |
-| `SHEPHERD_PLUGIN_DATA` | a linked plugin's own directory for files, `~/.local/state/shepherd/plugins/<name>` |
-| `SHEPHERD_PLUGIN_CONFIG` | a linked plugin's own config directory, `~/.config/shepherd/plugin-config/<name>` |
+| `MODISA_SOCKET` | absolute path to the session's unix socket — this is your API |
+| `MODISA_SESSION` | the session name |
+| `MODISA_PLUGIN` | a linked plugin's name |
+| `MODISA_PLUGIN_TOKEN` | a linked plugin's token for `plugin.hello`, good for this run only |
+| `MODISA_PLUGIN_DATA` | a linked plugin's own directory for files, `~/.local/state/modisa/plugins/<name>` |
+| `MODISA_PLUGIN_CONFIG` | a linked plugin's own config directory, `~/.config/modisa/plugin-config/<name>` |
 
-A pane a plugin opens (`plugin.pane.open`) gets `SHEPHERD_PLUGIN`, `SHEPHERD_PLUGIN_DATA` and `SHEPHERD_PLUGIN_CONFIG`
-too, and `SHEPHERD_PLUGIN_CONTEXT`: JSON saying which pane it was opened from and with which params.
+A pane a plugin opens (`plugin.pane.open`) gets `MODISA_PLUGIN`, `MODISA_PLUGIN_DATA` and `MODISA_PLUGIN_CONFIG`
+too, and `MODISA_PLUGIN_CONTEXT`: JSON saying which pane it was opened from and with which params.
 
-A linked plugin's stdout and stderr go to `~/.local/state/shepherd/plugins/<session>.<name>.log` (`plugin logs`). A
-`[[plugin]]` program's are inherited by the server, so they land in `~/.local/state/shepherd/<session>.log`; redirect
+A linked plugin's stdout and stderr go to `~/.local/state/modisa/plugins/<session>.<name>.log` (`plugin logs`). A
+`[[plugin]]` program's are inherited by the server, so they land in `~/.local/state/modisa/<session>.log`; redirect
 in `run` if you want your own file.
 
-**You are not a pane.** `SHEPHERD_PANE_ID` is deliberately unset for plugins. Two consequences:
+**You are not a pane.** `MODISA_PANE_ID` is deliberately unset for plugins. Two consequences:
 
 - Commands that default to "the calling pane" have no default for you — always pass an explicit
   `target`.
@@ -198,13 +198,13 @@ events against them.
 
 ### The cheap way
 
-If you don't want to write a socket client, shell out to the CLI — it reads `$SHEPHERD_SOCKET` and
+If you don't want to write a socket client, shell out to the CLI — it reads `$MODISA_SOCKET` and
 does the same thing:
 
 ```sh
 #!/bin/sh
 # absolute path: the login shell may have rewritten PATH
-/usr/local/bin/shepherd events --follow | while read -r line; do
+/usr/local/bin/modisa events --follow | while read -r line; do
   echo "$line" | grep -q '"type":"agent.state".*"to":"blocked"' && say "an agent needs you"
 done
 ```
@@ -259,7 +259,7 @@ it's for panes.
 | `report` | `pane`, `source`, `agent`, `state`, `seq`, `session`, `release` | drive a pane's state yourself |
 | `plugin.hello` | `token`, `actions[]` | binds this connection to your plugin's run |
 | `plugin.list` / `plugin.start` / `plugin.stop` | (`name`) | plugins' status; start or stop one |
-| `plugin.invoke` | `plugin`, `action`, `params` | calls another plugin's action, as `shepherd plugin run` does |
+| `plugin.invoke` | `plugin`, `action`, `params` | calls another plugin's action, as `modisa plugin run` does |
 | `protocol.describe` | — | the protocol version and JSON Schemas for everything here |
 
 `target` is a pane id (`p3`), an `@name`, or a bare name.
@@ -284,17 +284,17 @@ These work only on a plugin's bound connection (after `plugin.hello`); from any 
 An `action` must be one the run offered in `plugin.hello`, or the call fails with `no_such_action`. A pane named with
 its `instance` that has closed or restarted fails with `pane_gone`. Too many updates fail with `rate_limited`; a popup
 while another is open fails with `ui_busy`. Everything a run showed is cleared when it ends. `plugin.json`'s `keys` and
-`links` need no calls: shepherd sends the plugin a `plugin.action` when one is used.
+`links` need no calls: modisa sends the plugin a `plugin.action` when one is used.
 
 ### Reporting state for your own tool
 
-If you run something shepherd can't recognise from its screen, report for it — this is the same
+If you run something modisa can't recognise from its screen, report for it — this is the same
 mechanism the built-in integrations use:
 
 ```sh
-shepherd report --source my-tool --agent my-agent --state working
-shepherd report --source my-tool --state blocked --seq 42   # stale seqs ignored
-shepherd report --source my-tool --release                  # hand back to screen detection
+modisa report --source my-tool --agent my-agent --state working
+modisa report --source my-tool --state blocked --seq 42   # stale seqs ignored
+modisa report --source my-tool --release                  # hand back to screen detection
 ```
 
 While a source reports, it is authoritative for that pane. Reports without `--source` don't change
@@ -303,8 +303,8 @@ state.
 ## Rules that will bite you
 
 1. **Exit when the socket closes — don't reconnect in a loop.** The server starts plugins itself, so
-   `shepherd restart` spawns a fresh copy of yours. A plugin that reconnects forever keeps the old
-   process running alongside the new one, and every restart adds another. Shepherd ends your whole
+   `modisa restart` spawns a fresh copy of yours. A plugin that reconnects forever keeps the old
+   process running alongside the new one, and every restart adds another. Modisa ends your whole
    process group when the session stops, but a server that's killed outright can't, and a retry loop
    that outlives it is a process leak that quietly chews the machine. Exit; let the next server start
    you.
@@ -313,7 +313,7 @@ state.
 3. **Don't block the read loop.** Handle an event asynchronously, or you will stall behind your own
    pending request — especially with `pane.output` on.
 4. **`wait` blocks server-side**, so it is cheap. Use it instead of polling `list` in a loop.
-5. **Nothing supervises you.** If your process crashes, it stays dead until `shepherd plugin start <name>` or the next
+5. **Nothing supervises you.** If your process crashes, it stays dead until `modisa plugin start <name>` or the next
    server start. Keep the top-level loop boring.
 6. **Plugins run where the server runs.** With `--remote`, that is the remote machine — not your
    laptop — with its files. A desktop notification your process raises itself pops up there, where nobody is
@@ -325,8 +325,8 @@ state.
 ## Try the examples
 
 ```sh
-shepherd plugin check examples/plugins/attention-log   # its manifest, build and behavioural tests
-shepherd plugin link examples/plugins/attention-log    # prefix A shows its log; blocked agents show in the sidebar
+modisa plugin check examples/plugins/attention-log   # its manifest, build and behavioural tests
+modisa plugin link examples/plugins/attention-log    # prefix A shows its log; blocked agents show in the sidebar
 ```
 
 `blocked-notifier` is the no-manifest kind:
@@ -335,7 +335,7 @@ shepherd plugin link examples/plugins/attention-log    # prefix A shows its log;
 bun examples/plugins/blocked-notifier/plugin.ts   # refuses to run outside a session
 ```
 
-Add the `[[plugin]]` block above, `shepherd restart`, and put an agent into a prompt that needs
+Add the `[[plugin]]` block above, `modisa restart`, and put an agent into a prompt that needs
 you. The line appears in the session log:
 
 ```text

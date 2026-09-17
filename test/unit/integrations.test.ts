@@ -23,7 +23,7 @@ test("hooks keep only the events and sessions that belong to the pane's agent", 
 });
 
 test("our hook entries go in and come out in every agent's shape, leaving the user's own", () => {
-  const ours = "SHEPHERD_HOOK=2 /bin/shepherd hook x session";
+  const ours = "MODISA_HOOK=2 /bin/modisa hook x session";
   const hooks: Record<string, any[]> = {
     SessionStart: [{ hooks: [{ type: "command", command: "echo mine" }] }],
     Stop: [{ type: "command", bash: "echo mine too" }],
@@ -50,8 +50,8 @@ test("config text edits keep the user's lines", () => {
   expect(block).toBe('theme = "x"\n\n# >>> s\n[[hooks]]\nevent = "Stop"\n# <<< s\n');
   expect(withBlock(block, "# >>> s", "# <<< s")).toBe('theme = "x"\n\n');
   const yaml = "model: x\nplugins:\n  enabled:\n    - other\nui: y\n";
-  const on = withHermesPlugin(yaml, "shepherd-agent-state", true);
-  expect(on).toBe("model: x\nplugins:\n  enabled:\n    - shepherd-agent-state\n    - other\nui: y\n");
-  expect(withHermesPlugin(on, "shepherd-agent-state", false)).toBe(yaml);
+  const on = withHermesPlugin(yaml, "modisa-agent-state", true);
+  expect(on).toBe("model: x\nplugins:\n  enabled:\n    - modisa-agent-state\n    - other\nui: y\n");
+  expect(withHermesPlugin(on, "modisa-agent-state", false)).toBe(yaml);
   expect(withHermesPlugin("", "p", true)).toBe("plugins:\n  enabled:\n    - p\n");
 });

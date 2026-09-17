@@ -1,4 +1,4 @@
-// How `shepherd plugin install` runs git: which URLs it takes, which transports git may use, and the environment and
+// How `modisa plugin install` runs git: which URLs it takes, which transports git may use, and the environment and
 // settings every installer git call gets. No imports, so tests can check the policy without loading the CLI.
 
 // The git transports install uses. Anything else, a remote helper above all (ext::, fd::, <helper>::), could run a

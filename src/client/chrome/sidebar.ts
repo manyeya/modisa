@@ -102,7 +102,7 @@ export function drawSidebar(app: App) {
         render(app);
       },
     });
-    // headed by the plugin's name on its own row, so a section can't pass for one of shepherd's however narrow the
+    // headed by the plugin's name on its own row, so a section can't pass for one of modisa's however narrow the
     // sidebar; the title the plugin chose goes under it
     const columns = sidebarColumns(`${folded ? "▸" : "▾"} ${plugin.plugin}`, String(section.rows.length), contentWidth(app));
     head.add(new TextRenderable(r, { content: t`${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: contentWidth(app), height: 1, flexShrink: 0, fg: th.dim }));

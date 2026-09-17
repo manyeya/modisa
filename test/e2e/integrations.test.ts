@@ -1,4 +1,4 @@
-// `shepherd integration`: every agent's hooks or plugin go into its own config, in its own format,
+// `modisa integration`: every agent's hooks or plugin go into its own config, in its own format,
 // next to the user's settings; status tells installed from outdated; uninstall takes out only ours.
 import { test, expect, afterAll } from "bun:test";
 import { sandbox } from "../support/harness";
@@ -15,10 +15,10 @@ const status = async () => Object.fromEntries((await run("integration", "status"
 afterAll(() => sb.cleanup());
 
 test("install all, status, and uninstall across every agent's config format", async () => {
-  // every agent set up, with settings of the user's own (and an older shepherd's hooks for Claude and Codex)
+  // every agent set up, with settings of the user's own (and an older modisa's hooks for Claude and Codex)
   const mine = { hooks: [{ type: "command", command: "echo mine" }] };
-  await Bun.write(`${home}/.claude/settings.json`, JSON.stringify({ model: "opus", hooks: { Stop: [mine, { hooks: [{ type: "command", command: "SHEPHERD_HOOK=1 shepherd report --state done" }] }] } }));
-  await Bun.write(`${home}/.codex/config.toml`, 'model = "o3"\nnotify = ["shepherd","report","--state","done"] # SHEPHERD_HOOK=1\n');
+  await Bun.write(`${home}/.claude/settings.json`, JSON.stringify({ model: "opus", hooks: { Stop: [mine, { hooks: [{ type: "command", command: "MODISA_HOOK=1 modisa report --state done" }] }] } }));
+  await Bun.write(`${home}/.codex/config.toml`, 'model = "o3"\nnotify = ["modisa","report","--state","done"] # MODISA_HOOK=1\n');
   await Bun.write(`${home}/.copilot/settings.json`, "{}");
   await Bun.write(`${home}/.cursor/hooks.json`, JSON.stringify({ version: 1, hooks: { stop: [{ command: "echo mine" }] } }));
   await Bun.write(`${home}/.config/devin/config.json`, "{}");
@@ -32,7 +32,7 @@ test("install all, status, and uninstall across every agent's config format", as
   for (const dir of [".config/opencode", ".config/kilo", ".pi/agent", ".omp/agent"]) await Bun.$`mkdir -p ${`${home}/${dir}`}`;
 
   let s = await status();
-  expect(s["Claude Code"]).toBe("↻ update available"); // the older shepherd's hooks
+  expect(s["Claude Code"]).toBe("↻ update available"); // the older modisa's hooks
   expect(s.Pi).toBe("not installed");
 
   // "all" installs what's here: every configured agent (MastraCode isn't, so it's left out)
@@ -47,7 +47,7 @@ test("install all, status, and uninstall across every agent's config format", as
   expect(claude.model).toBe("opus");
   expect(claude.hooks.Stop).toEqual([mine]); // the old state hook is gone
   expect(claude.hooks.SessionStart[0]).toMatchObject({ matcher: "*", hooks: [{ type: "command", timeout: 10 }] });
-  expect(claude.hooks.SessionStart[0].hooks[0].command).toMatch(/^SHEPHERD_HOOK=2 .* hook claude-code session$/);
+  expect(claude.hooks.SessionStart[0].hooks[0].command).toMatch(/^MODISA_HOOK=2 .* hook claude-code session$/);
   expect((await json(".codex/hooks.json")).hooks.SessionStart[0].hooks[0].command).toContain("hook codex session");
   expect(await text(".codex/config.toml")).toBe('model = "o3"\n\n[features]\nhooks = true\n');
   expect((await json(".copilot/settings.json")).hooks.SessionStart[0]).toMatchObject({ type: "command", timeoutSec: 10 });
@@ -56,48 +56,48 @@ test("install all, status, and uninstall across every agent's config format", as
   expect((await json(".cursor/hooks.json")).hooks.sessionStart[0].command).toContain("hook cursor-agent session");
   expect(Object.keys((await json(".config/devin/config.json")).hooks)).toEqual(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"]);
   expect((await json(".qwen/settings.json")).hooks.SessionStart[0]).toMatchObject({ matcher: "*", hooks: [{ timeout: 10000 }] });
-  expect((await json(".grok/hooks/shepherd.json")).hooks.SessionStart[0].hooks[0].command).toContain("hook grok session");
+  expect((await json(".grok/hooks/modisa.json")).hooks.SessionStart[0].hooks[0].command).toContain("hook grok session");
   const agy = await json(".gemini/config/hooks.json");
   expect(agy.mine).toEqual({ Stop: [] });
-  expect(agy.shepherd.PreInvocation[0].command).toContain("hook antigravity session");
+  expect(agy.modisa.PreInvocation[0].command).toContain("hook antigravity session");
   const kimi = await text(".kimi-code/config.toml");
-  expect(kimi).toStartWith('theme = "dark"\n\n# >>> shepherd kimi integration');
+  expect(kimi).toStartWith('theme = "dark"\n\n# >>> modisa kimi integration');
   expect(kimi.match(/\[\[hooks\]\]/g)).toHaveLength(12);
   expect(Bun.TOML.parse(kimi)).toMatchObject({ theme: "dark" });
   expect(Object.keys(await json(".mastracode/hooks.json"))).toContain("PermissionRequest");
-  expect(await text(".hermes/config.yaml")).toBe("model: x\nplugins:\n  enabled:\n    - shepherd-agent-state\n");
-  expect(await text(".hermes/plugins/shepherd-agent-state/__init__.py")).toContain('ctx.register_hook("on_session_start"');
-  expect(await text(".config/opencode/plugins/shepherd-agent-state.js")).toContain("export const ShepherdAgentState");
-  expect(await text(".config/kilo/plugin/shepherd-agent-state.js")).toContain('const AGENT = "kilo"');
-  expect(await text(".pi/agent/extensions/shepherd-agent-state.ts")).toContain('pi.on("agent_settled"');
-  expect(await text(".omp/agent/extensions/shepherd-omp-agent-state.ts")).toContain('pi.on("tool_approval_requested"');
+  expect(await text(".hermes/config.yaml")).toBe("model: x\nplugins:\n  enabled:\n    - modisa-agent-state\n");
+  expect(await text(".hermes/plugins/modisa-agent-state/__init__.py")).toContain('ctx.register_hook("on_session_start"');
+  expect(await text(".config/opencode/plugins/modisa-agent-state.js")).toContain("export const ModisaAgentState");
+  expect(await text(".config/kilo/plugin/modisa-agent-state.js")).toContain('const AGENT = "kilo"');
+  expect(await text(".pi/agent/extensions/modisa-agent-state.ts")).toContain('pi.on("agent_settled"');
+  expect(await text(".omp/agent/extensions/modisa-omp-agent-state.ts")).toContain('pi.on("tool_approval_requested"');
 
   // one skill in the shared directory, symlinked into each agent that reads skills of its own
-  expect(await text(".agents/skills/shepherd/SKILL.md")).toContain("shepherd pane split");
-  for (const link of [".claude/skills/shepherd", ".codex/skills/shepherd", ".config/opencode/skills/shepherd", ".pi/agent/skills/shepherd"]) {
-    expect(await linkOf(link)).toBe(`${home}/.agents/skills/shepherd`);
+  expect(await text(".agents/skills/modisa/SKILL.md")).toContain("modisa pane split");
+  for (const link of [".claude/skills/modisa", ".codex/skills/modisa", ".config/opencode/skills/modisa", ".pi/agent/skills/modisa"]) {
+    expect(await linkOf(link)).toBe(`${home}/.agents/skills/modisa`);
   }
   // these two don't keep skills in their config directory, and Kimi reads the shared one directly
-  expect(await linkOf(".kilo/skills/shepherd")).toBe(`${home}/.agents/skills/shepherd`);
-  expect(await linkOf(".gemini/antigravity-cli/skills/shepherd")).toBe(`${home}/.agents/skills/shepherd`);
-  expect(await linkOf(".kimi-code/skills/shepherd")).toBe("");
+  expect(await linkOf(".kilo/skills/modisa")).toBe(`${home}/.agents/skills/modisa`);
+  expect(await linkOf(".gemini/antigravity-cli/skills/modisa")).toBe(`${home}/.agents/skills/modisa`);
+  expect(await linkOf(".kimi-code/skills/modisa")).toBe("");
   // and the two agents whose skills directory we can't confirm get none
-  expect(await linkOf(".mastracode/skills/shepherd")).toBe("");
-  expect(await linkOf(".omp/agent/skills/shepherd")).toBe("");
+  expect(await linkOf(".mastracode/skills/modisa")).toBe("");
+  expect(await linkOf(".omp/agent/skills/modisa")).toBe("");
 
   // reinstalling changes nothing; an edited file is outdated
   await run("integration", "install", "claude");
   expect((await json(".claude/settings.json")).hooks.SessionStart).toHaveLength(1);
-  await Bun.write(`${home}/.pi/agent/extensions/shepherd-agent-state.ts`, "// edited");
+  await Bun.write(`${home}/.pi/agent/extensions/modisa-agent-state.ts`, "// edited");
   expect((await status()).Pi).toBe("↻ update available");
 
   // a stale skill is an update too, even when the hooks are current
-  await Bun.write(`${home}/.agents/skills/shepherd/SKILL.md`, "# old");
+  await Bun.write(`${home}/.agents/skills/modisa/SKILL.md`, "# old");
   expect((await status())["Claude Code"]).toBe("↻ update available");
   await run("integration", "install", "claude");
   expect((await status())["Claude Code"]).toBe("✓ installed");
 
-  // uninstall takes out only shepherd's parts
+  // uninstall takes out only modisa's parts
   await run("integration", "uninstall", "all");
   s = await status();
   expect(Object.values(s).filter((v) => v !== "not installed")).toEqual([]);
@@ -106,11 +106,11 @@ test("install all, status, and uninstall across every agent's config format", as
   expect(await json(".gemini/config/hooks.json")).toEqual({ mine: { Stop: [] } });
   expect(await text(".kimi-code/config.toml")).toBe('theme = "dark"\n\n');
   expect(await text(".hermes/config.yaml")).toBe("model: x\nplugins:\n  enabled:\n");
-  expect(await Bun.file(`${home}/.config/opencode/plugins/shepherd-agent-state.js`).exists()).toBe(false);
-  expect(await Bun.file(`${home}/.grok/hooks/shepherd.json`).exists()).toBe(false);
+  expect(await Bun.file(`${home}/.config/opencode/plugins/modisa-agent-state.js`).exists()).toBe(false);
+  expect(await Bun.file(`${home}/.grok/hooks/modisa.json`).exists()).toBe(false);
   // the skill goes with the last agent that wanted it
-  expect(await linkOf(".claude/skills/shepherd")).toBe("");
-  expect(await Bun.file(`${home}/.agents/skills/shepherd/SKILL.md`).exists()).toBe(false);
+  expect(await linkOf(".claude/skills/modisa")).toBe("");
+  expect(await Bun.file(`${home}/.agents/skills/modisa/SKILL.md`).exists()).toBe(false);
 }, 60000);
 
 test("installing for an agent that isn't set up says so", async () => {

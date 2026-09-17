@@ -1,5 +1,5 @@
 // A plugin the server knows but hasn't launched yet is `starting`, never `failed`: a server holds its linked plugins
-// before launching them (SHEPHERD_TEST_PLUGIN_HOLD, a test-only barrier), a client connecting at once sees them
+// before launching them (MODISA_TEST_PLUGIN_HOLD, a test-only barrier), a client connecting at once sees them
 // starting, and once released a good one runs and connects while a bad one fails with its reason. `plugin check`
 // waits through starting instead of reporting it as a failure.
 import { test, expect, beforeAll, afterAll } from "bun:test";
@@ -8,13 +8,13 @@ import { connectUnix } from "../../src/protocol/transport";
 
 const sb = sandbox("plugin-starting");
 const S = "starting";
-const shepherd = (args: string[], env: Record<string, string> = {}) => sb.run("unused", args, env);
+const modisa = (args: string[], env: Record<string, string> = {}) => sb.run("unused", args, env);
 let server: Bun.Subprocess | undefined;
 
 beforeAll(async () => {
   await Bun.$`mkdir -p ${sb.root}/config/plugins`.quiet();
-  expect((await shepherd(["plugin", "new", "good", "--dir", `${sb.root}/good`])).code).toBe(0);
-  expect((await shepherd(["plugin", "new", "bad", "--dir", `${sb.root}/bad`])).code).toBe(0);
+  expect((await modisa(["plugin", "new", "good", "--dir", `${sb.root}/good`])).code).toBe(0);
+  expect((await modisa(["plugin", "new", "bad", "--dir", `${sb.root}/bad`])).code).toBe(0);
   await Bun.write(`${sb.root}/bad/plugin.json`, JSON.stringify({ name: "bad", protocol: 99, run: ["bun", "plugin.ts"] }));
   for (const name of ["good", "bad"]) await Bun.$`ln -s ${sb.root}/${name} ${sb.root}/config/plugins/${name}`.quiet();
 }, 30000);
@@ -27,7 +27,7 @@ afterAll(async () => {
 
 test("held before launch, linked plugins are starting from the first moment; released, the good one runs and the bad one fails with its reason", async () => {
   const barrier = `${sb.root}/release-server`;
-  server = Bun.spawn(["bun", MAIN, "server", "-s", S], { env: { ...sb.env, SHEPHERD_TEST_PLUGIN_HOLD: barrier }, cwd: sb.root, stdout: "ignore", stderr: "ignore" });
+  server = Bun.spawn(["bun", MAIN, "server", "-s", S], { env: { ...sb.env, MODISA_TEST_PLUGIN_HOLD: barrier }, cwd: sb.root, stdout: "ignore", stderr: "ignore" });
   let conn;
   for (let i = 0; i < 1500 && !conn; i++) conn = await connectUnix(`${sb.root}/state/${S}.sock`).catch(() => Bun.sleep(10).then(() => undefined));
   expect(conn).toBeDefined();
@@ -70,7 +70,7 @@ test("held before launch, linked plugins are starting from the first moment; rel
 
 test("plugin check waits through starting, and passes once the plugin is released", async () => {
   const barrier = `${sb.root}/release-check`;
-  const check = Bun.spawn(["bun", MAIN, "plugin", "check", `${sb.root}/good`], { env: { ...sb.env, SHEPHERD_TEST_PLUGIN_HOLD: barrier }, cwd: sb.root, stdout: "pipe", stderr: "pipe" });
+  const check = Bun.spawn(["bun", MAIN, "plugin", "check", `${sb.root}/good`], { env: { ...sb.env, MODISA_TEST_PLUGIN_HOLD: barrier }, cwd: sb.root, stdout: "pipe", stderr: "pipe" });
   await Bun.sleep(2500);
   expect(check.exitCode).toBeNull(); // still waiting, not reporting a failure
   await Bun.write(barrier, "go");

@@ -1,19 +1,19 @@
 #!/bin/sh
-# Install shepherd: curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh
-#   SHEPHERD_INSTALL_DIR  where the binary goes (default ~/.local/bin)
-#   SHEPHERD_CHANNEL      stable (default) or staging for prerelease builds
-#   SHEPHERD_MANIFEST_URL a release manifest to install from instead
-#   NO_COLOR              plain output. It's plain anyway when not writing to a terminal; SHEPHERD_FANCY=1 forces the show.
-# Remove it again: curl -fsSL https://manyeya.github.io/shepherd/install.sh | sh -s -- --uninstall [--purge]
+# Install modisa: curl -fsSL https://manyeya.github.io/modisa/install.sh | sh
+#   MODISA_INSTALL_DIR  where the binary goes (default ~/.local/bin)
+#   MODISA_CHANNEL      stable (default) or staging for prerelease builds
+#   MODISA_MANIFEST_URL a release manifest to install from instead
+#   NO_COLOR              plain output. It's plain anyway when not writing to a terminal; MODISA_FANCY=1 forces the show.
+# Remove it again: curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall [--purge]
 set -eu
 
-REPO="manyeya/shepherd"
-DIR="${SHEPHERD_INSTALL_DIR:-$HOME/.local/bin}"
-CHANNEL="${SHEPHERD_CHANNEL:-stable}"
+REPO="manyeya/modisa"
+DIR="${MODISA_INSTALL_DIR:-$HOME/.local/bin}"
+CHANNEL="${MODISA_CHANNEL:-stable}"
 
 # ---------- presentation: a show on a colour terminal, the same plain lines everywhere else ----------
 FANCY=0
-if [ "${SHEPHERD_FANCY:-}" = 1 ]; then FANCY=1
+if [ "${MODISA_FANCY:-}" = 1 ]; then FANCY=1
 elif [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then FANCY=1; fi
 
 E="$(printf '\033')"
@@ -35,11 +35,11 @@ die() {
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required"; }
 nap() { if [ "$NAP" = 1 ]; then sleep "$1"; fi; }
 
-# the brand gradient, from ion's cyan to its violet, at stop $1 of 0..7
+# the brand gradient, from ion's cyan to its violet, at stop $1 of 0..5 (one per wordmark letter)
 shade() {
-  if [ "$TRUE" = 1 ]; then printf '%s[38;2;%s;%s;%sm' "$E" $((94 + 85 * $1 / 7)) $((231 - 77 * $1 / 7)) $((239 + 16 * $1 / 7))
+  if [ "$TRUE" = 1 ]; then printf '%s[38;2;%s;%s;%sm' "$E" $((94 + 85 * $1 / 5)) $((231 - 77 * $1 / 5)) $((239 + 16 * $1 / 5))
   else
-    case $1 in 0) n=123 ;; 1 | 2) n=117 ;; 3 | 4) n=153 ;; 5 | 6) n=147 ;; *) n=183 ;; esac
+    case $1 in 0) n=123 ;; 1) n=117 ;; 2) n=153 ;; 3) n=147 ;; *) n=183 ;; esac
     printf '%s[38;5;%sm' "$E" "$n"
   fi
 }
@@ -47,13 +47,13 @@ shade() {
 # the wordmark, revealed letter by letter in the gradient, then the tagline typed out
 banner() {
   echo
-  if [ "$FANCY" != 1 ]; then say "shepherd · a terminal for your agents"; return; fi
+  if [ "$FANCY" != 1 ]; then say "modisa · a terminal for your agents"; return; fi
   printf '%s[?25l' "$E"
   set -f
   for row in \
-    '▄▀▀▀▀|█   █|█▀▀▀▀|█▀▀▀▄|█   █|█▀▀▀▀|█▀▀▀▄|█▀▀▀▄' \
-    ' ▀▀▀▄|█▀▀▀█|█▀▀▀ |█▄▄▄▀|█▀▀▀█|█▀▀▀ |█▄▄▄▀|█   █' \
-    '▄▄▄▄▀|█   █|█▄▄▄▄|█    |█   █|█▄▄▄▄|█  ▀▄|█▄▄▄▀'; do
+    '█▄ ▄█|▄▀▀▀▄|█▀▀▀▄|▀▀█▀▀|▄▀▀▀▀|▄▀▀▀▄' \
+    '█ ▀ █|█   █|█   █|  █  | ▀▀▀▄|█▀▀▀█' \
+    '█   █|▀▄▄▄▀|█▄▄▄▀|▄▄█▄▄|▄▄▄▄▀|█   █'; do
     printf '  '
     i=0
     old_ifs=$IFS
@@ -108,9 +108,9 @@ step() {
 
 if [ "${1:-}" = "--uninstall" ]; then
   shift
-  BIN="$DIR/shepherd"
-  [ -x "$BIN" ] || BIN="$(command -v shepherd || true)"
-  [ -n "$BIN" ] || die "shepherd isn't installed: nothing in $DIR or on your PATH"
+  BIN="$DIR/modisa"
+  [ -x "$BIN" ] || BIN="$(command -v modisa || true)"
+  [ -n "$BIN" ] || die "modisa isn't installed: nothing in $DIR or on your PATH"
   # the binary does the work: integrations, sessions and state first, then itself. Under curl | sh
   # stdin is this script, so its "Continue?" question reads the terminal instead, when there is one.
   if (exec </dev/tty) 2>/dev/null; then exec "$BIN" uninstall "$@" </dev/tty; fi
@@ -120,14 +120,14 @@ fi
 case "$(uname -s)" in
   Darwin) os=darwin ;;
   Linux) os=linux ;;
-  *) die "shepherd releases are for macOS and Linux; on $(uname -s), run it from source: https://github.com/$REPO" ;;
+  *) die "modisa releases are for macOS and Linux; on $(uname -s), run it from source: https://github.com/$REPO" ;;
 esac
 case "$(uname -m)" in
   arm64 | aarch64) arch=arm64 ;;
   x86_64 | amd64) arch=x64 ;;
-  *) die "no shepherd release for $(uname -m); run it from source: https://github.com/$REPO" ;;
+  *) die "no modisa release for $(uname -m); run it from source: https://github.com/$REPO" ;;
 esac
-[ "$os-$arch" = darwin-x64 ] && die "no Intel Mac build yet; run shepherd from source: https://github.com/$REPO"
+[ "$os-$arch" = darwin-x64 ] && die "no Intel Mac build yet; run modisa from source: https://github.com/$REPO"
 PLATFORM="$os-$arch"
 
 need curl
@@ -135,7 +135,7 @@ if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$1" | awk '{pri
 elif command -v shasum >/dev/null 2>&1; then sum() { shasum -a 256 "$1" | awk '{print $1}'; }
 else die "sha256sum or shasum is required to verify the download"; fi
 
-if [ -n "${SHEPHERD_MANIFEST_URL:-}" ]; then MANIFEST_URL="$SHEPHERD_MANIFEST_URL"
+if [ -n "${MODISA_MANIFEST_URL:-}" ]; then MANIFEST_URL="$MODISA_MANIFEST_URL"
 elif [ "$CHANNEL" = staging ]; then MANIFEST_URL="https://github.com/$REPO/releases/download/staging/manifest.json"
 else MANIFEST_URL="https://github.com/$REPO/releases/latest/download/manifest.json"; fi
 
@@ -164,39 +164,39 @@ field() { printf '%s\n' "$MANIFEST" | awk -v p="\"$PLATFORM\"" -v k="\"$1\"" '
 VERSION="$(printf '%s\n' "$MANIFEST" | awk -F'"' '/"version"/ { print $4; exit }')"
 URL="$(field url)"
 SHA="$(field sha256)"
-[ -n "$URL" ] && [ -n "$SHA" ] || die "shepherd $VERSION has no build for $PLATFORM"
+[ -n "$URL" ] && [ -n "$SHA" ] || die "modisa $VERSION has no build for $PLATFORM"
 
-[ "$FANCY" = 1 ] || say "downloading shepherd $VERSION"
-WATCH="$TMP/shepherd"
-step "downloading shepherd $VERSION" curl -fsSL --retry 3 -o "$TMP/shepherd" "$URL" || die "download failed: $URL"
+[ "$FANCY" = 1 ] || say "downloading modisa $VERSION"
+WATCH="$TMP/modisa"
+step "downloading modisa $VERSION" curl -fsSL --retry 3 -o "$TMP/modisa" "$URL" || die "download failed: $URL"
 WATCH=
 
-verify() { [ "$(sum "$TMP/shepherd")" = "$SHA" ]; }
+verify() { [ "$(sum "$TMP/modisa")" = "$SHA" ]; }
 step "verifying its SHA-256 checksum" verify || die "the download doesn't match its published checksum; nothing was installed"
 
-place() { mkdir -p "$DIR" && chmod 755 "$TMP/shepherd" && mv -f "$TMP/shepherd" "$DIR/shepherd"; }
+place() { mkdir -p "$DIR" && chmod 755 "$TMP/modisa" && mv -f "$TMP/modisa" "$DIR/modisa"; }
 step "installing to $DIR" place || die "couldn't install to $DIR"
 
 if [ "$FANCY" != 1 ]; then
-  say "installed $DIR/shepherd"
+  say "installed $DIR/modisa"
   case ":$PATH:" in
     *":$DIR:"*) ;;
     *) say "add it to your PATH:  export PATH=\"$DIR:\$PATH\"" ;;
   esac
-  say "start with:  shepherd    ·   update later with:  shepherd update"
+  say "start with:  modisa    ·   update later with:  modisa update"
   echo
   exit 0
 fi
 
 rail="${VIOLET}│${R}" # braces: a shell in a C locale would read the │ bytes as part of the name
 printf '\n  %s╭─%s %sready%s\n' "$VIOLET" "$R" "$B" "$R"
-printf '  %s %s✓%s shepherd %s%s%s installed  %s%s%s\n' "$rail" "$GREEN" "$R" "$B" "$VERSION" "$R" "$DIM" "$DIR/shepherd" "$R"
+printf '  %s %s✓%s modisa %s%s%s installed  %s%s%s\n' "$rail" "$GREEN" "$R" "$B" "$VERSION" "$R" "$DIM" "$DIR/modisa" "$R"
 case ":$PATH:" in
   *":$DIR:"*) ;;
   *) printf '  %s %s!%s add it to your PATH:  %sexport PATH="%s:$PATH"%s\n' "$rail" "$VIOLET" "$R" "$B" "$DIR" "$R" ;;
 esac
 printf '  %s\n' "$rail"
-printf '  %s   %sstart%s     shepherd\n' "$rail" "$CYAN" "$R"
-printf '  %s   %supdate%s    shepherd update\n' "$rail" "$CYAN" "$R"
-printf '  %s   %sdocs%s      https://manyeya.github.io/shepherd\n' "$rail" "$CYAN" "$R"
+printf '  %s   %sstart%s     modisa\n' "$rail" "$CYAN" "$R"
+printf '  %s   %supdate%s    modisa update\n' "$rail" "$CYAN" "$R"
+printf '  %s   %sdocs%s      https://manyeya.github.io/modisa\n' "$rail" "$CYAN" "$R"
 printf '  %s╰────────────────────────────────────────%s\n\n' "$VIOLET" "$R"

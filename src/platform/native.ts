@@ -20,7 +20,7 @@ export async function prepareNative() {
   if (!import.meta.path.startsWith("/$bunfs/") || Bun.env.GHOSTTY_VT_LIB) return;
   const host = (await Bun.$`uname -sm`.text()).trim();
   const libs = LIBS[host];
-  if (!libs) throw new Error(`no bundled libghostty-vt for ${host}; run shepherd from source`);
+  if (!libs) throw new Error(`no bundled libghostty-vt for ${host}; run modisa from source`);
   const [lib, shim, ext] = libs;
   const dir = `${DIR}/lib/${Bun.hash(lib + shim + Bun.version).toString(36)}`;
   // the shim finds libghostty-vt next to itself, under the name it was linked against

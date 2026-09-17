@@ -1,7 +1,7 @@
  ▐▛███▛█   Claude Code v2.1.268
 ▝▜██████▀  Opus 5 with high effort · Claude Pro
-  ▝▝ ▝▝    ~/Documents/Code/shepard · /rc
-❯ Use the Bash tool to run exactly: touch /tmp/shepherd-perm-test
+  ▝▝ ▝▝    ~/Documents/Code/modisa · /rc
+❯ Use the Bash tool to run exactly: touch /tmp/modisa-perm-test
   Ran 1 shell command
   ⎿  Interrupted · What should Claude do instead?
 ✻ Churned for 3s · done 12:41 AM

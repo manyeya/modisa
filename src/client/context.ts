@@ -51,7 +51,7 @@ export class App {
   popup: { pane: string; title: string; width?: number | string; height?: number | string } | undefined; // a plugin popup this client opened
   chromeSig = ""; // what the tab bar, sidebar and status row last drew
   quitting = false;
-  update: Manifest | undefined; // a newer shepherd release, when one is out
+  update: Manifest | undefined; // a newer modisa release, when one is out
   restarting = false; // the server told us it's restarting: wait for the new one instead of giving up
   restartedByUs = false; // we asked for it, so we start the new server
   readonly cleanup: (() => void)[] = []; // run on quit
@@ -135,7 +135,7 @@ export class App {
     this.paintBackground();
   }
 
-  // The theme's background in shepherd's own cells, and as the terminal's default background (OSC 11), so the window
+  // The theme's background in modisa's own cells, and as the terminal's default background (OSC 11), so the window
   // padding a terminal draws around its cells matches the TUI instead of framing it in the terminal's own colour.
   // The terminal gets its own colour back (OSC 111) when the client exits: OpenTUI's destroy() doesn't do it.
   private backgroundResetOnExit = false;

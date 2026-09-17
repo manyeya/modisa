@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The link-preview card (og:image). This file is the source of truth for social.png;
+     edit it, then re-render as site/build.ts describes. -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="630" viewBox="0 0 1200 630" font-kerning="normal">
+  <defs>
+    <style>
+      @font-face { font-family:"Space Grotesk"; src:url("fonts/space-grotesk-latin.woff2") format("woff2"); font-weight:300 700; }
+      @font-face { font-family:"JetBrains Mono"; src:url("fonts/jetbrains-mono-latin.woff2") format("woff2"); font-weight:100 800; }
+    </style>
+    <!-- the mark is a gold-on-transparent figure; the site tints it with currentColor, so do the same here -->
+    <filter id="tint" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="0 0 0 0 .753  0 0 0 0 .792  0 0 0 0 .961  0 0 0 1 0"/>
+    </filter>
+    <radialGradient id="glow" cx="78%" cy="62%" r="62%">
+      <stop offset="0" stop-color="#7aa2f7" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#7aa2f7" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#1a1b26"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- the crook -->
+  <path d="M 1006 474 L 1006 258 A 70 70 0 0 1 1146 258 L 1146 306" fill="none" stroke="#c0caf5" stroke-opacity=".38" stroke-width="11" stroke-linecap="round"/>
+
+  <!-- brand -->
+  <image x="80" y="62" width="44" height="47" xlink:href="modisa-mark.png" filter="url(#tint)"/>
+  <text x="138" y="100" font-family="Space Grotesk" font-weight="600" font-size="40" letter-spacing="-2.8" fill="#c0caf5">modisa<tspan fill="#7aa2f7">.</tspan></text>
+
+  <!-- headline -->
+  <text x="80" y="300" font-family="JetBrains Mono" font-weight="700" font-size="86" letter-spacing="-3" fill="#c0caf5">Every agent.</text>
+  <text x="80" y="406" font-family="JetBrains Mono" font-weight="700" font-size="86" letter-spacing="-3" fill="#7aa2f7">One terminal.</text>
+
+  <!-- tagline -->
+  <text x="80" y="548" font-family="Space Grotesk" font-weight="500" font-size="27" fill="#a9b1d6">A terminal multiplexer for coding agents — it tells you <tspan fill="#7aa2f7" font-weight="600">who needs you.</tspan></text>
+</svg>

@@ -1,7 +1,7 @@
 
  ▐▛███▛█   Claude Code v2.1.268
 ▝▜██████▀  Opus 5 with high effort · Claude Pro
-  ▝▝ ▝▝    ~/Documents/Code/shepard · /rc
+  ▝▝ ▝▝    ~/Documents/Code/modisa · /rc
 
 
 ❯ Write the numbers 1 to 150 separated by spaces, then stop.

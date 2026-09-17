@@ -18,8 +18,8 @@ test("attach starts a server and renders a shell with the sidebar", async () => 
   await Bun.$`mkdir -p ${sb.root}`.quiet();
   ui = new Screen(["-s", S], sb.env, sb.root);
   await ui.until("first pane + sidebar", (s) => s.includes("SPACES") && s.includes("AGENTS") && borders(s) === 1);
-  ui.write("echo shepherd-ok\r");
-  await ui.until("shell output", (s) => s.includes("shepherd-ok"));
+  ui.write("echo modisa-ok\r");
+  await ui.until("shell output", (s) => s.includes("modisa-ok"));
 }, 20000);
 
 test("detach keeps the server; reattach replays the screen", async () => {
@@ -29,7 +29,7 @@ test("detach keeps the server; reattach replays the screen", async () => {
   expect(await Promise.race([ui.proc.exited, Bun.sleep(5000).then(() => "timeout")])).toBe(0);
   expect(await cli("ls")).toContain(`${S}\t`);
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("screen restored on reattach", (s) => s.includes("shepherd-ok") && s.includes("kept-output") && s.includes("@keep"));
+  await ui.until("screen restored on reattach", (s) => s.includes("modisa-ok") && s.includes("kept-output") && s.includes("@keep"));
 }, 20000);
 
 test("server restart restores the layout from sqlite", async () => {

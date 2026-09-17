@@ -8,31 +8,31 @@ export type Sandbox = ReturnType<typeof sandbox>;
 
 // Its own state, config and PATH, so suites never touch the real ~/.config or ~/.local/state.
 export function sandbox(name: string) {
-  const root = `${Bun.env.TMPDIR ?? "/tmp"}/shepherd-${name}-${Date.now()}`;
+  const root = `${Bun.env.TMPDIR ?? "/tmp"}/modisa-${name}-${Date.now()}`;
   const env: Record<string, string> = {
     ...(Bun.env as Record<string, string>),
-    SHEPHERD_DIR: `${root}/state`,
-    SHEPHERD_CONFIG_DIR: `${root}/config`,
+    MODISA_DIR: `${root}/state`,
+    MODISA_CONFIG_DIR: `${root}/config`,
     SHELL: "/bin/sh",
-    SHEPHERD_SOUND: "off", // the suite stays silent
-    SHEPHERD_UPDATE_URL: "off", // and offline
+    MODISA_SOUND: "off", // the suite stays silent
+    MODISA_UPDATE_URL: "off", // and offline
     PWD: root,
     PATH: `${root}/bin:${Bun.env.PATH}`,
   };
-  delete env.SHEPHERD_SOCKET;
-  delete env.SHEPHERD_PANE_ID;
+  delete env.MODISA_SOCKET;
+  delete env.MODISA_PANE_ID;
   // the developer's own terminal: shells in panes would load its startup scripts (Terminal.app's prints errors and OSC 7)
   for (const k of ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "LC_TERMINAL", "LC_TERMINAL_VERSION", "WT_SESSION", "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR", "VTE_VERSION"]) delete env[k];
   // agents' config-directory overrides would point integration tests at the real ones
   for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "CURSOR_CONFIG_DIR", "XDG_CONFIG_HOME", "QODER_CONFIG_DIR", "QWEN_HOME", "GROK_CONFIG_DIR", "GROK_HOME", "ANTIGRAVITY_CLI_CONFIG_DIR", "HERMES_HOME", "KIMI_CODE_HOME", "PI_CODING_AGENT_DIR", "PI_CONFIG_DIR"]) delete env[k];
-  // `shepherd -s <session> <args…>`: stdout and stderr together (out) and apart, trimmed, and the exit status
+  // `modisa -s <session> <args…>`: stdout and stderr together (out) and apart, trimmed, and the exit status
   const run = async (session: string, args: string[], extra: Record<string, string> = {}) => {
     const p = Bun.spawn(["bun", MAIN, "-s", session, ...args], { env: { ...env, ...extra }, cwd: root, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     return { out: (stdout + stderr).trim(), stdout: stdout.trim(), stderr: stderr.trim(), code: await p.exited };
   };
   const cli = async (session: string, args: string[], extra: Record<string, string> = {}) => (await run(session, args, extra)).out;
-  // `shepherd -s <session> <args…> --json`, parsed. With retry "startup", a session that isn't answering yet (exit 3,
+  // `modisa -s <session> <args…> --json`, parsed. With retry "startup", a session that isn't answering yet (exit 3,
   // unreachable: no socket yet, or a connection refused or closed while it starts) is tried again until `ms` runs out.
   // Anything else fails at once, as the regression it is: another exit status, a zero exit with nothing on stdout,
   // or stdout that isn't JSON. Every failure names the command, its exit status, stdout and stderr.
@@ -42,7 +42,7 @@ export function sandbox(name: string) {
     const end = Date.now() + limit;
     for (;;) {
       const r = await run(session, argv, options.env);
-      const failure = (what: string) => new Error(`shepherd -s ${session} ${argv.join(" ")}: ${what}\n  exit status: ${r.code}\n  stdout: ${r.stdout.slice(0, 2000) || "(empty)"}\n  stderr: ${r.stderr.slice(0, 2000) || "(empty)"}`);
+      const failure = (what: string) => new Error(`modisa -s ${session} ${argv.join(" ")}: ${what}\n  exit status: ${r.code}\n  stdout: ${r.stdout.slice(0, 2000) || "(empty)"}\n  stderr: ${r.stderr.slice(0, 2000) || "(empty)"}`);
       if (r.code === 3) {
         if (options.retry === "startup" && Date.now() < end) {
           await Bun.sleep(100);

@@ -1,4 +1,4 @@
-// Integrations reporting to shepherd: a lifecycle report takes over a pane's state until it's
+// Integrations reporting to modisa: a lifecycle report takes over a pane's state until it's
 // released, and a reported session id brings the agent back into that exact session after a restart.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { sandbox, startServer } from "../support/harness";
@@ -50,11 +50,11 @@ test("a reported session id is resumed exactly after a server restart", async ()
   expect(await launched()).toContain("--resume sess-42");
 }, 60000);
 
-test("agents' hooks report through `shepherd hook`: sessions for most, state for lifecycle agents", async () => {
+test("agents' hooks report through `modisa hook`: sessions for most, state for lifecycle agents", async () => {
   const pane = JSON.parse(await cli("pane", "list", "--json")).find((p: any) => p.name === "fake").id;
   const hook = (agent: string, action: string, input: object) => {
     const p = Bun.spawn(["bun", `${import.meta.dir}/../../src/main.ts`, "hook", agent, action], {
-      env: { ...sb.env, SHEPHERD_PANE_ID: pane, SHEPHERD_SOCKET: `${sb.root}/state/${S}.sock` }, stdin: new TextEncoder().encode(JSON.stringify(input)), stdout: "pipe", stderr: "pipe",
+      env: { ...sb.env, MODISA_PANE_ID: pane, MODISA_SOCKET: `${sb.root}/state/${S}.sock` }, stdin: new TextEncoder().encode(JSON.stringify(input)), stdout: "pipe", stderr: "pipe",
     });
     return Promise.all([new Response(p.stdout).text(), p.exited]);
   };
@@ -65,7 +65,7 @@ test("agents' hooks report through `shepherd hook`: sessions for most, state for
   // lifecycle (Kimi): the hook's state is the pane's state
   await hook("kimi", "blocked", { session_id: "k-1" });
   expect(await cli("wait", "@fake", "--state", "blocked", "--timeout", "5")).toBe("blocked");
-  await cli("report", "@fake", "--source", "shepherd:kimi", "--release");
+  await cli("report", "@fake", "--source", "modisa:kimi", "--release");
   // outside a pane it does nothing
   const p = Bun.spawn(["bun", `${import.meta.dir}/../../src/main.ts`, "hook", "kimi", "blocked"], { env: sb.env, stdin: new TextEncoder().encode("{}"), stdout: "pipe" });
   expect([await new Response(p.stdout).text(), await p.exited]).toEqual(["", 0]);

@@ -1,32 +1,32 @@
 // Sources for the integrations that are plugins loaded into an agent rather than hook commands.
-// Each is generated at install time with the command that runs shepherd baked in, and reports
-// through `shepherd report`, so none of them talks to the socket itself. They run inside the agent:
+// Each is generated at install time with the command that runs modisa baked in, and reports
+// through `modisa report`, so none of them talks to the socket itself. They run inside the agent:
 // OpenCode and Kilo run on Bun, Pi and OMP load extensions through their own `pi.exec`, Hermes is
-// Python. Outside a shepherd pane they do nothing.
+// Python. Outside a modisa pane they do nothing.
 export const PLUGIN_VERSION = 2;
 
-const header = (agent: string, comment: string) => `${comment} shepherd-integration: ${agent} v${PLUGIN_VERSION} — managed by shepherd; reinstalling overwrites this file`;
+const header = (agent: string, comment: string) => `${comment} modisa-integration: ${agent} v${PLUGIN_VERSION} — managed by modisa; reinstalling overwrites this file`;
 
 // OpenCode and Kilo (a fork of it): plugin events → state, and the root session id for resume.
 export function opencodePlugin(agent: "opencode" | "kilo", cmd: string[]): string {
   return `${header(agent, "//")}
-const SHEPHERD = ${JSON.stringify(cmd)};
+const MODISA = ${JSON.stringify(cmd)};
 const AGENT = ${JSON.stringify(agent)};
 const WORKING = new Set(["tool.execute.before", "tool.execute.after", "permission.replied", "question.replied", "question.rejected", "session.compacted"]);
 const BLOCKED = new Set(["permission.asked", "question.asked", "session.error"]);
 const BUSY = new Set(["active", "busy", "pending", "retry", "running", "streaming", "working"]);
 
-export const ShepherdAgentState = async () => {
-  if (typeof Bun === "undefined" || !Bun.env.SHEPHERD_PANE_ID || !Bun.env.SHEPHERD_SOCKET) return {};
+export const ModisaAgentState = async () => {
+  if (typeof Bun === "undefined" || !Bun.env.MODISA_PANE_ID || !Bun.env.MODISA_SOCKET) return {};
   let seq = Date.now() * 1000;
   let chain = Promise.resolve();
   const parents = new Map(); // child session → parent, so subagents report on the pane's root session
   const root = (id) => { while (id && parents.has(id)) id = parents.get(id); return id; };
   const report = (state, session) => {
-    const args = ["report", "--source", "shepherd:" + AGENT, "--agent", AGENT, "--seq", String(++seq)];
+    const args = ["report", "--source", "modisa:" + AGENT, "--agent", AGENT, "--seq", String(++seq)];
     if (state) args.push("--state", state);
     if (session) args.push("--session-id", session);
-    chain = chain.then(() => Bun.spawn([...SHEPHERD, ...args], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited).catch(() => {});
+    chain = chain.then(() => Bun.spawn([...MODISA, ...args], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited).catch(() => {});
     return chain;
   };
   return {
@@ -56,17 +56,17 @@ export const ShepherdAgentState = async () => {
 export function piExtension(agent: "pi" | "omp", cmd: string[]): string {
   const omp = agent === "omp";
   return `${header(agent, "//")}
-const SHEPHERD = ${JSON.stringify(cmd)};
+const MODISA = ${JSON.stringify(cmd)};
 const AGENT = ${JSON.stringify(agent)};
 
-export default function shepherdAgentState(pi: any) {
+export default function modisaAgentState(pi: any) {
   let seq = Date.now() * 1000;
   let chain: Promise<unknown> = Promise.resolve();
   let tui = false;
   const session = (ctx: any) => ctx?.sessionManager?.getSessionFile?.() ?? ctx?.sessionManager?.getSessionId?.();
   const run = (extra: string[]) => {
-    const args = ["report", "--source", "shepherd:" + AGENT, "--agent", AGENT, "--seq", String(++seq), ...extra];
-    chain = chain.then(() => pi.exec(SHEPHERD[0], [...SHEPHERD.slice(1), ...args], { timeout: 3000 })).catch(() => {});
+    const args = ["report", "--source", "modisa:" + AGENT, "--agent", AGENT, "--seq", String(++seq), ...extra];
+    chain = chain.then(() => pi.exec(MODISA[0], [...MODISA.slice(1), ...args], { timeout: 3000 })).catch(() => {});
   };
   const report = (ctx: any, state?: string) => {
     if (!tui) return; // print/RPC modes have no pane to show
@@ -81,8 +81,8 @@ export default function shepherdAgentState(pi: any) {
   pi.on(${omp ? '"agent_end"' : '"agent_settled"'}, (_e: any, ctx: any) => { if (ctx?.isIdle?.() !== false) report(ctx, "idle"); });${omp ? `
   pi.on("tool_approval_requested", (_e: any, ctx: any) => report(ctx, "blocked"));
   pi.on("tool_approval_resolved", (_e: any, ctx: any) => report(ctx, "working"));` : ""}
-  // another extension can say it's waiting on the user: pi.events.emit("shepherd:blocked", { active })
-  pi.events?.on?.("shepherd:blocked", (data: any) => run(["--state", data?.active ? "blocked" : "working"]));
+  // another extension can say it's waiting on the user: pi.events.emit("modisa:blocked", { active })
+  pi.events?.on?.("modisa:blocked", (data: any) => run(["--state", data?.active ? "blocked" : "working"]));
   pi.on("session_shutdown", () => { if (tui) run(["--release"]); });
 }
 `;
@@ -91,24 +91,24 @@ export default function shepherdAgentState(pi: any) {
 // Hermes: a Python plugin reporting the resumable session id (state comes from its screen).
 export function hermesPlugin(cmd: string[]): { yaml: string; py: string } {
   return {
-    yaml: `${header("hermes", "#")}\nname: shepherd-agent-state\nversion: "${PLUGIN_VERSION}"\ndescription: Report the Hermes session to its shepherd pane\n`,
+    yaml: `${header("hermes", "#")}\nname: modisa-agent-state\nversion: "${PLUGIN_VERSION}"\ndescription: Report the Hermes session to its modisa pane\n`,
     py: `${header("hermes", "#")}
-"""Reports the resumable Hermes session id to the shepherd pane it runs in."""
+"""Reports the resumable Hermes session id to the modisa pane it runs in."""
 import os
 import subprocess
 
-SHEPHERD = ${JSON.stringify(cmd)}
+MODISA = ${JSON.stringify(cmd)}
 _last = None
 
 
 def _report(**kwargs):
     global _last
     session_id = kwargs.get("session_id")
-    if not os.environ.get("SHEPHERD_PANE_ID") or not isinstance(session_id, str) or not session_id or session_id == _last:
+    if not os.environ.get("MODISA_PANE_ID") or not isinstance(session_id, str) or not session_id or session_id == _last:
         return
     _last = session_id
     try:
-        subprocess.run([*SHEPHERD, "report", "--source", "shepherd:hermes", "--agent", "hermes", "--session-id", session_id],
+        subprocess.run([*MODISA, "report", "--source", "modisa:hermes", "--agent", "hermes", "--session-id", session_id],
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2, check=False)
     except Exception:
         pass

@@ -1,4 +1,4 @@
-// The home page's live session: agents change state the way they do in shepherd — @reviewer asks,
+// The home page's live session: agents change state the way they do in modisa — @reviewer asks,
 // you approve, @coder finishes while you look away, @reviewer asks again. Still under reduced motion.
 (() => {
   const tui = document.querySelector("[data-demo]");

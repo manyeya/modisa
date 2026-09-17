@@ -166,7 +166,7 @@ test("protocol.describe publishes JSON Schemas for requests, results, events and
 });
 
 test("a client that stops reading is disconnected once its queue passes the limit, and others carry on", async () => {
-  await startServer(sb, "slow", { SHEPHERD_WRITE_QUEUE_LIMIT: String(256 * 1024) });
+  await startServer(sb, "slow", { MODISA_WRITE_QUEUE_LIMIT: String(256 * 1024) });
   // nc holds a subscription to all output (its stdin stays open), then is stopped: it reads nothing more
   const out = `${sb.root}/nc.out`;
   const stuck = Bun.spawn(["nc", "-U", sock("slow")], { stdin: "pipe", stdout: Bun.file(out), stderr: "ignore" });
@@ -180,7 +180,7 @@ test("a client that stops reading is disconnected once its queue passes the limi
   const healthy = await subscriber({ output: true }, "slow");
   // the flood's output is emitted as the server works through it, well after the process has exited, so wait
   // for the marker printed after it to reach the healthy subscriber: by then every event has been sent
-  const id = (await sb.cli("slow", ["pane", "split", "--name", "flood", "yes shepherd | head -c 2000000; echo; echo FLOOD-DONE-MARKER"])).trim();
+  const id = (await sb.cli("slow", ["pane", "split", "--name", "flood", "yes modisa | head -c 2000000; echo; echo FLOOD-DONE-MARKER"])).trim();
   const flood = () => healthy.seen.filter((e) => e.type === "pane.output" && e.pane === id).map((e) => e.text).join("");
   await until("the whole flood to be emitted", () => flood().includes("FLOOD-DONE-MARKER"), 60000);
   const floodText = flood().length;
@@ -200,7 +200,7 @@ test("a client that stops reading is disconnected once its queue passes the limi
 }, 120000);
 
 test("a single message bigger than the limit closes that connection, even with nothing else waiting", async () => {
-  await startServer(sb, "tiny", { SHEPHERD_WRITE_QUEUE_LIMIT: "4096" });
+  await startServer(sb, "tiny", { MODISA_WRITE_QUEUE_LIMIT: "4096" });
   await sb.run("tiny", ["pane", "run", "p1", "seq 1 3000"]);
   expect((await sb.run("tiny", ["wait", "p1", "--match", "^3000$", "--timeout", "10"])).code).toBe(0);
   const big = await sb.run("tiny", ["pane", "read", "p1", "--lines", "3000", "--json"]); // ~13 KB in one reply

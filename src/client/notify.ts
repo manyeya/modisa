@@ -7,9 +7,9 @@ import { render } from "./render";
 import { playSound } from "./sound/player";
 
 export function systemNotification(app: App, text: string) {
-  if (Bun.which("osascript")) Bun.spawn(["osascript", "-e", `display notification ${JSON.stringify(text)} with title "shepherd"`]);
-  else if (Bun.which("notify-send")) Bun.spawn(["notify-send", "shepherd", text]);
-  else app.r.triggerNotification(text, "shepherd");
+  if (Bun.which("osascript")) Bun.spawn(["osascript", "-e", `display notification ${JSON.stringify(text)} with title "modisa"`]);
+  else if (Bun.which("notify-send")) Bun.spawn(["notify-send", "modisa", text]);
+  else app.r.triggerNotification(text, "modisa");
 }
 
 export async function notify(app: App, state: NotifyEvent, text: string) {

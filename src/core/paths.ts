@@ -1,6 +1,6 @@
-// Where shepherd keeps things, and how it re-runs itself.
+// Where modisa keeps things, and how it re-runs itself.
 export const HOME = Bun.env.HOME ?? "/tmp";
-export const DIR = Bun.env.SHEPHERD_DIR ?? `${HOME}/.local/state/shepherd`;
+export const DIR = Bun.env.MODISA_DIR ?? `${HOME}/.local/state/modisa`;
 export const SRC = `${import.meta.dir}/..`;
 export const MAIN = `${SRC}/main.ts`;
 export const socketPath = (session: string) => `${DIR}/${session}.sock`;
@@ -21,13 +21,13 @@ export function self(): string[] {
   return (selfCmd = [exe]);
 }
 
-// What agents' hooks and plugins run. A release binary prefers the `shepherd` on PATH: Homebrew and mise
+// What agents' hooks and plugins run. A release binary prefers the `modisa` on PATH: Homebrew and mise
 // install into a directory per version, and a hook pointing there breaks at the next upgrade, while
 // the PATH entry (Homebrew's bin symlink, mise's shim, /usr/bin, ~/.local/bin) stays put.
-// ponytail: trusts that whatever is called shepherd on PATH is this program.
+// ponytail: trusts that whatever is called modisa on PATH is this program.
 export function stableSelf(): string[] {
   if (!import.meta.path.startsWith("/$bunfs/")) return self();
-  const onPath = Bun.which("shepherd");
+  const onPath = Bun.which("modisa");
   return onPath ? [onPath] : self();
 }
 

@@ -1,4 +1,4 @@
-// `shepherd plugin install <git-url>`, against local bare repositories (no network): it clones, records the source,
+// `modisa plugin install <git-url>`, against local bare repositories (no network): it clones, records the source,
 // ref and commit, links and starts the plugin with no restart; --ref and --subdir pick a branch and a directory;
 // escapes, bad refs and bad manifests leave nothing behind; a name collision leaves the existing install alone; a
 // plugin that installs but can't start says so; setup it doesn't do is pointed out; unlinking an install stops it in

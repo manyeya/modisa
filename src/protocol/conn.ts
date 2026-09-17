@@ -5,7 +5,7 @@ import { ERROR_CODES, type ErrorCode } from "./types";
 // An error carrying a stable code, on either side of the wire.
 export const fail = (code: ErrorCode, message: string) => Object.assign(new Error(message), { code });
 
-// Only shepherd's own codes count; anything else (an OS error's ECONNRESET, a library's code) is plain "error".
+// Only modisa's own codes count; anything else (an OS error's ECONNRESET, a library's code) is plain "error".
 export const errorCode = (x: unknown): ErrorCode => ((ERROR_CODES as readonly unknown[]).includes(x) ? (x as ErrorCode) : "error");
 
 export const b64 = (bytes: Uint8Array) => bytes.toBase64();
@@ -116,7 +116,7 @@ export class Conn {
 
 // A peer that stops reading can't make this side buffer without limit: past this many queued bytes the connection is
 // closed. For a subscriber that's a gap in its history; it reconnects and takes a new snapshot.
-export const WRITE_QUEUE_LIMIT = Number(Bun.env.SHEPHERD_WRITE_QUEUE_LIMIT) || 16 * 1024 * 1024;
+export const WRITE_QUEUE_LIMIT = Number(Bun.env.MODISA_WRITE_QUEUE_LIMIT) || 16 * 1024 * 1024;
 
 // Bun socket → Conn, with a bounded write queue for backpressure. Used on both ends.
 export function socketConn(s: { write(d: Uint8Array): number; end(): void; terminate?(): void }) {
@@ -139,7 +139,7 @@ export function socketConn(s: { write(d: Uint8Array): number; end(): void; termi
     const bytes = enc.encode(str);
     if (queued + bytes.length > WRITE_QUEUE_LIMIT) {
       const message = `more than ${WRITE_QUEUE_LIMIT} bytes waiting to be written: the peer isn't reading`;
-      console.error(`shepherd: closing a connection: ${message}`); // in the server's log
+      console.error(`modisa: closing a connection: ${message}`); // in the server's log
       queue.length = 0;
       queued = 0;
       // abruptly: a graceful end() waits on a peer that isn't reading, and it would never see the close

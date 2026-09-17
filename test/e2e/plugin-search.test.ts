@@ -1,5 +1,5 @@
-// `shepherd plugin search`, against a local stand-in for GitHub's search API (no network): it asks for repositories
-// with the shepherd-tui-plugin topic and the given words, most starred first; lists each with its install command and
+// `modisa plugin search`, against a local stand-in for GitHub's search API (no network): it asks for repositories
+// with the modisa-tui-plugin topic and the given words, most starred first; lists each with its install command and
 // says none is vetted; strips control and bidi characters from what the index sends; drops what install can't fetch;
 // never sends a GitHub token to another index; and fails plainly (exit 3) when the index is off, unreachable or
 // rate-limiting. Every result is checked in its --json form too.
@@ -15,7 +15,7 @@ let reply: () => Response;
 
 const repo = (name: string, extra: object = {}) => ({
   name, full_name: `someone/${name}`, html_url: `https://github.com/someone/${name}`, clone_url: `https://github.com/someone/${name}.git`,
-  description: `${name} for shepherd`, stargazers_count: 7, pushed_at: "2026-09-01T10:00:00Z", archived: false, ...extra,
+  description: `${name} for modisa`, stargazers_count: 7, pushed_at: "2026-09-01T10:00:00Z", archived: false, ...extra,
 });
 const results = (items: object[]) => () => Response.json({ total_count: items.length, items });
 
@@ -30,25 +30,25 @@ afterAll(async () => {
 
 const search = async (args: string[], env: Record<string, string> = {}) => {
   requests = [];
-  return sb.run("unused", ["plugin", "search", ...args], { SHEPHERD_PLUGIN_INDEX: `http://localhost:${server.port}`, ...env });
+  return sb.run("unused", ["plugin", "search", ...args], { MODISA_PLUGIN_INDEX: `http://localhost:${server.port}`, ...env });
 };
 
-test("it searches the shepherd-tui-plugin topic with the words given, most starred first, and lists each with its install command", async () => {
+test("it searches the modisa-tui-plugin topic with the words given, most starred first, and lists each with its install command", async () => {
   reply = results([repo("attention-log", { stargazers_count: 42 }), repo("pr-opener")]);
   const r = await search(["github", "pr"]);
   expect(r.code).toBe(0);
   const url = new URL(requests[0]!.url);
   expect(url.pathname).toBe("/search/repositories");
-  expect(url.searchParams.get("q")).toBe("topic:shepherd-tui-plugin github pr");
+  expect(url.searchParams.get("q")).toBe("topic:modisa-tui-plugin github pr");
   expect(url.searchParams.get("sort")).toBe("stars");
   expect(r.stdout).toContain("someone/attention-log  ★ 42");
-  expect(r.stdout).toContain("shepherd plugin install https://github.com/someone/attention-log.git");
+  expect(r.stdout).toContain("modisa plugin install https://github.com/someone/attention-log.git");
   expect(r.stdout).toContain("None of these is vetted");
 
   const json = await search(["github", "pr", "--json"]);
   const parsed = cliResults["plugin search"].safeParse(JSON.parse(json.stdout));
   expect(parsed.success, parsed.error?.message).toBe(true);
-  expect(parsed.data).toMatchObject({ query: "github pr", total: 2, results: [{ repo: "someone/attention-log", stars: 42, install: "shepherd plugin install https://github.com/someone/attention-log.git" }, { name: "pr-opener" }] });
+  expect(parsed.data).toMatchObject({ query: "github pr", total: 2, results: [{ repo: "someone/attention-log", stars: 42, install: "modisa plugin install https://github.com/someone/attention-log.git" }, { name: "pr-opener" }] });
 });
 
 test("what the index sends can't write to the terminal, and a repository install can't fetch as-is isn't listed", async () => {
@@ -81,7 +81,7 @@ test("nothing found says so", async () => {
   reply = results([]);
   const r = await search(["nothing-like-this"]);
   expect(r.code).toBe(0);
-  expect(r.stdout).toContain('no plugins with the shepherd-tui-plugin topic matching "nothing-like-this"');
+  expect(r.stdout).toContain('no plugins with the modisa-tui-plugin topic matching "nothing-like-this"');
 });
 
 test("a GitHub token is never sent to another index", async () => {
@@ -92,7 +92,7 @@ test("a GitHub token is never sent to another index", async () => {
 });
 
 test("an index that's off, unreachable or rate-limiting fails with exit 3 and says why", async () => {
-  const off = await search(["--json"], { SHEPHERD_PLUGIN_INDEX: "off" });
+  const off = await search(["--json"], { MODISA_PLUGIN_INDEX: "off" });
   expect(off.code).toBe(3);
   expect(JSON.parse(off.stderr).error).toMatchObject({ code: "unreachable" });
 
@@ -107,7 +107,7 @@ test("an index that's off, unreachable or rate-limiting fails with exit 3 and sa
   const closed = Bun.serve({ port: 0, fetch: () => new Response("") });
   const port = closed.port;
   closed.stop(true);
-  const unreachable = await search([], { SHEPHERD_PLUGIN_INDEX: `http://localhost:${port}` });
+  const unreachable = await search([], { MODISA_PLUGIN_INDEX: `http://localhost:${port}` });
   expect(unreachable.code).toBe(3);
   expect(unreachable.stderr).toContain("couldn't reach the plugin index");
 }, 30000);

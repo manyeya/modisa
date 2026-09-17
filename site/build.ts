@@ -1,6 +1,6 @@
-// Builds the shepherd site into site/out: the home page, the docs, a search index, sitemap, 404 and
+// Builds the modisa site into site/out: the home page, the docs, a search index, sitemap, 404 and
 // the install script. Every local link and #anchor is checked before it finishes.
-//   bun site/build.ts            (SHEPHERD_VERSION sets the version shown; else the latest git tag)
+//   bun site/build.ts            (MODISA_VERSION sets the version shown; else the latest git tag)
 import { guide } from "./content/guide";
 import { escape, type Page } from "./content/html";
 import { landing, mark } from "./content/landing";
@@ -8,11 +8,11 @@ import { reference } from "./content/reference";
 
 const root = import.meta.dir;
 const out = `${root}/out`;
-const site = "https://manyeya.github.io/shepherd/";
-const repo = "https://github.com/manyeya/shepherd";
+const site = "https://manyeya.github.io/modisa/";
+const repo = "https://github.com/manyeya/modisa";
 const pages: Page[] = [...guide, ...reference];
 const tag = (await Bun.$`git describe --tags --abbrev=0 --match v*`.quiet().nothrow().text()).trim();
-const version = (Bun.env.SHEPHERD_VERSION || tag || "0.1.0").replace(/^v/, "");
+const version = (Bun.env.MODISA_VERSION || tag || "0.1.0").replace(/^v/, "");
 
 const fonts = `<link rel="preload" href="__BASE__assets/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>`;
 
@@ -20,8 +20,8 @@ function shell(o: { title: string; description: string; body: string; base: stri
   return `<!doctype html><html lang="en" data-theme="day"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(o.title)}</title><meta name="description" content="${escape(o.description)}">
 <meta property="og:title" content="${escape(o.title)}"><meta property="og:description" content="${escape(o.description)}"><meta property="og:type" content="website"><meta property="og:image" content="${site}assets/social.png"><meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="${site}${o.path}"><link rel="icon" type="image/png" href="${o.base}assets/shepherd-mark.png"><meta name="theme-color" content="#f6f6f9">
-<script>try{var t=localStorage.getItem("shepherd-theme");if(t==="day"||t==="night")document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="canonical" href="${site}${o.path}"><link rel="icon" type="image/png" href="${o.base}assets/modisa-mark.png"><meta name="theme-color" content="#f6f6f9">
+<script>try{var t=localStorage.getItem("modisa-theme");if(t==="day"||t==="night")document.documentElement.dataset.theme=t}catch(e){}</script>
 ${fonts.replace("__BASE__", o.base)}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/terminal.css"><link rel="stylesheet" href="${o.base}assets/landing.css"><script type="module" src="${o.base}assets/motion.js"></script>` : ""}<script defer src="${o.base}assets/site.js"></script>
 </head><body class="${o.landing ? "is-landing" : "is-docs"}" data-base="${o.base}"><a class="skip" href="#main">Skip to content</a>
 ${o.body}
@@ -30,7 +30,7 @@ ${search()}</body></html>`;
 }
 
 function footer(base: string) {
-  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>shepherd<span class="brand-period">.</span></span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
+  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
 }
 
 function search() {
@@ -38,7 +38,7 @@ function search() {
 }
 
 function docsHeader(base: string) {
-  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="shepherd home">${mark(base)}<span>shepherd<span class="brand-period">.</span></span></a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
+  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="modisa home">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
 }
 
 function docsPage(page: Page, index: number) {
@@ -50,7 +50,7 @@ function docsPage(page: Page, index: number) {
   const body = `${docsHeader(base)}
 <div class="docs-bar"><button type="button" data-side-toggle aria-expanded="false" aria-controls="side">☰ ${escape(page.group)}</button><span>${escape(page.title)}</span></div>
 <div class="docs">
-  <aside class="side" id="side" aria-label="Documentation"><a class="side-home" href="${base}">← Back to shepherd</a>${nav}<a class="side-start" href="../quick-start/"><span>YOUR FIRST SESSION</span><strong>Get up and running ↗</strong></a></aside>
+  <aside class="side" id="side" aria-label="Documentation"><a class="side-home" href="${base}">← Back to modisa</a>${nav}<a class="side-start" href="../quick-start/"><span>YOUR FIRST SESSION</span><strong>Get up and running ↗</strong></a></aside>
   <main id="main" class="doc">
     <p class="crumb">DOCUMENTATION <span>/</span> ${escape(page.group)}</p>
     <h1>${escape(page.title)}</h1>
@@ -60,25 +60,30 @@ function docsPage(page: Page, index: number) {
   </main>
   <aside class="toc" aria-label="On this page"><p>On this page</p>${toc}<a class="toc-edit" href="${repo}/tree/main/site/content">Edit these docs ↗</a></aside>
 </div>`;
-  return shell({ title: `${page.title} · shepherd docs`, description: page.description, body, base, path: `docs/${page.slug}/` });
+  return shell({ title: `${page.title} · modisa docs`, description: page.description, body, base, path: `docs/${page.slug}/` });
 }
 
 const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 await Bun.$`rm -rf ${out}`;
+// assets/social.svg is the link-preview card's source; assets/social.png is it rasterized. To redo the png after an
+// edit, screenshot the svg at a 1200x630 viewport, e.g.
+//   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
+//     --force-device-scale-factor=1 --window-size=1200,630 \
+//     --screenshot=site/assets/social.png "file://$PWD/site/assets/social.svg"
 for (const f of await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: `${root}/assets` }))) await Bun.write(`${out}/assets/${f}`, Bun.file(`${root}/assets/${f}`));
 const motion = await Bun.build({ entrypoints: [`${root}/client/motion.js`], outdir: `${out}/assets`, target: "browser", minify: true, naming: "motion.[ext]" });
 if (!motion.success) throw new AggregateError(motion.logs, "Site animation bundle failed");
 await Bun.write(`${out}/install.sh`, Bun.file(`${root}/../install.sh`));
 await Bun.write(`${out}/.nojekyll`, "");
-await Bun.write(`${out}/index.html`, shell({ title: "Shepherd — Run a crew. Keep your flow.", description: "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.", body: landing({ version, repo }), base: "./", path: "", landing: true }));
+await Bun.write(`${out}/index.html`, shell({ title: "Modisa — Run a crew. Keep your flow.", description: "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.", body: landing({ version, repo }), base: "./", path: "", landing: true }));
 for (const [i, page] of pages.entries()) await Bun.write(`${out}/docs/${page.slug}/index.html`, docsPage(page, i));
 await Bun.write(`${out}/docs/index.html`, `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=introduction/"><link rel="canonical" href="${site}docs/introduction/"><a href="introduction/">Documentation</a>`);
 await Bun.write(`${out}/search.json`, JSON.stringify(pages.flatMap((p) => [
   { title: p.title, group: p.group, text: plain(p.description), url: `docs/${p.slug}/` },
   ...p.sections.map((s) => ({ title: s.title, group: p.title, text: plain(s.html).slice(0, 400), url: `docs/${p.slug}/#${s.id}` })),
 ])));
-await Bun.write(`${out}/404.html`, shell({ title: "Not found · shepherd", description: "This page wandered off.", base: "/shepherd/", path: "404.html", body: `${docsHeader("/shepherd/")}<main id="main" class="lost"><p class="crumb">404</p><h1>This one wandered off.</h1><p>The page isn't here. The rest of the herd is.</p><a class="btn lantern" href="/shepherd/docs/introduction/">Open the docs</a></main>` }));
+await Bun.write(`${out}/404.html`, shell({ title: "Not found · modisa", description: "This page wandered off.", base: "/modisa/", path: "404.html", body: `${docsHeader("/modisa/")}<main id="main" class="lost"><p class="crumb">404</p><h1>This one wandered off.</h1><p>The page isn't here. The rest of the herd is.</p><a class="btn lantern" href="/modisa/docs/introduction/">Open the docs</a></main>` }));
 await Bun.write(`${out}/sitemap.xml`, `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["", ...pages.map((p) => `docs/${p.slug}/`)].map((u) => `<url><loc>${site}${u}</loc></url>`).join("")}</urlset>`);
 
 // Every local href/src must resolve to a file, and every #anchor to an id on that page.

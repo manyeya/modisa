@@ -18,7 +18,7 @@ export function quit(app: App, why: "detached" | "exited" | string) {
   for (const undo of app.cleanup) undo();
   app.r.destroy();
   conn?.close();
-  console.log(why === "detached" ? `[detached from ${app.opts.session}]` : why === "exited" ? "[shepherd exited]" : why);
+  console.log(why === "detached" ? `[detached from ${app.opts.session}]` : why === "exited" ? "[modisa exited]" : why);
 }
 
 async function attach(app: App, spawn: boolean) {
@@ -85,7 +85,7 @@ async function attach(app: App, spawn: boolean) {
   for (const { pane, data } of await conn.request<{ pane: string; data: string }[]>("replay")) app.panes.get(pane)?.term.write(unb64(data));
   for (const id of res.prompts) permission(app, id, "(pending permission request)");
   ready = true;
-  if (res.version !== (await codeVersion())) app.toast(`this client and the session's server run different shepherd builds · detach and reattach, or ${app.cfg.prefix.replace("C-", "^").toUpperCase()} : → Restart server`, app.th.warn, 12000);
+  if (res.version !== (await codeVersion())) app.toast(`this client and the session's server run different modisa builds · detach and reattach, or ${app.cfg.prefix.replace("C-", "^").toUpperCase()} : → Restart server`, app.th.warn, 12000);
 }
 
 let connecting = false;

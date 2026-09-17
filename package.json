@@ -1,17 +1,17 @@
 {
-  "name": "shepherd",
+  "name": "modisa",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "private": true,
   "bin": {
-    "shepherd": "src/main.ts"
+    "modisa": "src/main.ts"
   },
   "scripts": {
     "start": "bun src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build --compile src/main.ts --outfile dist/shepherd && (command -v codesign >/dev/null && codesign --remove-signature dist/shepherd && codesign -s - dist/shepherd || true)"
+    "build": "bun build --compile src/main.ts --outfile dist/modisa && (command -v codesign >/dev/null && codesign --remove-signature dist/modisa && codesign -s - dist/modisa || true)"
   },
   "devDependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

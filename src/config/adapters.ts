@@ -1,5 +1,5 @@
 // Agents (adapters): how to recognise an agent, launch it, and read its state from the screen.
-// Built-ins live in ./agents; ~/.config/shepherd/adapters/<id>.toml adds an agent or overrides one
+// Built-ins live in ./agents; ~/.config/modisa/adapters/<id>.toml adds an agent or overrides one
 // (any field; `rules` replaces its screen rules), and [agents.<id>] in config.toml sets launch/resume.
 import { CONFIG_DIR, type Config } from "./config";
 import { BUILTIN_AGENTS, type AgentDef, type RawRule } from "./agents";
@@ -36,7 +36,7 @@ export async function loadAdapters(cfg: Config): Promise<Adapter[]> {
       const id = raw.id ?? f.replace(/\.toml$/, "");
       byId.set(id, fromFile(id, raw, byId.get(id)));
     } catch (e) {
-      console.error(`shepherd: ignoring ${dir}/${f}: ${e}`);
+      console.error(`modisa: ignoring ${dir}/${f}: ${e}`);
     }
   }
   for (const [id, o] of Object.entries(cfg.agents)) {

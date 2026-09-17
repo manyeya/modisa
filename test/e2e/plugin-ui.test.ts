@@ -1,5 +1,5 @@
 // Native plugin UI: a plugin's bound connection sets status segments, a sidebar section, pane badges, menu entries
-// and toasts; shepherd stores them cleaned and bounded, draws them in the TUI, runs their actions from the palette,
+// and toasts; modisa stores them cleaned and bounded, draws them in the TUI, runs their actions from the palette,
 // refuses actions from a run that has ended, rate-limits updates, and clears it all when the plugin stops.
 import { test, expect, beforeAll, beforeEach, afterAll } from "bun:test";
 import { Screen, sandbox, startServer } from "../support/harness";
@@ -29,16 +29,16 @@ const connected = async () => {
 
 beforeAll(async () => {
   await Bun.write(`${dir}/plugin.json`, JSON.stringify({ name: "ui-demo", protocol: 1, run: ["bun", "plugin.ts"], actions: [{ id: "hello", title: "Say hello" }, { id: "apply", title: "Apply UI calls" }] }));
-  await Bun.write(`${dir}/shepherd-plugin.ts`, await Bun.file(`${REPO}/src/plugins/shepherd-plugin.ts`).text());
+  await Bun.write(`${dir}/modisa-plugin.ts`, await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text());
   await Bun.write(
     `${dir}/plugin.ts`,
-    `import { runPlugin } from "./shepherd-plugin";
-runPlugin(async (shepherd) => {
-  await shepherd.hello({
+    `import { runPlugin } from "./modisa-plugin";
+runPlugin(async (modisa) => {
+  await modisa.hello({
     hello: () => "hi there",
     apply: async (p) => {
       const out: string[] = [];
-      for (const [method, params] of p.calls as [string, any][]) out.push(await shepherd.request(method, params).then(() => "ok", (e) => e.code));
+      for (const [method, params] of p.calls as [string, any][]) out.push(await modisa.request(method, params).then(() => "ok", (e) => e.code));
       return out;
     },
   });
@@ -107,8 +107,8 @@ test("a pane target is tied to its process: a row, action or pane for a closed p
   expect(await invoke({ pane: id, instance })).toBe("pane_gone");
   expect(await invoke({ pane: "p1" })).toBe("invalid_params"); // a partial target is refused, never skipped
   expect(await invoke({ pane: "p1", instance: p1Instance() })).toBe("ok");
-  // a plugin's own `pane` param isn't a shepherd target
-  expect(await conn.request("plugin.invoke", { plugin: "ui-demo", action: "hello", params: { pane: "not a shepherd pane" } }).then(() => "ok", (e) => e.code)).toBe("ok");
+  // a plugin's own `pane` param isn't a modisa target
+  expect(await conn.request("plugin.invoke", { plugin: "ui-demo", action: "hello", params: { pane: "not a modisa pane" } }).then(() => "ok", (e) => e.code)).toBe("ok");
   conn.close();
 });
 
@@ -132,11 +132,11 @@ test("the TUI draws it, runs a palette action and shows a plugin toast, attribut
   screen?.close();
   screen = new Screen(["-s", S], sb.env, sb.root);
   await screen.until("the plugin's status, sidebar section and badge, each named", (s) => s.includes("ui-demo: 2 need you") && s.includes("▾ ui-demo") && s.includes("Attention") && s.includes("[ui-demo: needs you]"), 20000);
-  // a plugin can't dress its section up as shepherd's
-  expect(await apply(["ui.sidebar.set", { title: "SHEPHERD", rows: [{ text: "approve?" }] }], ["ui.status.set", { id: "count", text: "approve?", tone: "warn" }])).toEqual(["ok", "ok"]);
+  // a plugin can't dress its section up as modisa's
+  expect(await apply(["ui.sidebar.set", { title: "MODISA", rows: [{ text: "approve?" }] }], ["ui.status.set", { id: "count", text: "approve?", tone: "warn" }])).toEqual(["ok", "ok"]);
   await screen.until("the impostor labels, still named", (s) => {
     const lines = s.split("\n");
-    const title = lines.findIndex((l) => l.includes("SHEPHERD"));
+    const title = lines.findIndex((l) => l.includes("MODISA"));
     return title > 0 && lines[title - 1]!.includes("▾ ui-demo") && s.includes("ui-demo: approve?");
   });
   expect(await apply(["ui.status.set", { id: "count", text: "2 need you", tone: "warn", action: "hello" }])).toEqual(["ok"]);

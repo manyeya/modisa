@@ -1,9 +1,9 @@
-// ~/.config/shepherd/config.toml, merged over defaults; changes apply live.
+// ~/.config/modisa/config.toml, merged over defaults; changes apply live.
 import { HOME } from "../core/paths";
 import type { NotifyEvent } from "../protocol/types";
 import { THEMES } from "./themes";
 
-export const CONFIG_DIR = Bun.env.SHEPHERD_CONFIG_DIR ?? `${HOME}/.config/shepherd`;
+export const CONFIG_DIR = Bun.env.MODISA_CONFIG_DIR ?? `${HOME}/.config/modisa`;
 export const CONFIG_PATH = `${CONFIG_DIR}/config.toml`;
 
 export type NotifyKind = "toast" | "system" | "sound" | "bell";
@@ -41,10 +41,10 @@ export const DEFAULTS: Config = {
   agents: {},
   plugin: [],
   plugin_keys: {},
-  remote_command: "shepherd",
+  remote_command: "modisa",
 };
 
-export const SAMPLE = `# shepherd config — changes apply live (Ctrl+B s opens the settings page)
+export const SAMPLE = `# modisa config — changes apply live (Ctrl+B s opens the settings page)
 prefix = "C-b"              # C-<key>
 theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, dracula, bearded-* (see settings)
 
@@ -74,7 +74,7 @@ agent = true                # agent and state in the pane's border title
 status = true               # the bottom line: pane id, status, active
 
 [update]
-check = true                # tell me when a new shepherd is out (shepherd update installs it)
+check = true                # tell me when a new modisa is out (modisa update installs it)
 channel = "stable"          # stable, or staging for prerelease builds
 
 [messaging]
@@ -89,18 +89,18 @@ run_foreign = "ask"
 # [agents.claude-code]
 # launch = "claude --model opus"
 
-# Programs started with the session server, with $SHEPHERD_SOCKET set. See examples/plugins.
+# Programs started with the session server, with $MODISA_SOCKET set. See examples/plugins.
 # [[plugin]]
-# run = "my-plugin --socket $SHEPHERD_SOCKET"
+# run = "my-plugin --socket $MODISA_SOCKET"
 
 # A plugin's keys (after the prefix) are the ones its plugin.json asks for unless you change them here:
 # "<plugin>.<action or pane>" = "K", or "" to turn one off.
 # [plugin_keys]
 # "attention-log.log" = "A"
 
-# How --remote starts shepherd on the far side of ssh. Set an absolute path when it isn't on the
+# How --remote starts modisa on the far side of ssh. Set an absolute path when it isn't on the
 # PATH of a non-interactive ssh shell (~/.local/bin often isn't).
-# remote_command = "shepherd"
+# remote_command = "modisa"
 `;
 
 export async function loadConfig(): Promise<Config> {
@@ -124,7 +124,7 @@ export async function loadConfig(): Promise<Config> {
       plugin_keys: { ...user.plugin_keys },
     };
   } catch (e) {
-    console.error(`shepherd: bad config ${CONFIG_PATH}: ${e}`);
+    console.error(`modisa: bad config ${CONFIG_PATH}: ${e}`);
     return structuredClone(DEFAULTS);
   }
 }

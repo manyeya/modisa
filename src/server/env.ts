@@ -6,11 +6,11 @@
 const LAUNCHER_MARKERS = [
   "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
   "CLAUDE_CODE_BRIDGE_SESSION_ID", "CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_PID", "CLAUDE_EFFORT",
-  "AI_AGENT", "SHEPHERD_PANE_ID",
+  "AI_AGENT", "MODISA_PANE_ID",
 ];
 
 export function preparePaneEnv(session: string, sock: string) {
   for (const k of LAUNCHER_MARKERS) delete Bun.env[k];
-  Bun.env.SHEPHERD_SOCKET = sock; // inherited by every pane and plugin
-  Bun.env.SHEPHERD_SESSION = session;
+  Bun.env.MODISA_SOCKET = sock; // inherited by every pane and plugin
+  Bun.env.MODISA_SESSION = session;
 }

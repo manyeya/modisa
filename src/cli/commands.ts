@@ -1,11 +1,11 @@
-// `shepherd <noun> <verb>` — the socket API as shell commands, so any agent can drive panes with zero integration.
+// `modisa <noun> <verb>` — the socket API as shell commands, so any agent can drive panes with zero integration.
 import { connectExisting } from "../protocol/transport";
 import { ConnectionClosedError, errorCode, fail, type Conn } from "../protocol/conn";
 import type { ErrorCode } from "../protocol/types";
 import { str, num, type Args } from "./args";
 import { HELP } from "./help";
 
-// Exit statuses scripts can branch on; every other failure exits 1. Listed in `shepherd help`.
+// Exit statuses scripts can branch on; every other failure exits 1. Listed in `modisa help`.
 const EXIT: Partial<Record<ErrorCode, number>> = { usage: 2, invalid_params: 2, unreachable: 3, timeout: 124 };
 
 // Print a failure (as {"error":{code,message}} with --json) and return its exit status.
@@ -31,13 +31,13 @@ export async function runCli(a: Args): Promise<number> {
   const [noun, verb, ...rest] = a._;
   const f = a.flags;
   const json = !!f.json;
-  const caller = Bun.env.SHEPHERD_PANE_ID;
-  if (noun === "report" && !verb && !caller) return 0; // an integration outside any shepherd pane
+  const caller = Bun.env.MODISA_PANE_ID;
+  if (noun === "report" && !verb && !caller) return 0; // an integration outside any modisa pane
   let conn: Conn;
   try {
     conn = await connectExisting(str(f.session));
   } catch (e: any) {
-    if (noun === "report") return 0; // hooks fire outside shepherd too; stay quiet
+    if (noun === "report") return 0; // hooks fire outside modisa too; stay quiet
     return failed("unreachable", e.message, json);
   }
   const call = <T = any>(method: string, params: any = {}) => conn.request<T>(method, { caller, ...params });
@@ -106,7 +106,7 @@ export async function runCli(a: Args): Promise<number> {
         const ms = await call<any[]>("inbox");
         if (json) print(ms, true);
         else if (!ms.length) console.log("(no messages)");
-        else for (const m of ms) console.log(`from @${m.from}${m.replyTo ? ` (reply: shepherd send ${m.replyTo} "...")` : ""}:\n${m.body}\n`);
+        else for (const m of ms) console.log(`from @${m.from}${m.replyTo ? ` (reply: modisa send ${m.replyTo} "...")` : ""}:\n${m.body}\n`);
         break;
       }
       case "messages": {
@@ -156,7 +156,7 @@ export async function runCli(a: Args): Promise<number> {
       }
       case "plugin logs": {
         const p = (await call<any[]>("plugin.list")).find((x) => x.name === rest[0]);
-        if (!p) throw fail("no_such_plugin", `no plugin named ${rest[0]} (see shepherd plugin list)`);
+        if (!p) throw fail("no_such_plugin", `no plugin named ${rest[0]} (see modisa plugin list)`);
         console.log((await Bun.file(p.log).text().catch(() => "")).trimEnd().split("\n").slice(-(num(f.lines) ?? 50)).join("\n"));
         break;
       }
@@ -204,7 +204,7 @@ export async function runCli(a: Args): Promise<number> {
         return failed("usage", `unknown command: ${a._.join(" ")}${json ? "" : `\n\n${HELP}`}`, json);
     }
   } catch (e: any) {
-    return failed(e instanceof ConnectionClosedError ? "unreachable" : errorCode(e.code), `shepherd: ${e.message}`, json);
+    return failed(e instanceof ConnectionClosedError ? "unreachable" : errorCode(e.code), `modisa: ${e.message}`, json);
   } finally {
     if (!f.follow) conn.close();
   }

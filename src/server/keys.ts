@@ -1,4 +1,4 @@
-// tmux-style key names for `shepherd pane keys`: Enter, Escape, C-c, M-x, Up, … or literal text.
+// tmux-style key names for `modisa pane keys`: Enter, Escape, C-c, M-x, Up, … or literal text.
 export function keyBytes(k: string): string {
   const named: Record<string, string> = {
     Enter: "\r", Escape: "\x1b", Esc: "\x1b", Tab: "\t", BSpace: "\x7f", Backspace: "\x7f", Space: " ",

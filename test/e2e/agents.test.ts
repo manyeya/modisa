@@ -1,4 +1,4 @@
-// Agents: a shepherd.toml starts them, detection tracks working → done → needs you, and the sidebar
+// Agents: a modisa.toml starts them, detection tracks working → done → needs you, and the sidebar
 // and status row show it.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { Screen, sandbox } from "../support/harness";
@@ -13,7 +13,7 @@ let ui: Screen;
 beforeAll(async () => {
   await installFakeAgent(sb.root);
   // project template: a server pane and an agent pane
-  await Bun.write(`${sb.root}/proj/shepherd.toml`, `name = "proj"\n\n[[pane]]\nname = "server"\nrun = "echo server-up; sleep 600"\n\n[[pane]]\nname = "coder"\nagent = "fakeagent"\n`);
+  await Bun.write(`${sb.root}/proj/modisa.toml`, `name = "proj"\n\n[[pane]]\nname = "server"\nrun = "echo server-up; sleep 600"\n\n[[pane]]\nname = "coder"\nagent = "fakeagent"\n`);
 });
 
 afterAll(async () => {
@@ -22,7 +22,7 @@ afterAll(async () => {
   await sb.cleanup();
 });
 
-test("shepherd.toml template lays out named panes and starts the agent", async () => {
+test("modisa.toml template lays out named panes and starts the agent", async () => {
   ui = new Screen(["-s", S], { ...sb.env, PWD: `${sb.root}/proj` }, `${sb.root}/proj`);
   await ui.until("template panes", (s) => s.includes("@server") && s.includes("@coder") && s.includes("server-up"), 15000);
   expect(await cli("wait", "@coder", "--state", "working", "--timeout", "10")).toBe("working");
