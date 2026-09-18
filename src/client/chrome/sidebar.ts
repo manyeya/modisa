@@ -1,8 +1,9 @@
 // A compact navigator: selection is a slim rail, attention is a warning signal,
 // and every list owns a measured amount of space above the pinned shortcuts.
-import { BoxRenderable, InputRenderable, InputRenderableEvents, TextAttributes, TextRenderable, bold, fg, t, type MouseEvent } from "@opentui/core";
+import { BoxRenderable, InputRenderable, InputRenderableEvents, StyledText, TextRenderable, bold, fg, t, type MouseEvent, type TextChunk } from "@opentui/core";
+import type { GitView } from "../../protocol/types";
 import type { App } from "../context";
-import { fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
+import { agentMark, agentTask, fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
 import { render } from "../render";
 import { deleteSpace, spaceMenu } from "../spaces";
 import { pluginUi, runPluginAction, spanText, toneColor } from "../plugin-ui";
@@ -103,14 +104,18 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
   const visible = sidebarAgents(agents, focused, budget.agentRows);
   const labels = { blocked: "Needs you", working: "Working", done: "Done", idle: "Idle" };
   for (const pane of visible) {
-    const state = pane.agent!.state;
+    const { harness, state } = pane.agent!;
     const selected = pane.id === focused;
     const color = state === "blocked" ? th.warn : state === "working" ? th.focus : th.dim;
-    const name = sidebarColumns(pane.name ? "@" + pane.name : pane.title, app.cfg.indicators.sidebar ? app.icon(state) : "", contentWidth(app));
-    const meta = sidebarColumns(pane.agent!.harness, labels[state], contentWidth(app));
+    // the agent's mark, then its name (its tool when unnamed); under it, the task its terminal title names
+    const mark = agentMark(th, harness);
+    const width = contentWidth(app) - 2;
+    const name = sidebarColumns(pane.name ? "@" + pane.name : harness, app.cfg.indicators.sidebar ? app.icon(state) : "", width);
+    const task = agentTask(pane.terminalTitle ?? pane.title, pane.name, harness);
+    const meta = sidebarColumns(task || (pane.name ? harness : ""), labels[state], width);
     const body = row(app, side, { height: 2, selected, run: () => app.call("focusPane", { pane: pane.id }) });
     body.add(new TextRenderable(r, {
-      content: t`${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
+      content: t`${fg(mark.color)(mark.glyph)} ${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n  ${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
       width: contentWidth(app), height: 2, flexShrink: 0, fg: state === "done" || state === "idle" ? th.dim : th.fg,
     }));
   }
@@ -188,10 +193,9 @@ function spaceRow(app: App, i: number) {
     context: (e) => spaceMenu(app, i, e.x, e.y),
     hover: (on) => { for (const [node, glyph] of icons) node.content = on ? glyph : "  "; },
   });
-  body.add(new TextRenderable(r, {
-    content: fit(space.name, Math.max(1, contentWidth(app) - 4)), width: Math.max(1, contentWidth(app) - 4), flexShrink: 0, height: 1,
-    fg: th.fg, attributes: active ? TextAttributes.BOLD : 0,
-  }));
+  const lineWidth = Math.max(1, contentWidth(app) - 4); // the last 4 are ✎ and ✕, on hover
+  // git stops a cell short of them, so ✎ never runs into a count
+  body.add(new TextRenderable(r, { content: spaceLine(app, space.name, app.cfg.sidebar.git ? space.git : undefined, active, Math.max(1, lineWidth - 1)), width: lineWidth, flexShrink: 0, height: 1, fg: th.fg }));
   const icon = (glyph: string, color: string, run: () => void) => {
     const node: TextRenderable = new TextRenderable(r, {
       content: "  ", width: 2, height: 1, flexShrink: 0, fg: th.dim,
@@ -204,6 +208,36 @@ function spaceRow(app: App, i: number) {
   };
   icon("✎", th.focus, () => startRename(app, i));
   icon("✕", th.blocked, () => deleteSpace(app, i));
+}
+
+// A space's row: its name, and on the right where its focused pane's repository stands: the branch (in the done colour
+// when clean and in step with its upstream), ↑ commits to push, ↓ commits to pull, ● files changed. The repository is
+// named too when the space isn't, room permitting. Git takes what the name doesn't need, and at least 60% of the row.
+function spaceLine(app: App, name: string, git: GitView | undefined, active: boolean, width: number): StyledText {
+  const { th } = app;
+  const right: TextChunk[] = [];
+  let used = 0;
+  if (git) {
+    const room = Math.max(Math.floor(width * 0.6), width - Bun.stringWidth(name) - 1); // a short name leaves it more
+    const counts: [string, string][] = [];
+    if (git.ahead) counts.push([`↑${git.ahead}`, th.working]);
+    if (git.behind) counts.push([`↓${git.behind}`, th.warn]);
+    if (git.changes) counts.push([`●${git.changes}`, th.accent]);
+    const tail = counts.reduce((n, [s]) => n + 1 + Bun.stringWidth(s), 0);
+    const clean = !git.changes && !git.ahead && !git.behind && git.ahead !== undefined;
+    const branchRoom = room - tail - 2; // "⎇ "
+    if (branchRoom >= 3) {
+      const branch = fit(git.branch, branchRoom);
+      const repo = git.repo !== name && branchRoom - Bun.stringWidth(branch) >= Bun.stringWidth(git.repo) + 1 ? `${git.repo} ` : "";
+      right.push(fg(th.dim)(repo), fg(clean ? th.done : th.dim)(`⎇ ${branch}`));
+      used += Bun.stringWidth(repo) + 2 + Bun.stringWidth(branch);
+    }
+    for (const [s, color] of counts) if (used + 1 + Bun.stringWidth(s) <= room) (right.push(fg(th.dim)(" "), fg(color)(s)), used += 1 + Bun.stringWidth(s));
+  }
+  const left = fit(name, Math.max(1, width - used - (used ? 1 : 0)));
+  const title = fg(th.fg)(left);
+  const gap = " ".repeat(Math.max(0, width - Bun.stringWidth(left) - used));
+  return new StyledText([active ? bold(title) : title, fg(th.dim)(gap), ...right]);
 }
 
 export function startRename(app: App, index: number) {

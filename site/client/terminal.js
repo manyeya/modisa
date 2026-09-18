@@ -7,10 +7,11 @@ export function initDemo() {
   const panes = Object.fromEntries([...tui.querySelectorAll("[data-pane]")].map((p) => [p.dataset.pane, p]));
   const original = Object.fromEntries(Object.entries(panes).map(([k, p]) => [k, p.querySelector(".pane-body").innerHTML]));
   const caption = document.querySelector("[data-caption]");
+  // each with its mark in its brand colour (none: the text colour) and the task its terminal title names
   const agents = [
-    { id: "reviewer", name: "reviewer", harness: "codex" },
-    { id: "coder", name: "coder", harness: "claude-code" },
-    { id: "docs", name: "docs", harness: "opencode" },
+    { id: "reviewer", name: "reviewer", mark: "◎", brand: "", task: "Review the auth changes" },
+    { id: "coder", name: "coder", mark: "✳", brand: "#d97757", task: "Refactor the session middleware" },
+    { id: "docs", name: "docs", mark: "□", brand: "", task: "Write the migration notes" },
   ];
   const glyph = { blocked: "!", working: "◆", done: "✓", idle: "○" };
   const color = { blocked: "var(--t-amber)", working: "var(--t-blue)", done: "var(--t-green)", idle: "var(--t-dim)" };
@@ -23,7 +24,7 @@ export function initDemo() {
   };
   const sidebar = () => {
     const list = agents.map((a) => ({ ...a, state: panes[a.id].dataset.state })).sort((a, b) => order[a.state] - order[b.state]);
-    $("[data-agents]").innerHTML = list.map((a) => `<div class="tui-agent${a.id === "coder" ? " focus" : ""}"><span style="color:${color[a.state]}">${glyph[a.state]}</span> <b>@${a.name}</b><small>${a.harness} · ${label[a.state]}</small></div>`).join("");
+    $("[data-agents]").innerHTML = list.map((a) => `<div class="tui-agent${a.id === "coder" ? " focus" : ""}"><span class="tui-mark"${a.brand ? ` style="color:${a.brand}"` : ""}>${a.mark}</span> <b>@${a.name}</b> <span style="color:${color[a.state]}">${glyph[a.state]}</span><small>${a.task} · ${label[a.state]}</small></div>`).join("");
     const working = list.filter((a) => a.state === "working").length, blocked = list.filter((a) => a.state === "blocked").length;
     $("[data-count-working]").textContent = `◆ ${working} working`;
     const b = $("[data-count-blocked]");

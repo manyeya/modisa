@@ -1,4 +1,6 @@
 import type { Rect } from "../core/layout";
+import { brand } from "../config/agents/brands";
+import type { Theme } from "../config/themes";
 
 // Measure terminal cells, not UTF-16 code units (paths and titles can contain emoji/CJK).
 export function fit(text: string, width: number): string {
@@ -27,6 +29,20 @@ export function contrast(a: string, b: string): number {
   };
   const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
   return (x! + 0.05) / (y! + 0.05);
+}
+
+// An agent's mark: its glyph, in its brand colour, or in the theme's text colour when the brand has none or it would
+// be faint on this theme's sidebar.
+export function agentMark(th: Theme, agent: string) {
+  const { glyph, color } = brand(agent);
+  return { glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg };
+}
+
+// The task an agent's terminal title names, without the spinner or mark it puts in front; "" when the title only
+// names the agent (or isn't there).
+export function agentTask(title: string | undefined, ...not: (string | undefined)[]) {
+  const t = (title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  return t && !not.includes(t) ? t : "";
 }
 
 export function chrome(width: number, height: number, sidebar: boolean, preferred: number) {

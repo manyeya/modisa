@@ -25,9 +25,9 @@ const demo = `
     <div class="tui-main">
       <aside class="tui-side">
         <p class="tui-label">SPACES</p>
-        <p class="tui-row sel">api</p><p class="tui-row">web</p><p class="tui-row">infra</p>
+        <p class="tui-row sel">api<span class="tui-git">⎇ main <i class="up">↑2</i> <i class="chg">●3</i></span></p><p class="tui-row">web<span class="tui-git">⎇ feat/login <i class="down">↓1</i></span></p><p class="tui-row">infra<span class="tui-git clean">⎇ main</span></p>
         <p class="tui-label">AGENTS / 3</p>
-        <div class="tui-agents" data-agents><div class="tui-agent"><span class="amber">!</span> <b>@reviewer</b><small>codex · needs you</small></div><div class="tui-agent focus"><span>◆</span> <b>@coder</b><small>claude-code · working</small></div><div class="tui-agent"><span>✓</span> <b>@docs</b><small>opencode · done</small></div></div>
+        <div class="tui-agents" data-agents><div class="tui-agent"><span class="tui-mark">◎</span> <b>@reviewer</b> <span class="amber">!</span><small>Review the auth changes · needs you</small></div><div class="tui-agent focus"><span class="tui-mark" style="color:#d97757">✳</span> <b>@coder</b> <span>◆</span><small>Refactor the session middleware · working</small></div><div class="tui-agent"><span class="tui-mark">□</span> <b>@docs</b> <span>✓</span><small>Write the migration notes · done</small></div></div>
         <p class="tui-foot">⚙ settings</p>
       </aside>
       <div class="tui-panes">

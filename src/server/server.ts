@@ -10,6 +10,7 @@ import { createContext, type Client } from "./context";
 import { preparePaneEnv } from "./env";
 import { installPermissions } from "./permissions";
 import { startMonitor } from "./agents/monitor";
+import { startGit } from "./git";
 import { createPluginHost } from "./plugins";
 import { createDispatcher } from "./rpc/dispatch";
 import { clientMethods } from "./rpc/client";
@@ -47,6 +48,7 @@ export async function runServer(session: string) {
   });
   installPermissions(ctx);
   const monitor = startMonitor(ctx);
+  const git = startGit(ctx);
   const plugins = createPluginHost(ctx);
   ctx.pluginUi = plugins.uiView;
   ctx.paneExited = plugins.paneExited;
@@ -99,6 +101,7 @@ export async function runServer(session: string) {
     await Bun.file(sock).delete().catch(() => {});
     server.stop(true);
     monitor.stop();
+    git.stop();
     // A client connection closing mid-shutdown (the restart command's own) can keep the event loop alive
     // for good, leaving a server that holds nothing, so exit instead of waiting for the loop to drain.
     setTimeout(() => process.exit(0), 200);

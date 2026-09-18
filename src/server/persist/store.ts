@@ -12,7 +12,7 @@ export type Saved = {
 };
 
 // Live cwd of each shell (follows `cd`), batched into one lsof call.
-async function cwds(pids: number[]): Promise<Map<number, string>> {
+export async function cwds(pids: number[]): Promise<Map<number, string>> {
   const m = new Map<number, string>();
   if (!pids.length) return m;
   if (await Bun.file("/proc/self/stat").exists()) {

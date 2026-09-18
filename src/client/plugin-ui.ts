@@ -3,13 +3,12 @@
 // attributed to it by name, so none of it can pass for modisa's own prompts.
 import { BoxRenderable, StyledText, bold, fg, type TextChunk } from "@opentui/core";
 import type { PluginUiView, Span, Tone } from "../protocol/types";
-import { brand } from "../config/agents/brands";
 import { linkMatches } from "../protocol/links";
 import { bindPluginKeys } from "../config/keys";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
 import { menu } from "./modals/menu";
-import { contrast, fit } from "./design";
+import { agentMark, fit } from "./design";
 import { render } from "./render";
 
 export const pluginUi = (app: App): PluginUiView[] => app.view?.plugins ?? [];
@@ -26,8 +25,8 @@ export function spanText(app: App, spans: Span[], base: Tone, width: number): St
   for (const x of spans) {
     if (left <= 0) break;
     if ("icon" in x) {
-      const { glyph, color } = brand(x.icon);
-      chunks.push(fg(color && contrast(color, app.th.bar) >= 3 ? color : app.th.fg)(glyph));
+      const { glyph, color } = agentMark(app.th, x.icon);
+      chunks.push(fg(color)(glyph));
       left -= 1;
       continue;
     }

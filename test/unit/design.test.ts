@@ -53,3 +53,15 @@ test("hover and selection tints blend theme colors", () => {
   expect(mix("#000000", "#ffffff", 1)).toBe("#ffffff");
   expect(mix("#101b2c", "#5ee7ef", 0.5)).toBe("#37818e");
 });
+
+test("an agent's mark is its brand colour, or the theme's text where that would be faint; its task drops the spinner", async () => {
+  const { agentMark, agentTask } = await import("../../src/client/design");
+  const { THEMES } = await import("../../src/config/themes");
+  expect(agentMark(THEMES.ion!, "claude-code")).toEqual({ glyph: "✳", color: "#d97757" });
+  expect(agentMark(THEMES.ion!, "codex").color).toBe(THEMES.ion!.fg); // a monochrome brand
+  expect(agentMark(THEMES["bearded-solarized-light"]!, "kilo").color).toBe(THEMES["bearded-solarized-light"]!.fg); // yellow on cream
+  expect(agentMark(THEMES.ion!, "who-knows").glyph).toBe("•");
+  expect(agentTask("✳ Audit the token cache")).toBe("Audit the token cache");
+  expect(agentTask("⠋ codex", "codex")).toBe("");
+  expect(agentTask(undefined)).toBe("");
+});

@@ -1,11 +1,11 @@
 // Session model: workspaces → tabs → split trees of panes. Owns layout and PTY sizes.
 import { split, remove, rects, displayRects, neighbor, resize, panes, dividerAt, dragTo, type Node, type Rect, type Dir } from "../../core/layout";
-import type { View } from "../../protocol/types";
+import type { GitView, View } from "../../protocol/types";
 import { PtyPane } from "./pane";
 import { cwd as here } from "../../core/paths";
 
 export type Tab = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
-export type Workspace = { id: string; name: string; cwd: string; tabs: Tab[]; active: number };
+export type Workspace = { id: string; name: string; cwd: string; tabs: Tab[]; active: number; git?: GitView }; // git: see ../git.ts
 export type SpawnOpts = { cwd?: string; command?: string; harness?: string; name?: string; createdBy?: string; ephemeral?: boolean; env?: Record<string, string> };
 
 export class Session {
@@ -283,6 +283,7 @@ export class Session {
         cwd: ws.cwd,
         active: ws.active,
         tabs: ws.tabs.map((t) => ({ id: t.id, name: t.name, tree: t.tree, focused: t.focused, zoomed: t.zoomed })),
+        ...(ws.git && { git: ws.git }),
       })),
       panes: [...this.panes.values()].map((p) => p.info),
     };

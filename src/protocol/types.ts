@@ -58,7 +58,9 @@ export type PaneInfo = {
 };
 
 export type TabView = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
-export type WorkspaceView = { id: string; name: string; cwd: string; active: number; tabs: TabView[] };
+// A space's repository, where its focused pane is: ahead/behind are only there when the branch has an upstream.
+export type GitView = { repo: string; branch: string; ahead?: number; behind?: number; changes: number };
+export type WorkspaceView = { id: string; name: string; cwd: string; active: number; tabs: TabView[]; git?: GitView };
 
 // What a plugin's current run shows in the TUI, from its ui.* calls: drawn by modisa, in the user's theme.
 // The theme's own colours: text, dim, accent, warning, and the four agent states.
