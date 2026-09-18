@@ -13,7 +13,7 @@ export type IndicatorStyle = "symbols" | "dots" | "letters";
 export type Config = {
   prefix: string;
   theme: string;
-  sidebar: { visible: boolean; width: number; agents: string; git: boolean }; // agents: a plugin whose section replaces the AGENTS list
+  sidebar: { visible: boolean; width: number; agents: string; git: boolean; logos: "auto" | "on" | "off" }; // agents: a plugin whose section replaces the AGENTS list
   notify: Record<NotifyEvent, NotifyKind[]>;
   sound: { volume: number } & Record<NotifyEvent, string>; // a cuelume sound name per event
   indicators: { style: IndicatorStyle; tab: boolean; pane: boolean; sidebar: boolean };
@@ -30,7 +30,7 @@ export type Config = {
 export const DEFAULTS: Config = {
   prefix: "C-b",
   theme: "ion",
-  sidebar: { visible: true, width: 26, agents: "", git: true },
+  sidebar: { visible: true, width: 26, agents: "", git: true, logos: "auto" },
   notify: { blocked: ["toast", "system", "sound"], done: ["toast"], working: [] },
   sound: { volume: 0.7, blocked: "chime", done: "success", working: "loading" },
   indicators: { style: "symbols", tab: true, pane: true, sidebar: true },
@@ -53,6 +53,7 @@ visible = true
 width = 26                  # 20 to 48 columns, at most a third of the terminal; dragging its edge sets it
 agents = ""                 # a plugin whose sidebar section takes the AGENTS list's place ("radar"); "" keeps modisa's
 git = true                  # each space's branch, ↑ to push, ↓ to pull, ● changed files
+logos = "auto"              # agents' logos where the terminal can show them (modisa logos); "on", or "off" for plain marks
 
 [notify]                    # toast, system, sound, bell — when an agent you're not looking at…
 blocked = ["toast", "system", "sound"]   # …needs you

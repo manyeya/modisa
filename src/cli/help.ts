@@ -50,6 +50,7 @@ setup
   modisa uninstall [--purge] [--yes]       remove integrations, sessions, state (and config with --purge), and install.sh's binary
   modisa version | --version               this version, and whether a newer one is out
   modisa integration status | install|uninstall <agent|all>   (hooks + the modisa skill)
+  modisa logos [status|install|uninstall]  agents' logos in the sidebar: a font, and your terminals told about it
   modisa config [path|edit]
   modisa debug detect <target>
 

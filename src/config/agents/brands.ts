@@ -1,7 +1,7 @@
-// Each built-in agent's mark: one single-width Unicode glyph (text presentation, never an emoji, so it lines up in any
-// monospace font) and its brand colour. They stand in for the vendors' logos, which a terminal can't draw without
-// installing a font. No colour means a monochrome brand: drawn in the theme's text colour. A plugin names an agent
-// (`{ icon: "claude-code" }`) and modisa draws the mark, so no plugin picks colours of its own.
+// Each built-in agent's mark: its logo, drawn from modisa's logo font (marks.ttf, see src/platform/logos.ts) where the
+// terminal can show it, else one single-width Unicode glyph (text presentation, never an emoji, so it lines up in any
+// monospace font); and its brand colour. No colour means a monochrome brand: drawn in the theme's text colour. A plugin
+// names an agent (`{ icon: "claude-code" }`) and modisa draws the mark, so no plugin picks colours of its own.
 export type Brand = { glyph: string; color?: string };
 
 export const BRANDS: Record<string, Brand> = {
@@ -33,3 +33,19 @@ export const BRANDS: Record<string, Brand> = {
 
 export const GENERIC: Brand = { glyph: "•" };
 export const brand = (agent: string): Brand => BRANDS[agent] ?? GENERIC;
+
+// The agents with a logo in marks.ttf, and the Lobe Icons (MIT) mark each is drawn from; the font has them from
+// U+F5A00 in this order (a private-use range no common icon font uses). Append only: a codepoint that has shipped keeps
+// its logo, since installed fonts outlive the binary that installed them.
+export const LOGOS: [agent: string, icon: string][] = [
+  ["claude-code", "claude"], ["codex", "codex"], ["gemini", "gemini"], ["cursor-agent", "cursor"], ["copilot", "githubcopilot"],
+  ["opencode", "opencode"], ["pi", "pi"], ["amp", "amp"], ["kiro", "kiro"], ["kimi", "kimi"], ["kilo", "kilocode"],
+  ["devin", "devin"], ["grok", "grok"], ["hermes", "nousresearch"], ["qodercli", "qoder"], ["qwen", "qwen"],
+  ["antigravity", "antigravity"], ["cline", "cline"], ["mastracode", "mastra"],
+];
+export const LOGO_FIRST = 0xf5a00;
+export const LOGO_RANGE = `U+${LOGO_FIRST.toString(16).toUpperCase()}-U+${(LOGO_FIRST + 0xff).toString(16).toUpperCase()}`; // room to grow
+export function logo(agent: string): string | undefined {
+  const i = LOGOS.findIndex(([a]) => a === agent);
+  return i < 0 ? undefined : String.fromCodePoint(LOGO_FIRST + i);
+}

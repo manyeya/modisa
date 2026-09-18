@@ -2,6 +2,7 @@
 // This file is the startup order; the pieces live in context, render, chrome/, panes/, modals/, input/.
 import { createCliRenderer } from "@opentui/core";
 import { loadConfig, watchConfig } from "../config/config";
+import { setupLogos } from "./logos";
 import { App, type ClientOptions } from "./context";
 import { openMouseLog, logHandlerErrors } from "./debug";
 import { createActions } from "./actions";
@@ -40,6 +41,7 @@ export async function runClient(opts: ClientOptions) {
     render(app);
   });
   watchConfig(() => reload(app));
+  void setupLogos(app);
 
   // a newer release lights the ↑ badge in the status row (checked in the background, cached 6h)
   const lookForUpdate = () => checkForUpdate().then((m) => { app.update = m; app.chromeSig = ""; render(app); });

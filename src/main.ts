@@ -43,6 +43,9 @@ switch (cmd) {
   case "integration":
     await (await import("./integrations")).runIntegration(rest[0], rest[1]);
     break;
+  case "logos":
+    process.exitCode = await (await import("./cli/logos")).runLogos(rest[0]);
+    break;
   case "update":
     await (await import("./cli/update")).runUpdate();
     break;

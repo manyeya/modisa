@@ -108,7 +108,7 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
     const selected = pane.id === focused;
     const color = state === "blocked" ? th.warn : state === "working" ? th.focus : th.dim;
     // the agent's mark, then its name (its tool when unnamed); under it, the task its terminal title names
-    const mark = agentMark(th, harness);
+    const mark = agentMark(th, harness, app.logos);
     const width = contentWidth(app) - 2;
     const name = sidebarColumns(pane.name ? "@" + pane.name : harness, app.cfg.indicators.sidebar ? app.icon(state) : "", width);
     const task = agentTask(pane.terminalTitle ?? pane.title, pane.name, harness);

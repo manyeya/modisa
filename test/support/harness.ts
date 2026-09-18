@@ -16,6 +16,7 @@ export function sandbox(name: string) {
     SHELL: "/bin/sh",
     MODISA_SOUND: "off", // the suite stays silent
     MODISA_UPDATE_URL: "off", // and offline
+    MODISA_LOGOS: "off", // and never installs a font or edits a terminal's settings in the real home
     PWD: root,
     PATH: `${root}/bin:${Bun.env.PATH}`,
   };

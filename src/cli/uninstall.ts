@@ -7,6 +7,7 @@ import { DIR, self, socketPath } from "../core/paths";
 import { installedBy } from "../core/install";
 import { FROM_SOURCE } from "../core/version";
 import { integrationStatus, uninstallAll } from "../integrations";
+import { logoStatus, uninstallLogos } from "../platform/logos";
 import { connectUnix } from "../protocol/transport";
 
 export async function runUninstall(o: { purge: boolean; yes: boolean }): Promise<number> {
@@ -20,11 +21,14 @@ export async function runUninstall(o: { purge: boolean; yes: boolean }): Promise
   const sessions = (await Bun.$`ls -1 ${DIR}`.quiet().nothrow().text()).split("\n").filter((f) => f.endsWith(".sock")).map((f) => f.slice(0, -5));
   const agents = (await integrationStatus()).filter((s) => s.status !== "none").map((s) => s.name);
   const hasConfig = await Bun.$`test -d ${CONFIG_DIR}`.quiet().nothrow().then((r) => r.exitCode === 0);
+  const logos = await logoStatus();
+  const logosThere = !!logos.font || logos.terminals.some((t) => t.configured);
 
   if (!o.yes) {
     console.log("modisa uninstall will:");
     if (sessions.length) console.log(`  stop running sessions: ${sessions.join(", ")}`);
     if (agents.length) console.log(`  remove modisa's hooks and skill from: ${agents.join(", ")}`);
+    if (logosThere) console.log(`  remove the agent logo font and its settings in: ${logos.terminals.filter((t) => t.configured).map((t) => t.name).join(", ") || "no terminal"}`);
     console.log(`  delete saved sessions and state in ${DIR}`);
     if (hasConfig) console.log(o.purge ? `  delete your config in ${CONFIG_DIR}` : `  keep your config in ${CONFIG_DIR} (--purge deletes it)`);
     if (how.by === "script") console.log(`  delete ${exe}`);
@@ -38,6 +42,9 @@ export async function runUninstall(o: { purge: boolean; yes: boolean }): Promise
   const { removed, failed } = await uninstallAll();
   for (const line of removed) console.log(line);
   for (const line of failed) console.error(line);
+  if (logosThere) {
+    await uninstallLogos().then(() => console.log("removed the agent logo font and its terminal settings"), (e) => console.error(`agent logos: ${e.message ?? e}`));
+  }
   for (const name of sessions) {
     const c = await connectUnix(socketPath(name)).catch(() => undefined);
     if (!c) continue; // a dead server's socket: the state directory goes below anyway

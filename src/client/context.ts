@@ -45,6 +45,7 @@ export class App {
   lastSpaceClick = { index: -1, at: 0 };
   resizing: { x: number; y: number; sawButtonMotion: boolean; sidebar?: boolean } | undefined; // a pane border, or the sidebar's edge, being dragged
   pointerShape: PointerShape = "default";
+  logos = false; // draw agents' logos (this terminal shows modisa's logo font): see ./logos.ts
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
   readonly promptIds = new Map<number, BoxRenderable>(); // open permission prompts
   readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded

@@ -1,5 +1,6 @@
 // Telling the user something happened (an agent needs them, finished, or started working), and applying
 // config changes.
+import { setupLogos } from "./logos";
 import { loadConfig } from "../config/config";
 import type { NotifyEvent } from "../protocol/types";
 import type { App } from "./context";
@@ -25,7 +26,9 @@ export async function reload(app: App, manual = false) {
   // unchanged: usually the settings page saving what it already applied
   if (JSON.stringify(next) === JSON.stringify(app.cfg)) return manual && app.toast("config unchanged", app.th.dim);
   if (next.sidebar.visible !== app.cfg.sidebar.visible) app.sidebar = next.sidebar.visible;
+  const logos = next.sidebar.logos !== app.cfg.sidebar.logos;
   app.setConfig(next);
+  if (logos) void setupLogos(app);
   app.conn.notify("area", { area: app.area() });
   render(app);
   app.toast("config reloaded", app.th.accent);

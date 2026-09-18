@@ -1,5 +1,5 @@
 import type { Rect } from "../core/layout";
-import { brand } from "../config/agents/brands";
+import { brand, logo } from "../config/agents/brands";
 import type { Theme } from "../config/themes";
 
 // Measure terminal cells, not UTF-16 code units (paths and titles can contain emoji/CJK).
@@ -31,11 +31,11 @@ export function contrast(a: string, b: string): number {
   return (x! + 0.05) / (y! + 0.05);
 }
 
-// An agent's mark: its glyph, in its brand colour, or in the theme's text colour when the brand has none or it would
-// be faint on this theme's sidebar.
-export function agentMark(th: Theme, agent: string) {
+// An agent's mark: its logo where the terminal shows modisa's logo font (else its glyph), in its brand colour, or in
+// the theme's text colour when the brand has none or it would be faint on this theme's sidebar.
+export function agentMark(th: Theme, agent: string, logos = false) {
   const { glyph, color } = brand(agent);
-  return { glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg };
+  return { glyph: (logos && logo(agent)) || glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg };
 }
 
 // The task an agent's terminal title names, without the spinner or mark it puts in front; "" when the title only

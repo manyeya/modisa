@@ -101,7 +101,8 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
       { id: "model", title: "The model", html: ul([
         "A <strong>session</strong> holds <strong>spaces</strong>; a space holds <strong>tabs</strong>; a tab is a tree of split <strong>panes</strong>.",
         "Each pane is a real terminal: a shell, a command, or an agent.",
-        "The sidebar lists spaces and the agents in the current one, with whoever needs you first: each agent with its mark in its brand colour and, under its name, the task its terminal title names.",
+        "The sidebar lists spaces and the agents in the current one, with whoever needs you first: each agent with its logo in its brand colour and, under its name, the task its terminal title names.",
+        "The logos come from a small font modisa installs the first time it starts (in your user font folder), telling Ghostty, kitty and VS Code where to find it; restart the terminal once to see them. <code>modisa logos</code> says where they stand, <code>modisa logos uninstall</code> takes them out, and a terminal modisa doesn't recognise shows plain marks unless <code>[sidebar] logos = \"on\"</code>.",
         "Each space shows where its focused pane's repository stands: the branch (green when clean and in step with its upstream), <strong>↑</strong> commits to push, <strong>↓</strong> commits to pull (as of your last fetch: modisa never fetches), and <strong>●</strong> files changed. It follows the pane when you <code>cd</code>; <code>[sidebar] git = false</code> turns it off.",
         "Drag the sidebar's edge to make it wider or narrower (20 to 48 columns, at most a third of the terminal); the width is saved as <code>[sidebar] width</code>, and <code>[sidebar] agents</code> can hand the agent list to a plugin such as <a href=\"https://github.com/manyeya/modisa-radar\">radar</a>.",
       ]) },

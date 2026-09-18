@@ -25,7 +25,7 @@ export function spanText(app: App, spans: Span[], base: Tone, width: number): St
   for (const x of spans) {
     if (left <= 0) break;
     if ("icon" in x) {
-      const { glyph, color } = agentMark(app.th, x.icon);
+      const { glyph, color } = agentMark(app.th, x.icon, app.logos);
       chunks.push(fg(color)(glyph));
       left -= 1;
       continue;
