@@ -6,6 +6,7 @@ import { fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../desig
 import { render } from "../render";
 import { deleteSpace, spaceMenu } from "../spaces";
 import { pluginUi, runPluginAction, spanText, toneColor } from "../plugin-ui";
+import { beginResize } from "../panes/resize";
 
 type RowOptions = { selected?: boolean; height?: number; run: () => any; context?: (e: MouseEvent) => void; hover?: (on: boolean) => void };
 const selectedBg = (app: App) => mix(app.th.bar, app.th.focus, 0.12);
@@ -50,7 +51,14 @@ export function drawSidebar(app: App) {
   if (!w) return;
   const height = app.area().h;
   Object.assign(side, { top: app.metrics().top, width: w, height, backgroundColor: th.bar, paddingLeft: 0, paddingRight: 0, overflow: "hidden" });
-  side.add(new TextRenderable(r, { position: "absolute", right: 0, top: 0, width: 1, height, content: Array(height).fill("│").join("\n"), fg: mix(th.bar, th.border, 0.65) }));
+  // its edge: drag it to make the sidebar wider or narrower
+  side.add(new TextRenderable(r, {
+    position: "absolute", right: 0, top: 0, width: 1, height, content: Array(height).fill("│").join("\n"), fg: mix(th.bar, th.border, 0.65),
+    onMouseDown: (e) => {
+      e.stopPropagation();
+      if (e.button === 0 && !app.modal) beginResize(app, e.x, e.y, true);
+    },
+  }));
   const blank = () => side.add(new BoxRenderable(r, { width: w - 1, height: 1, flexShrink: 0 }));
   const heading = (name: string, count: number) => {
     const columns = sidebarColumns(name, String(count), contentWidth(app));

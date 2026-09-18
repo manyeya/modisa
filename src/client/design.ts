@@ -33,7 +33,7 @@ export function chrome(width: number, height: number, sidebar: boolean, preferre
   const top = 1; // tab bar
   const bottom = 1; // status row
   const side = sidebar && width >= 100 && height >= 22
-    ? Math.min(Math.max(20, Number.isFinite(preferred) ? preferred : 26), 48, Math.floor(width * 0.24)) : 0;
+    ? Math.min(Math.max(20, Number.isFinite(preferred) ? preferred : 26), 48, Math.floor(width / 3)) : 0;
   return { top, bottom, side, area: { x: side, y: top, w: Math.max(1, width - side), h: Math.max(1, height - top - bottom) } satisfies Rect };
 }
 

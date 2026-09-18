@@ -64,7 +64,7 @@ Prefix is `Ctrl+B`, then:
 | `Ctrl+B` | send a literal `Ctrl+B` |
 | `d` | detach (panes keep running) |
 
-Mouse: click a pane to focus it, drag the border between two panes to resize them (the pointer turns into a move cursor over a border), click a tab to switch, and scroll for scrollback. Right-click a pane or tab for split, zoom, rename, copy visible output, search, theme, sidebar, and close actions. Menus support arrows, Enter, Escape, and outside-click dismissal. Clipboard copying uses OSC 52 where supported by your terminal.
+Mouse: click a pane to focus it, drag the border between two panes to resize them (the pointer turns into a move cursor over a border), drag the sidebar's edge to widen or narrow it, click a tab to switch, and scroll for scrollback. Right-click a pane or tab for split, zoom, rename, copy visible output, search, theme, sidebar, and close actions. Menus support arrows, Enter, Escape, and outside-click dismissal. Clipboard copying uses OSC 52 where supported by your terminal.
 
 Spaces are named groups of tabs and panes. In the sidebar, click a space to switch to it, double-click its name (or click ✎) to rename it in place — Enter saves, Esc cancels — and click ✕ to delete it, which asks first and closes its panes. Right-click a space for the same actions. The last space can't be deleted. A new space starts in the current space's working directory; creating one does not create a directory. Use the shell's `cd` command to change a pane's working directory.
 

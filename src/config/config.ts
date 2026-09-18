@@ -50,7 +50,7 @@ theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, 
 
 [sidebar]
 visible = true
-width = 26                  # 20 to 48 columns, and at most a quarter of the terminal
+width = 26                  # 20 to 48 columns, at most a third of the terminal; dragging its edge sets it
 agents = ""                 # a plugin whose sidebar section takes the AGENTS list's place ("radar"); "" keeps modisa's
 
 [notify]                    # toast, system, sound, bell — when an agent you're not looking at…

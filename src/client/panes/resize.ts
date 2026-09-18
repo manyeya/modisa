@@ -1,9 +1,12 @@
-// Resizing panes by dragging the border between them.
+// Resizing panes by dragging the border between them, and the sidebar by dragging its edge.
 // Handle a resize before hit-testing so fast moves, off-screen releases and fresh clicks
 // cannot get captured by a child terminal or missed while waiting for a new frame.
 import type { StdinEvent } from "@opentui/core";
 import { displayRects, dividerAt, panes as treePanes } from "../../core/layout";
+import { saveSetting } from "../../config/config";
 import type { App } from "../context";
+import { chrome } from "../design";
+import { render } from "../render";
 import { pointer } from "./pointer";
 
 type EndReason = "released" | "new press" | "left button released" | "escape" | "blur" | "terminal resize";
@@ -31,12 +34,30 @@ export function onDivider(app: App, x: number, y: number) {
   return !!dividerAt(t.tree, app.area(), x, y);
 }
 
-export function beginResize(app: App, x: number, y: number) {
+// The sidebar's edge: the │ in its last column, beside the pane area.
+export function onSidebarEdge(app: App, x: number, y: number) {
+  if (!app.view || app.modal) return false;
+  const { side, top, area } = app.metrics();
+  return side > 0 && x === side - 1 && y >= top && y < top + area.h;
+}
+
+// A pane border's drag is the server's (it owns the layout); the sidebar's is this client's own, saved when it ends.
+export function beginResize(app: App, x: number, y: number, sidebar = false) {
   if (app.resizing) return;
-  app.resizing = { x, y, sawButtonMotion: false };
+  app.resizing = { x, y, sawButtonMotion: false, ...(sidebar && { sidebar }) };
   pointer(app, "move");
-  app.debug(`resize start at ${x},${y}`);
-  app.call("dragStart", { x, y });
+  app.debug(`resize ${sidebar ? "sidebar" : ""} start at ${x},${y}`);
+  if (!sidebar) app.call("dragStart", { x, y });
+}
+
+// The edge follows the pointer, within what the terminal allows the sidebar (as wide as it can be at any preference).
+function sidebarTo(app: App, width: number) {
+  const most = chrome(app.r.width, app.r.height, true, 999).side;
+  const next = Math.max(20, Math.min(most, width));
+  if (next === app.cfg.sidebar.width) return;
+  app.setConfig({ ...app.cfg, sidebar: { ...app.cfg.sidebar, width: next } });
+  app.chromeSig = "";
+  render(app);
 }
 
 function resizeEvent(app: App, input: Extract<StdinEvent, { type: "mouse" }>) {
@@ -62,17 +83,24 @@ function resizeEvent(app: App, input: Extract<StdinEvent, { type: "mouse" }>) {
       if (e.x !== resizing.x || e.y !== resizing.y) {
         resizing.x = e.x;
         resizing.y = e.y;
-        app.call("dragMove", { x: e.x, y: e.y });
+        if (resizing.sidebar) sidebarTo(app, e.x + 1);
+        else app.call("dragMove", { x: e.x, y: e.y });
       }
     }
   }
-  if (!app.resizing) pointer(app, onDivider(app, e.x, e.y) ? "move" : "default");
+  if (!app.resizing) pointer(app, onDivider(app, e.x, e.y) || onSidebarEdge(app, e.x, e.y) ? "move" : "default");
 }
 
 export function endResize(app: App, reason: EndReason) {
-  if (!app.resizing) return;
+  const resizing = app.resizing;
+  if (!resizing) return;
   app.resizing = undefined;
   app.debug(`resize end: ${reason}`);
-  app.call("dragEnd");
+  if (resizing.sidebar) {
+    // the panes' terminals take their new size once, here: resizing them on every step of the drag would have each
+    // program redraw over and over
+    app.conn.notify("area", { area: app.area() });
+    saveSetting("sidebar", "width", app.cfg.sidebar.width).catch((e) => app.toast(`sidebar width not saved: ${e.message ?? e}`, app.th.warn));
+  } else app.call("dragEnd");
   pointer(app, "default");
 }

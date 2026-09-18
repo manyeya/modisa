@@ -86,6 +86,7 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
       { id: "mouse", title: "Mouse", html: ul([
         "Click a pane to focus it; scroll for its scrollback.",
         "Drag the border between two panes to resize them — the pointer turns into a move cursor over a border.",
+        "Drag the sidebar's edge to make it wider or narrower; the width is kept for next time.",
         "Click a tab to switch to it; click a space in the sidebar to switch spaces.",
         "Right-click a pane or a tab for split, zoom, rename, copy visible output, search, theme, sidebar and close.",
         "Menus take arrows, Enter and Escape, and close when you click outside them.",
@@ -100,7 +101,7 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
       { id: "model", title: "The model", html: ul([
         "A <strong>session</strong> holds <strong>spaces</strong>; a space holds <strong>tabs</strong>; a tab is a tree of split <strong>panes</strong>.",
         "Each pane is a real terminal: a shell, a command, or an agent.",
-        "The sidebar lists spaces and the agents in the current one, with whoever needs you first. It's <code>[sidebar] width</code> columns wide (20 to 48, at most a quarter of the terminal), and <code>[sidebar] agents</code> can hand the agent list to a plugin such as <a href=\"https://github.com/manyeya/modisa-radar\">radar</a>.",
+        "The sidebar lists spaces and the agents in the current one, with whoever needs you first. Drag its edge to make it wider or narrower (20 to 48 columns, at most a third of the terminal); the width is saved as <code>[sidebar] width</code>, and <code>[sidebar] agents</code> can hand the agent list to a plugin such as <a href=\"https://github.com/manyeya/modisa-radar\">radar</a>.",
       ]) },
       { id: "spaces", title: "Spaces", html: p(
         `A space is a named group of tabs — one per project, say. ${kbd("Ctrl+B")} ${kbd("W")} creates one; it starts in the current space's working directory. In the sidebar, click a space to switch, double-click its name (or click ✎) to rename it in place, and click ✕ to delete it (it asks first, and closes its panes). The last space can't be deleted.`,

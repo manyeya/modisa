@@ -43,7 +43,7 @@ export class App {
   search: { matches: number[]; total: number; i: number } | undefined;
   editing: { index: number; draft: string } | undefined; // a space being renamed in the sidebar
   lastSpaceClick = { index: -1, at: 0 };
-  resizing: { x: number; y: number; sawButtonMotion: boolean } | undefined; // a pane border being dragged
+  resizing: { x: number; y: number; sawButtonMotion: boolean; sidebar?: boolean } | undefined; // a pane border, or the sidebar's edge, being dragged
   pointerShape: PointerShape = "default";
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
   readonly promptIds = new Map<number, BoxRenderable>(); // open permission prompts

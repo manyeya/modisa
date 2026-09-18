@@ -203,3 +203,33 @@ test("in a short terminal (VS Code's panel), dragging a bottom pane's border nev
   resizeTerminal(ui, 140, 40);
   await ui.until("full size again", (s) => s.includes("SPACES"));
 }, 30000);
+
+test("drag the sidebar's edge to make it wider or narrower: the panes' terminals follow once, and the width is saved", async () => {
+  await freshTab("v");
+  const y = 10;
+  const edge = () => ui.lines()[y]!.indexOf("│"); // the first │ on a row is the sidebar's edge
+  const config = () => Bun.file(`${sb.root}/config/config.toml`).text().catch(() => "");
+  const width = async () => Object.values(await sizes()).slice(-2).reduce((n, [cols]) => n + cols, 0); // this tab's two panes
+  const drag = async (from: number, to: number) => {
+    ui.write(sgr(0, from, y));
+    for (let x = from; x !== to; ) { x += Math.sign(to - from); ui.write(sgr(32, x, y)); await Bun.sleep(10); }
+    ui.write(sgr(0, to, y, true));
+  };
+  const start = edge();
+  expect(start).toBe(25); // 26 columns, by default
+  const before = await width();
+
+  await drag(start, start + 14);
+  await ui.until("the edge where it was dropped", () => edge() === start + 14);
+  for (let i = 0; i < 50 && !/width = 40\b/.test(await config()); i++) await Bun.sleep(100);
+  expect(await config()).toMatch(/\[sidebar\][^[]*width = 40\b/);
+  for (let i = 0; i < 50 && (await width()) === before; i++) await Bun.sleep(100);
+  expect(await width()).toBe(before - 14); // the panes' terminals, on the server, not just what's drawn
+
+  // no wider than a third of the terminal (140 columns here), however far the pointer goes
+  await drag(start + 14, 120);
+  await ui.until("the widest it can be", () => edge() === 45);
+
+  await drag(45, start); // back, for the tests after this one
+  await ui.until("back to where it was", () => edge() === start);
+}, 30000);

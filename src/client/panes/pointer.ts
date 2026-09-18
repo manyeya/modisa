@@ -1,8 +1,8 @@
 // One place decides the pointer shape: every mouse move bubbles up to the root. Move cursor over a
-// pane border (or while resizing), hand over anything clickable, the default arrow everywhere else.
+// pane border or the sidebar's edge (or while resizing), hand over anything clickable, the default arrow elsewhere.
 import type { Renderable } from "@opentui/core";
 import type { App, PointerShape } from "../context";
-import { onDivider } from "./resize";
+import { onDivider, onSidebarEdge } from "./resize";
 
 export function pointer(app: App, shape: PointerShape) {
   if (shape === app.pointerShape) return;
@@ -13,7 +13,7 @@ export function pointer(app: App, shape: PointerShape) {
 export function installPointer(app: App) {
   app.r.root.onMouseMove = (e) => {
     if (app.resizing) return;
-    pointer(app, onDivider(app, e.x, e.y) ? "move" : clickable(app, e.target) ? "pointer" : "default");
+    pointer(app, onDivider(app, e.x, e.y) || onSidebarEdge(app, e.x, e.y) ? "move" : clickable(app, e.target) ? "pointer" : "default");
   };
 }
 
