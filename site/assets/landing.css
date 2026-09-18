@@ -63,14 +63,14 @@
 .muted { color:#7b7d86; }
 .section-heading p:not(.eyebrow) { margin-top:23px; color:var(--mist); font-size:17px; line-height:1.7; }
 .attention-feature { background:#1a1b26; color:#c0caf5; border-radius:9px; display:grid; grid-template-columns:1fr 1.1fr; gap:60px; padding:66px; overflow:hidden; }
-.feature-index { color:#acafbe; font-size:11px; }
+.feature-index { color:#acafbe; font-size:12px; }
 .feature-copy h3,.feature-panel h3 { font:500 clamp(32px,3.2vw,46px)/1.12 var(--sans); letter-spacing:-.055em; margin:32px 0 23px; }
 .feature-copy>p { max-width:345px; font-size:17px; line-height:1.8; color:#c0c1cb; }
 .text-link { font-size:14px; font-weight:500; padding-bottom:7px; border-bottom:1px solid #a3a5b370; margin-top:30px; }
 .text-link .icon { transition:transform 180ms var(--ease); }
 .text-link:hover .icon { transform:translateX(4px); }
 .feature-copy .text-link { color:#9ab8ff; }
-.feature-note { display:flex; align-items:center; gap:13px; font:11px/1.7 var(--mono); margin-top:55px; color:#b4b7c7; }
+.feature-note { display:flex; align-items:center; gap:13px; font:12px/1.7 var(--mono); margin-top:55px; color:#b4b7c7; }
 .feature-note .status-dot { color:var(--signal); }
 .attention-visual { padding:20px 0 0; }
 .activity-header { display:flex; justify-content:space-between; padding:0 4px 20px; color:#a3a5b3; font:10px var(--mono); letter-spacing:.07em; }
@@ -79,6 +79,7 @@
 .agent-avatar { display:grid; place-items:center; width:35px; height:35px; border:1px solid #777da166; border-radius:6px; font:18px var(--mono); }
 .activity-card strong { font:500 14px var(--mono); display:block; }
 .activity-card small { font:11px var(--mono); opacity:.65; display:block; margin-top:4px; }
+.activity-card.active small { opacity:1; }
 .state-badge { margin-left:auto; padding:4px 8px; border:1px solid #788ebf; border-radius:4px; font-size:11px; }
 .activity-state { margin-left:auto; color:#b7b8c5; font:11px var(--mono); }
 .permission-card { margin:-2px 11px 20px 24px; padding:22px; background:#f3f4f8; color:#272b46; border-radius:0 0 7px 7px; transform:rotate(-2deg); box-shadow:0 13px 28px #0003; }
@@ -87,7 +88,7 @@
 .permission-card code { font-size:11px; }
 .permission-response { display:flex; justify-content:space-between; gap:14px; border-top:1px solid #d1d2de; padding-top:13px; margin-top:17px; font:10px var(--mono); }
 .permission-response span:first-child { font-weight:600; }
-.visual-caption { color:#9d9fb0; text-align:center; font:10px var(--mono); margin-top:20px; }
+.visual-caption { color:#9d9fb0; text-align:center; font:12px var(--mono); margin-top:20px; }
 .feature-pair { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:24px; }
 .feature-panel { min-width:0; border:1px solid var(--line); border-radius:9px; padding:42px; display:flex; flex-direction:column; background:#efeff4; }
 .feature-panel .feature-index { color:#696c7f; }
@@ -122,12 +123,12 @@
 .restored { display:flex; gap:14px; align-items:center; margin-top:27px; padding:18px; background:#ecedf5; border-radius:5px; }
 .restored>span { display:grid; place-items:center; width:30px; height:30px; background:#7aa2f7; border-radius:50%; }
 .restored p { font-size:14px; }
-.restored small { display:block; color:#6e728a; font:10px/1.8 var(--mono); margin-top:4px; }
+.restored small { display:block; color:#5f6378; font:10px/1.8 var(--mono); margin-top:4px; }
 .start { background:#e1e9fd; padding:76px 5%; display:grid; grid-template-columns:1fr 1.1fr; gap:70px; border-top:1px solid #c3d2f7; border-bottom:1px solid #c3d2f7; scroll-margin-top:20px; }
 .start h2 { font:500 clamp(40px,4.1vw,59px)/1.08 var(--sans); letter-spacing:-.07em; margin:35px 0 24px; }
 .start-heading>p:not(.eyebrow) { font-size:17px; }
 .start .text-link { border-color:#7990c2; }
-.start-platforms { display:block; font:11px var(--mono); margin-top:55px; color:#44609a; }
+.start-platforms { display:block; font:12px var(--mono); margin-top:55px; color:#44609a; }
 .install-steps { list-style:none; padding:0; margin:6px 0 0; min-width:0; }
 .install-steps li { padding:0 0 25px; margin-bottom:22px; border-bottom:1px solid #aabbe1; }
 .install-steps li:last-child { border:0; margin:0; padding:0; }
@@ -135,7 +136,7 @@
 .step-title>span { font:11px var(--mono); color:#4361a1; }
 .step-title h3 { font-size:16px; font-weight:500; letter-spacing:-.025em; }
 .install { display:flex; align-items:center; gap:12px; background:#1a1b26; color:#c0caf5; border:1px solid #1a1b26; border-radius:5px; padding:12px; }
-.install code { display:block; flex:1; min-width:0; overflow:auto; font-size:11px; white-space:nowrap; scrollbar-width:thin; }
+.install code { display:block; flex:1; min-width:0; overflow:auto; font-size:12px; white-space:nowrap; scrollbar-width:thin; }
 .install .prompt { color:#a0a4c3; font:12px var(--mono); }
 .install .copy { flex:none; background:#292e42; border-color:#3b4261; color:#c0caf5; font-size:11px; }
 .install-steps li>p { margin-left:29px; color:#394f7d; font-size:14px; line-height:1.9; }

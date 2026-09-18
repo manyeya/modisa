@@ -10,7 +10,7 @@
  --ease:cubic-bezier(.23,1,.32,1); color-scheme:dark;
 }
 :root[data-theme="day"] {
- --bg:#f6f6f9; --bg-2:#eff0f5; --bg-3:#e8e9f2; --fg:#1a1b26; --mist:#5a5e73; --dim:#6b6d81;
+ --bg:#f6f6f9; --bg-2:#eff0f5; --bg-3:#e8e9f2; --fg:#1a1b26; --mist:#5a5e73; --dim:#63657a;
  --line:#d8d9e4; --line-2:#b5b7cb; --amber:#2e56aa; --amber-hi:#204187; --amber-ink:#ffffff; --amber-glow:rgb(61 89 161 / .07);
  --sky:#2a56b3; --sage:#565864; --code-bg:#111115; --code-fg:#e2e3ec; color-scheme:light;
 }
