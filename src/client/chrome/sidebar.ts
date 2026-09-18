@@ -1,11 +1,9 @@
 // A compact navigator: selection is a slim rail, attention is a warning signal,
 // and every list owns a measured amount of space above the pinned shortcuts.
-import { BoxRenderable, InputRenderable, InputRenderableEvents, StyledText, TextRenderable, bold, fg, t, type MouseEvent, type TextChunk } from "@opentui/core";
-import type { GitView } from "../../protocol/types";
+import { BoxRenderable, TextRenderable, bold, fg, t, type MouseEvent } from "@opentui/core";
 import type { App } from "../context";
 import { agentMark, agentTask, fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
 import { render } from "../render";
-import { deleteSpace, spaceMenu } from "../spaces";
 import { pluginUi, runPluginAction, spanText, toneColor } from "../plugin-ui";
 import { beginResize } from "../panes/resize";
 
@@ -61,19 +59,8 @@ export function drawSidebar(app: App) {
     },
   }));
   const blank = () => side.add(new BoxRenderable(r, { width: w - 1, height: 1, flexShrink: 0 }));
-  const heading = (name: string, count: number) => {
-    const columns = sidebarColumns(name, String(count), contentWidth(app));
-    side.add(new TextRenderable(r, { content: t`  ${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
-  };
-  const view = app.view!;
   const agents = app.sortedAgents();
-  const budget = sidebarBudget(height, view.workspaces.length, agents.length);
-  blank();
-  heading("SPACES", view.workspaces.length);
-  const start = Math.max(0, Math.min(view.active - 1, view.workspaces.length - budget.spaceRows));
-  view.workspaces.slice(start, start + budget.spaceRows).forEach((_space, index) => spaceRow(app, start + index));
-  if (budget.moreSpaces) action(app, side, "More spaces…", "", () => app.actions["workspace-picker"]!.run());
-  action(app, side, "New space", "+", () => app.actions["new-workspace"]!.run());
+  const budget = sidebarBudget(height, agents.length);
   blank();
   // a plugin the config names in [sidebar] agents takes the AGENTS list's place and its room, while it shows a section;
   // otherwise (not installed, stopped, nothing to show) modisa's own list is there as ever
@@ -157,105 +144,4 @@ function pluginSection(app: App, plugin: ReturnType<typeof pluginUi>[number], ro
     const content = item.spans?.length ? spanText(app, item.spans, item.tone, contentWidth(app)) : fit(item.text, contentWidth(app));
     body.add(new TextRenderable(r, { content, width: contentWidth(app), height: 1, flexShrink: 0, fg: toneColor(app, item.tone) }));
   }
-}
-
-// ---------- spaces ----------
-// Each row: the name (click = switch, double-click = rename in place, right-click = menu), with ✎ / ✕
-// shown while the pointer is on the row. Renaming swaps the row for an OpenTUI input: Enter saves,
-// Esc or clicking away cancels.
-function spaceRow(app: App, i: number) {
-  const { r, th } = app;
-  const space = app.view!.workspaces[i]!;
-  const active = i === app.view!.active;
-  const width = app.sideWidth();
-  if (app.editing?.index === i) {
-    const box = new BoxRenderable(r, { width: width - 1, height: 1, flexDirection: "row", flexShrink: 0, paddingLeft: 2, paddingRight: 1, backgroundColor: selectedBg(app) });
-    const input = new InputRenderable(r, {
-      value: app.editing.draft, flexGrow: 1, minWidth: 0,
-      textColor: th.fg, backgroundColor: th.bg, focusedBackgroundColor: th.bg, focusedTextColor: th.fg,
-    });
-    input.on(InputRenderableEvents.INPUT, () => { if (app.editing) app.editing.draft = input.value; });
-    input.on(InputRenderableEvents.ENTER, () => finishRename(app, true));
-    // clicking away cancels; a redraw that replaces this input (the draft is kept) doesn't
-    input.on("blurred", () => queueMicrotask(() => !input.isDestroyed && app.editing?.index === i && finishRename(app, false)));
-    box.add(input);
-    box.add(new TextRenderable(r, { content: " ↵", width: 2, flexShrink: 0, fg: th.dim })); // Enter saves
-    app.ui.side.add(box);
-    queueMicrotask(() => input.focus());
-    return;
-  }
-  const icons: [TextRenderable, string][] = [];
-  const body = row(app, app.ui.side, {
-    selected: active,
-    run: () => {
-      const double = app.lastSpaceClick.index === i && Date.now() - app.lastSpaceClick.at < 450;
-      app.lastSpaceClick = { index: i, at: Date.now() };
-      if (double) startRename(app, i);
-      else if (!active) app.call("selectWorkspace", { index: i });
-    },
-    context: (e) => spaceMenu(app, i, e.x, e.y),
-    hover: (on) => { for (const [node, glyph] of icons) node.content = on ? glyph : "  "; },
-  });
-  const lineWidth = Math.max(1, contentWidth(app) - 4); // the last 4 are ✎ and ✕, on hover
-  // git stops a cell short of them, so ✎ never runs into a count
-  body.add(new TextRenderable(r, { content: spaceLine(app, space.name, app.cfg.sidebar.git ? space.git : undefined, active, Math.max(1, lineWidth - 1)), width: lineWidth, flexShrink: 0, height: 1, fg: th.fg }));
-  const icon = (glyph: string, color: string, run: () => void) => {
-    const node: TextRenderable = new TextRenderable(r, {
-      content: "  ", width: 2, height: 1, flexShrink: 0, fg: th.dim,
-      onMouseDown: (e) => { e.stopPropagation(); if (!app.modal && e.button === 0) run(); },
-      onMouseOver: () => { node.fg = color; },
-      onMouseOut: () => { node.fg = th.dim; },
-    });
-    icons.push([node, glyph]);
-    body.add(node);
-  };
-  icon("✎", th.focus, () => startRename(app, i));
-  icon("✕", th.blocked, () => deleteSpace(app, i));
-}
-
-// A space's row: its name, and on the right where its focused pane's repository stands: the branch (in the done colour
-// when clean and in step with its upstream), ↑ commits to push, ↓ commits to pull, ● files changed. The repository is
-// named too when the space isn't, room permitting. Git takes what the name doesn't need, and at least 60% of the row.
-function spaceLine(app: App, name: string, git: GitView | undefined, active: boolean, width: number): StyledText {
-  const { th } = app;
-  const right: TextChunk[] = [];
-  let used = 0;
-  if (git) {
-    const room = Math.max(Math.floor(width * 0.6), width - Bun.stringWidth(name) - 1); // a short name leaves it more
-    const counts: [string, string][] = [];
-    if (git.ahead) counts.push([`↑${git.ahead}`, th.working]);
-    if (git.behind) counts.push([`↓${git.behind}`, th.warn]);
-    if (git.changes) counts.push([`●${git.changes}`, th.accent]);
-    const tail = counts.reduce((n, [s]) => n + 1 + Bun.stringWidth(s), 0);
-    const clean = !git.changes && !git.ahead && !git.behind && git.ahead !== undefined;
-    const branchRoom = room - tail - 2; // "⎇ "
-    if (branchRoom >= 3) {
-      const branch = fit(git.branch, branchRoom);
-      const repo = git.repo !== name && branchRoom - Bun.stringWidth(branch) >= Bun.stringWidth(git.repo) + 1 ? `${git.repo} ` : "";
-      right.push(fg(th.dim)(repo), fg(clean ? th.done : th.dim)(`⎇ ${branch}`));
-      used += Bun.stringWidth(repo) + 2 + Bun.stringWidth(branch);
-    }
-    for (const [s, color] of counts) if (used + 1 + Bun.stringWidth(s) <= room) (right.push(fg(th.dim)(" "), fg(color)(s)), used += 1 + Bun.stringWidth(s));
-  }
-  const left = fit(name, Math.max(1, width - used - (used ? 1 : 0)));
-  const title = fg(th.fg)(left);
-  const gap = " ".repeat(Math.max(0, width - Bun.stringWidth(left) - used));
-  return new StyledText([active ? bold(title) : title, fg(th.dim)(gap), ...right]);
-}
-
-export function startRename(app: App, index: number) {
-  const space = app.view?.workspaces[index];
-  if (!space || app.modal) return;
-  app.editing = { index, draft: space.name };
-  app.chromeSig = ""; // force the sidebar to redraw with the input
-  render(app);
-}
-
-export function finishRename(app: App, save: boolean) {
-  const edit = app.editing;
-  if (!edit) return;
-  app.editing = undefined;
-  app.chromeSig = "";
-  if (save && edit.draft.trim() && edit.draft !== app.view?.workspaces[edit.index]?.name) app.call("renameWorkspace", { index: edit.index, name: edit.draft });
-  render(app);
 }

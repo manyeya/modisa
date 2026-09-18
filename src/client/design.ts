@@ -88,14 +88,11 @@ export function tabWindow(count: number, active: number, width: number) {
 
 // Reserve the footer before assigning list rows. Agent rows always occupy exactly
 // two lines; overflow controls are part of the budget rather than drawn over it.
-export function sidebarBudget(height: number, spaces: number, agents: number) {
-  const content = Math.max(0, height - 5);
-  const spaceRows = Math.min(spaces, 6, Math.max(1, Math.floor(height / 5)), Math.max(0, content - 9));
-  const moreSpaces = spaces > spaceRows;
-  const remaining = Math.max(0, content - 6 - spaceRows - Number(moreSpaces));
+export function sidebarBudget(height: number, agents: number) {
+  const remaining = Math.max(0, height - 5 - 3); // the footer, then a blank line, the AGENTS heading and a blank line
   const moreAgents = agents * 2 > remaining;
   const agentRows = Math.min(agents, Math.max(0, Math.floor((remaining - Number(moreAgents)) / 2)));
-  return { spaceRows, moreSpaces, agentRows, moreAgents: agents > agentRows, lines: remaining }; // lines: what the agent list may use
+  return { agentRows, moreAgents: agents > agentRows, lines: remaining }; // lines: what the agent list may use
 }
 
 // Keep priority order, but never strand the focused agent behind an overflow row.

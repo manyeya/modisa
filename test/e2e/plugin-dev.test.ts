@@ -20,7 +20,7 @@ test("plugin dev runs the plugin in a throwaway session and cleans it up on exit
   const before = new Set(await throwaways());
 
   ui = new Screen(["plugin", "dev", dir], sb.env, sb.root);
-  await ui.until("the TUI", (s) => s.includes("SPACES"), 20000);
+  await ui.until("the TUI", (s) => s.includes("AGENTS"), 20000);
   const root = (await throwaways()).find((d) => !before.has(d));
   expect(root).toBeDefined();
 

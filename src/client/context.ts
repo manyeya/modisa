@@ -1,6 +1,6 @@
 // The client's shared state: renderer, connection, what the server last sent, config/theme and UI
 // state, plus the small queries every module uses. One App per TUI process; modules take it as `app`.
-import { BoxRenderable, TextRenderable, type CliRenderer, type KeyEvent } from "@opentui/core";
+import { BoxRenderable, TextRenderable, type CliRenderer, type KeyEvent, type MouseEvent } from "@opentui/core";
 import { panes as treePanes, type Rect } from "../core/layout";
 import type { Conn } from "../protocol/conn";
 import type { AgentState, View } from "../protocol/types";
@@ -13,7 +13,7 @@ import type { Manifest } from "../cli/update";
 // connect(spawn): spawn = start the server if it isn't running (the first attach, or whoever asked for a restart)
 export type ClientOptions = { session: string; connect: (spawn: boolean) => Promise<Conn>; remote?: boolean };
 export type ServerView = View & { paused: boolean };
-export type Option = { name: string; description: string; value: string };
+export type Option = { name: string; description: string; value: string; key?: string; context?: (e: MouseEvent) => void }; // key: a keycap on the right; context: its right-click menu
 // keepEscape: Escape goes to what's in the modal (a plugin popup's program), not to closing it
 export type Modal = { close: (v: any) => void; keys?: (k: KeyEvent) => boolean; resize: () => void; keepEscape?: boolean };
 export type Action = { label: string; run: () => any };
@@ -41,8 +41,6 @@ export class App {
   mode: "normal" | "copy" = "normal";
   modal: Modal | undefined;
   search: { matches: number[]; total: number; i: number } | undefined;
-  editing: { index: number; draft: string } | undefined; // a space being renamed in the sidebar
-  lastSpaceClick = { index: -1, at: 0 };
   resizing: { x: number; y: number; sawButtonMotion: boolean; sidebar?: boolean } | undefined; // a pane border, or the sidebar's edge, being dragged
   pointerShape: PointerShape = "default";
   logos: false | "whole" | "halves" = false; // agents' logos, as much of modisa's logo font as this terminal has: see ./logos.ts
@@ -53,7 +51,7 @@ export class App {
     return px && px.width > 0 && px.height > 0 ? cellEms(px, this.r.width, this.r.height) : this.cellGuess;
   }
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
-  readonly promptIds = new Map<number, BoxRenderable>(); // open permission prompts
+  readonly promptIds = new Set<number>(); // open permission prompts
   readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded
   popup: { pane: string; title: string; width?: number | string; height?: number | string } | undefined; // a plugin popup this client opened
   chromeSig = ""; // what the tab bar, sidebar and status row last drew

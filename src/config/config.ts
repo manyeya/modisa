@@ -9,11 +9,16 @@ export const CONFIG_PATH = `${CONFIG_DIR}/config.toml`;
 export type NotifyKind = "toast" | "system" | "sound" | "bell";
 export type Policy = "allow" | "ask" | "deny";
 export type IndicatorStyle = "symbols" | "dots" | "letters";
+export type BorderStyle = "single" | "rounded" | "double" | "heavy";
 
 export type Config = {
   prefix: string;
   theme: string;
-  sidebar: { visible: boolean; width: number; agents: string; git: boolean; logos: "auto" | "on" | "off" }; // agents: a plugin whose section replaces the AGENTS list
+  mouse: { hover: boolean }; // hover: the pointer resting on a list row selects it
+  sidebar: { visible: boolean; width: number; agents: string; logos: "auto" | "on" | "off" }; // agents: a plugin whose section replaces the AGENTS list
+  status: { agents: boolean; panes: boolean; theme: boolean }; // what the status row shows besides the buttons
+  git: { status: boolean; repo: boolean; counts: boolean; changes: boolean }; // the active space's repository in the status row
+  panes: { border: BorderStyle };
   notify: Record<NotifyEvent, NotifyKind[]>;
   sound: { volume: number } & Record<NotifyEvent, string>; // a cuelume sound name per event
   indicators: { style: IndicatorStyle; tab: boolean; pane: boolean; sidebar: boolean };
@@ -30,7 +35,11 @@ export type Config = {
 export const DEFAULTS: Config = {
   prefix: "C-b",
   theme: "ion",
-  sidebar: { visible: true, width: 26, agents: "", git: true, logos: "auto" },
+  mouse: { hover: true },
+  sidebar: { visible: true, width: 26, agents: "", logos: "auto" },
+  status: { agents: true, panes: true, theme: false },
+  git: { status: true, repo: true, counts: true, changes: true },
+  panes: { border: "single" },
   notify: { blocked: ["toast", "system", "sound"], done: ["toast"], working: [] },
   sound: { volume: 0.7, blocked: "chime", done: "success", working: "loading" },
   indicators: { style: "symbols", tab: true, pane: true, sidebar: true },
@@ -52,8 +61,24 @@ theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, 
 visible = true
 width = 26                  # 20 to 48 columns, at most a third of the terminal; dragging its edge sets it
 agents = ""                 # a plugin whose sidebar section takes the AGENTS list's place ("radar"); "" keeps modisa's
-git = true                  # each space's branch, ↑ to push, ↓ to pull, ● changed files
 logos = "auto"              # agents' logos where the terminal can show them (modisa logos); "on", or "off" for plain marks
+
+[status]                    # the bottom row, besides its buttons
+agents = true               # how many agents are working and need you
+panes = true                # how many panes this tab has
+theme = false               # the theme's name (click it to change theme)
+
+[git]                       # the active space's repository, on the right of the status row
+status = true               # its branch (green when clean and in step with its upstream)
+repo = true                 # the repository's name before it
+counts = true               # ↑ commits to push, ↓ commits to pull
+changes = true              # ● files changed
+
+[panes]
+border = "single"           # single, rounded, double or heavy
+
+[mouse]                     # clicks, drags, the wheel and right-click always work (Shift-drag selects text natively)
+hover = true                # the pointer resting on a row of a menu, picker or the settings page selects it
 
 [notify]                    # toast, system, sound, bell — when an agent you're not looking at…
 blocked = ["toast", "system", "sound"]   # …needs you
@@ -114,6 +139,11 @@ export async function loadConfig(): Promise<Config> {
       ...DEFAULTS,
       ...user,
       sidebar: { ...DEFAULTS.sidebar, ...user.sidebar },
+      status: { ...DEFAULTS.status, ...user.status },
+      // [sidebar] git was where turning git off lived before it moved to the status row
+      git: { ...DEFAULTS.git, ...(user.sidebar?.git === false && { status: false }), ...user.git },
+      panes: { ...DEFAULTS.panes, ...user.panes },
+      mouse: { ...DEFAULTS.mouse, ...user.mouse },
       notify: { ...DEFAULTS.notify, ...user.notify },
       sound: { ...DEFAULTS.sound, ...user.sound },
       indicators: { ...DEFAULTS.indicators, ...user.indicators },

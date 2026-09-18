@@ -10,7 +10,7 @@ let ui: Screen;
 beforeAll(async () => {
   await Bun.$`mkdir -p ${sb.root}`.quiet();
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("first pane", (s) => s.includes("SPACES") && borders(s) === 1);
+  await ui.until("first pane", (s) => s.includes("AGENTS") && borders(s) === 1);
 }, 20000);
 
 afterAll(async () => {
@@ -21,20 +21,20 @@ afterAll(async () => {
 
 test("command palette opens, filters and runs", async () => {
   ui.write("\x02:");
-  await ui.until("palette", (s) => s.includes("commands") && s.includes("Split right"));
+  await ui.until("palette", (s) => s.includes("Type to search") && s.includes("Split right"));
   ui.write("new tab");
-  await ui.until("filtered", (s) => s.includes("commands: new tab"));
+  await ui.until("filtered", (s) => /Commands\s+\d+ of \d+/.test(s) && s.includes("New tab"));
   ui.write("\r");
   await ui.until("new tab opened", (s) => s.includes(" 2:"));
 }, 15000);
 
 test("rename tab and pane from the keyboard", async () => {
   ui.write("\x02,");
-  await ui.until("rename prompt", (s) => s.includes("rename tab"));
+  await ui.until("rename prompt", (s) => s.includes("Rename tab"));
   ui.write("work\r");
   await ui.until("tab renamed", (s) => s.includes("2:work"));
   ui.write("\x02.");
-  await ui.until("pane rename prompt", (s) => s.includes("rename pane"));
+  await ui.until("pane rename prompt", (s) => s.includes("Rename pane"));
   ui.write("scratch\r");
   expect(await cli("wait", "@scratch", "--match", ".", "--timeout", "5")).toBeTruthy();
 }, 15000);
@@ -49,7 +49,7 @@ test("copy mode and search", async () => {
   ui.write("q");
   await ui.until("back to normal", (s) => s.includes("line-199"));
   ui.write("\x02/");
-  await ui.until("search prompt", (s) => s.includes("search"));
+  await ui.until("search prompt", (s) => s.includes("Search scrollback"));
   ui.write("line-5\r");
   await ui.until("match found", (s) => /match \d+\/\d+/.test(s));
   ui.write("q");

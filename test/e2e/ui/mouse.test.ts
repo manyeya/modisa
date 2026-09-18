@@ -27,7 +27,7 @@ async function freshTab(split: "v" | "-") {
 beforeAll(async () => {
   await Bun.$`mkdir -p ${sb.root}`.quiet();
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("dashboard", (s) => s.includes("SPACES") && s.includes("+ agent"));
+  await ui.until("dashboard", (s) => s.includes("AGENTS") && s.includes("+ agent"));
   await Bun.sleep(300); // let the renderer finish capability negotiation and the first hit grid
 }, 20000);
 
@@ -50,7 +50,7 @@ test("right-click opens actions; keyboard activates split; outside click dismiss
   await ui.until("menu split", (s) => borders(s) === 2 && !s.includes("Copy visible output"));
   expect(JSON.parse(await cli("pane", "list", "--json"))).toHaveLength(2);
   click(ui, 2, 138, 36);
-  await ui.until("menu clamped at edge", (s) => s.includes("Close pane") && s.includes("esc dismiss"));
+  await ui.until("menu clamped at edge", (s) => s.includes("Close pane") && s.includes("esc close"));
   click(ui, 0, 2, 1);
   await ui.until("outside dismissal", (s) => !s.includes("Copy visible output"));
   ui.write("echo menu-input-ok\r");
@@ -59,16 +59,16 @@ test("right-click opens actions; keyboard activates split; outside click dismiss
 
 test("small terminals focus one pane, resize its PTY, and restore splits", async () => {
   resizeTerminal(ui, 44, 14);
-  await ui.until("compact focus", (s) => !s.includes("SPACES") && borders(s) === 1);
+  await ui.until("compact focus", (s) => !s.includes("AGENTS") && borders(s) === 1);
   const panes = JSON.parse(await cli("pane", "list", "--json"));
   expect(panes.some((p: any) => p.cols === 42 && p.rows === 10)).toBe(true);
   ui.write("\x02e");
   await ui.until("compact context menu", (s) => s.includes("Focus pane"));
   resizeTerminal(ui, 30, 9);
-  await ui.until("resized menu", (s) => s.includes("esc dismiss"));
+  await ui.until("resized menu", (s) => s.includes("esc close"));
   ui.write("\x1b");
   resizeTerminal(ui, 140, 40);
-  await ui.until("restored split tree", (s) => s.includes("SPACES") && borders(s) === 2);
+  await ui.until("restored split tree", (s) => s.includes("AGENTS") && borders(s) === 2);
 }, 15000);
 
 test("drag the border between panes to resize them, side by side and stacked, even with a fast drag", async () => {
@@ -201,7 +201,7 @@ test("in a short terminal (VS Code's panel), dragging a bottom pane's border nev
   await Bun.sleep(500);
   expect(borders(ui.text())).toBe(2);
   resizeTerminal(ui, 140, 40);
-  await ui.until("full size again", (s) => s.includes("SPACES"));
+  await ui.until("full size again", (s) => s.includes("AGENTS"));
 }, 30000);
 
 test("drag the sidebar's edge to make it wider or narrower: the panes' terminals follow once, and the width is saved", async () => {

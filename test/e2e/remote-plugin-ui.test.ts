@@ -71,7 +71,7 @@ runPlugin(async (modisa) => {
   await Bun.$`chmod +x ${sb.root}/bin/fakessh`;
   await Bun.write(`${CLIENT}/config/config.toml`, `remote_command = "bun ${MAIN}"\ntheme = "nord"\n\n[plugin_keys]\n"rui-demo.mark" = "Y"\n`);
   remote = new Screen(["-s", S, "--remote", "ssh://devbox"], { ...sb.env, MODISA_DIR: `${CLIENT}/state`, MODISA_CONFIG_DIR: `${CLIENT}/config`, MODISA_SSH: `${sb.root}/bin/fakessh` }, sb.root);
-  await remote.until("the remote client", (s) => s.includes("SPACES") && s.includes("+ agent"), 20000);
+  await remote.until("the remote client", (s) => s.includes("AGENTS") && s.includes("+ agent"), 20000);
 }, 60000);
 
 afterAll(async () => {
@@ -87,7 +87,7 @@ test("a remote client draws plugins' status and sidebar, runs a palette action, 
   await ready(remote);
   await remote.until("the plugin's status and sidebar section", (s) => s.includes("rui-demo: ") && s.includes("Remote queue"), 10000);
   remote.write("\x02:");
-  await remote.until("the palette", (s) => s.includes("commands"));
+  await remote.until("the palette", (s) => s.includes("Commands") && s.includes("Type to search"));
   remote.write("Say hello");
   await remote.until("the plugin's action", (s) => s.includes("rui-demo: Say hello"));
   remote.write("\r");
@@ -98,8 +98,7 @@ test("a remote client draws plugins' status and sidebar, runs a palette action, 
 
 test("the remote client draws in its own theme and binds plugin keys with its own [plugin_keys]; the action runs on the server's side", async () => {
   await ready(remote);
-  expect(remote.text()).toContain("◐ nord"); // its theme, not the server's gruvbox
-  expect(remote.text()).not.toContain("gruvbox");
+  await currentTheme(remote, "nord"); // its theme, not the server's gruvbox
   const before = (await marks()).length;
   remote.write("\x02Y"); // its remap
   await untilMarks(before + 1);
@@ -118,7 +117,7 @@ test("a second client with its own remap uses its own binding, without changing 
   await Bun.write(`${LOCAL}/config/config.toml`, `theme = "tokyonight"\n\n[plugin_keys]\n"rui-demo.mark" = "Q"\n`);
   local ??= new Screen(["-s", S], { ...sb.env, MODISA_CONFIG_DIR: `${LOCAL}/config` }, sb.root);
   await ready(local);
-  expect(local.text()).toContain("◐ tokyonight");
+  await currentTheme(local, "tokyonight");
   const before = (await marks()).length;
   local.write("\x02Q");
   await untilMarks(before + 1);
@@ -172,3 +171,11 @@ test("after the connection drops, the reconnect snapshot brings the UI back, wit
   expect(await apply(["ui.status.set", { id: "count", text: "2 waiting", tone: "warn" }])).toEqual(["ok"]); // and it's live again
   await remote.until("a new update", (s) => s.includes("rui-demo: 2 waiting"));
 }, 60000);
+
+// the theme picker opens on the theme in use
+async function currentTheme(screen: Screen, name: string) {
+  screen.write("\x02t");
+  await screen.until(`the theme picker on ${name}`, (s) => s.includes(`◉ ${name}`));
+  screen.write("\x1b");
+  await screen.until("the picker closed", (s) => !s.includes(`◉ ${name}`));
+}

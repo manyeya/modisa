@@ -25,7 +25,7 @@ beforeAll(async () => {
   await Bun.write(`${work}/notes.md`, "untracked\n");
   await Bun.write(`${sb.root}/config/config.toml`, "[sidebar]\nwidth = 40\n");
   ui = new Screen(["-s", S], sb.env, work);
-  await ui.until("dashboard", (s) => s.includes("SPACES") && s.includes("+ agent"));
+  await ui.until("dashboard", (s) => s.includes("AGENTS") && s.includes("+ agent"));
 }, 30000);
 
 afterAll(async () => {
@@ -34,13 +34,13 @@ afterAll(async () => {
   await sb.cleanup();
 });
 
-test("a space shows its focused pane's repository: its branch, ↑ to push, ↓ to pull and ● changed; none outside one", async () => {
+test("the status bar shows the active space's repository: its branch, ↑ to push, ↓ to pull and ● changed; none outside one", async () => {
   await Bun.sleep(6000); // a poll or more: the session starts outside any repository
   expect(ui.text()).not.toContain("⎇");
   ui.write(`cd ${work}\r`);
-  await ui.until("the space's git, once its pane is in the repository", (s) => s.includes("⎇ main ↑2 ↓1 ●1"), 15000);
+  await ui.until("the space's git, once its pane is in the repository", (s) => s.includes("work ⎇ main ↑2 ↓1 ●1"), 15000);
   ui.write(`cd ${sb.root}\r`);
-  await ui.until("nothing once it's out again", (s) => s.includes("SPACES") && !s.includes("⎇"), 15000);
+  await ui.until("nothing once it's out again", (s) => s.includes("AGENTS") && !s.includes("⎇"), 15000);
 }, 45000);
 
 test("an agent shows its mark, its name and, under it, the task its terminal title names", async () => {

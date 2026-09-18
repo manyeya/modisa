@@ -34,7 +34,7 @@ test("install puts the font in and tells each terminal; the TUI draws the logos;
   // told to (this test's terminal is no terminal modisa knows), the sidebar draws an agent's logo
   await Bun.write(`${sb.root}/config/config.toml`, `[sidebar]\nlogos = "on"\n`);
   const ui = new Screen(["-s", "logos"], { ...sb.env, ...env }, sb.root);
-  await ui.until("dashboard", (s) => s.includes("SPACES"), 20000);
+  await ui.until("dashboard", (s) => s.includes("AGENTS"), 20000);
   const id = (await cli("pane", "split", "--name", "review")).out.trim();
   await cli("pane", "run", id, "sleep 600");
   for (let i = 0; i < 10; i++) {
@@ -63,7 +63,7 @@ test("install puts the font in and tells each terminal; the TUI draws the logos;
 test("the TUI installs them the first time, but never again once they've been taken out", async () => {
   await Bun.write(`${sb.root}/config/config.toml`, "");
   const ui = new Screen(["-s", "logos"], { ...sb.env, ...env }, sb.root);
-  await ui.until("dashboard", (s) => s.includes("SPACES"), 20000);
+  await ui.until("dashboard", (s) => s.includes("AGENTS"), 20000);
   await Bun.sleep(2000);
   ui.close();
   expect(await Bun.file(fontAt).exists()).toBe(false); // uninstalled above: stays out

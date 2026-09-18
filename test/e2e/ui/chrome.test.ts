@@ -8,9 +8,9 @@ const S = "chrome";
 let ui: Screen;
 
 beforeAll(async () => {
-  await Bun.write(`${sb.root}/config/config.toml`, '# keep my config\ntheme = "ion"\n[sidebar]\nvisible = true\n');
+  await Bun.write(`${sb.root}/config/config.toml`, '# keep my config\ntheme = "ion"\n[sidebar]\nvisible = true\n[status]\ntheme = true\n'); // the status row names the theme
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("dashboard", (s) => s.includes("SPACES") && s.includes("+ agent") && s.includes("sidebar"));
+  await ui.until("dashboard", (s) => s.includes("AGENTS") && s.includes("+ agent") && s.includes("sidebar"));
   await Bun.sleep(300); // let the renderer finish capability negotiation and the first hit grid
 }, 20000);
 
@@ -23,28 +23,28 @@ afterAll(async () => {
 test("the sidebar hides and returns from its button in the status row", async () => {
   const bottom = () => ui.lines().length - 1;
   click(ui, 0, ui.lines().at(-1)!.indexOf("sidebar"), bottom());
-  await ui.until("sidebar hidden", (s) => !s.includes("SPACES") && s.includes("sidebar"));
+  await ui.until("sidebar hidden", (s) => !s.includes("AGENTS") && s.includes("sidebar"));
   click(ui, 0, ui.lines().at(-1)!.indexOf("sidebar"), bottom());
-  await ui.until("sidebar shown", (s) => s.includes("SPACES"));
+  await ui.until("sidebar shown", (s) => s.includes("AGENTS"));
 }, 15000);
 
 test("theme previews cancel, save, preserve config and survive reattach", async () => {
   ui.write("\x02t");
-  await ui.until("settings on themes", (s) => s.includes("integrations") && s.includes("dracula"));
+  await ui.until("settings on themes", (s) => s.includes("Integrations") && s.includes("dracula"));
   ui.write("\x1b[B");
   await ui.until("theme preview", (s) => s.split("\n").at(-1)!.includes("tokyonight"));
   ui.write("\x1b");
-  await ui.until("theme preview cancelled", (s) => !s.includes("integrations") && s.split("\n").at(-1)!.includes("ion"));
+  await ui.until("theme preview cancelled", (s) => !s.includes("Integrations") && s.split("\n").at(-1)!.includes("ion"));
   ui.write("\x02t\x1b[B\r");
   await ui.until("theme saved", (s) => s.includes("Theme saved: tokyonight"));
   const config = await Bun.file(`${sb.root}/config/config.toml`).text();
   expect(config).toContain("# keep my config");
   expect((Bun.TOML.parse(config) as any).theme).toBe("tokyonight");
   ui.write("\x1b"); // ↵ applies and keeps the page open; esc keeps what was applied
-  await ui.until("settings closed on the saved theme", (s) => !s.includes("integrations") && s.split("\n").at(-1)!.includes("tokyonight"));
+  await ui.until("settings closed on the saved theme", (s) => !s.includes("Integrations") && s.split("\n").at(-1)!.includes("tokyonight"));
   ui.write("\x02d");
   await ui.proc.exited;
   ui.pty.close();
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("persisted theme", (s) => s.includes("tokyonight") && s.includes("SPACES"));
+  await ui.until("persisted theme", (s) => s.includes("tokyonight") && s.includes("AGENTS"));
 }, 15000);

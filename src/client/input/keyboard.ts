@@ -1,10 +1,9 @@
-// Keys, in priority order: cancel a resize or inline rename, the open modal, copy mode, then the
+// Keys, in priority order: cancel a resize, the open modal, copy mode, then the
 // prefix (Ctrl+B by default) followed by a binding. Everything else goes to the focused pane.
 import type { App } from "../context";
 import { render } from "../render";
 import { endResize } from "../panes/resize";
 import { pointer } from "../panes/pointer";
-import { finishRename } from "../chrome/sidebar";
 import { bindings, keyName } from "./bindings";
 import { copyKey } from "./copy-mode";
 import { pluginKey } from "../plugin-ui";
@@ -15,10 +14,6 @@ export function installKeyboard(app: App) {
       k.preventDefault();
       endResize(app, "escape");
       return pointer(app, "default");
-    }
-    if (app.editing && k.name === "escape") {
-      k.preventDefault();
-      return finishRename(app, false);
     }
     const modal = app.modal;
     if (modal) {

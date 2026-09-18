@@ -7,7 +7,7 @@ export function contextMenu(app: App, pane: string, x: number, y: number) {
   if (app.modal || !app.view) return;
   const p = app.info(pane);
   if (!p) return;
-  menu(app, `PANE / ${p.name ? "@" + p.name : p.title}`, [
+  menu(app, p.name ? "@" + p.name : p.title, [
     { name: "Focus pane", key: "Enter", action: "focus" },
     { name: "Split right", key: "v", action: "split-right" },
     { name: "Split down", key: "-", action: "split-down" },

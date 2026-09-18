@@ -12,7 +12,6 @@
 .tui-side p { padding: 1px 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tui-label { color: var(--t-dim); font-weight: 700; margin-top: 10px; }
 .tui-label:first-child { margin-top: 0; }
-.tui-row.sel { background: #232538; font-weight: 700; }
 .tui-agents { display: flex; flex-direction: column; }
 .tui-agent { padding: 3px 16px; transition: background 300ms; }
 .tui-agent b { font-weight: 700; }
@@ -57,9 +56,9 @@
 .tui-toast.done { background: var(--t-green); }
 
 
-/* the sidebar's git, per space: branch (green when clean and in step), ↑ to push, ↓ to pull, ● changed */
-.tui-side .tui-row { display: flex; justify-content: space-between; gap: 10px; }
-.tui-git { color: var(--t-dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+/* the active space's git, in the status row: branch (green when clean and in step), ↑ to push, ↓ to pull, ● changed */
+.tui-status .seg.tui-git { color: var(--t-dim); }
+.tui-status .seg.tui-git b { color: var(--t-fg); font-weight: 400; }
 .tui-git.clean { color: #9ece6a; }
 .tui-git i { font-style: normal; }
 .tui-git .up { color: var(--t-blue); } .tui-git .down { color: var(--t-amber); } .tui-git .chg { color: #bb9af7; }

@@ -11,7 +11,7 @@ let ui: Screen;
 beforeAll(async () => {
   await Bun.$`mkdir -p ${sb.root}`.quiet();
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("first pane", (s) => s.includes("SPACES") && borders(s) === 1);
+  await ui.until("first pane", (s) => s.includes("AGENTS") && borders(s) === 1);
 }, 20000);
 
 afterAll(async () => {

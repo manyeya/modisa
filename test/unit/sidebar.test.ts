@@ -3,17 +3,12 @@ import { sidebarAgents, sidebarBudget, sidebarColumns } from "../../src/client/d
 
 test("sidebar lists leave the footer and bottom spacing clear at every supported height", () => {
   for (const height of [20, 22, 30, 38, 58]) {
-    for (const spaces of [1, 3, 6, 30]) {
-      for (const agents of [0, 1, 3, 30]) {
-        const b = sidebarBudget(height, spaces, agents);
-        const rows = 6 + b.spaceRows + Number(b.moreSpaces) + (agents ? b.agentRows * 2 : 2) + Number(b.moreAgents);
-        expect(rows).toBeLessThanOrEqual(height - 5);
-        expect(b.spaceRows).toBeGreaterThanOrEqual(1);
-        expect(b.spaceRows).toBeLessThanOrEqual(6);
-        if (agents) expect(b.agentRows).toBeGreaterThanOrEqual(1);
-        expect(b.moreSpaces).toBe(spaces > b.spaceRows);
-        expect(b.moreAgents).toBe(agents > b.agentRows);
-      }
+    for (const agents of [0, 1, 3, 30]) {
+      const b = sidebarBudget(height, agents);
+      const rows = 3 + (agents ? b.agentRows * 2 : 2) + Number(b.moreAgents);
+      expect(rows).toBeLessThanOrEqual(height - 5);
+      if (agents) expect(b.agentRows).toBeGreaterThanOrEqual(1);
+      expect(b.moreAgents).toBe(agents > b.agentRows);
     }
   }
 });

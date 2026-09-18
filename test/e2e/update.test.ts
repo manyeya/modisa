@@ -78,7 +78,7 @@ test("the TUI shows the ↑ badge for a newer release, and none without one", as
   manifest.version = "0.0.0"; // older than this checkout
   await Bun.file(`${sb.root}/state/update.json`).delete().catch(() => {});
   ui = new Screen(["-s", "upd"], env(`http://localhost:${server.port}/manifest.json`), sb.root);
-  await ui.until("no badge", (s) => s.includes("SPACES"));
+  await ui.until("no badge", (s) => s.includes("AGENTS"));
   await Bun.sleep(2500);
   expect(ui.lines().at(-1)).not.toContain("↑");
   await sb.cli("upd", ["kill", "upd"]);

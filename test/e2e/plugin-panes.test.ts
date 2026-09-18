@@ -25,7 +25,7 @@ const connected = async (name: string, session = S) => {
 async function attach(session = S, size?: { cols: number; rows: number }) {
   const ui = new Screen(["-s", session], sb.env, sb.root, size?.cols, size?.rows);
   screens.push(ui);
-  await ui.until("attached", (s) => (size ? borders(s) > 0 : s.includes("SPACES")), 20000); // a small terminal may hide the sidebar
+  await ui.until("attached", (s) => (size ? borders(s) > 0 : s.includes("AGENTS")), 20000); // a small terminal may hide the sidebar
   return ui;
 }
 // a session of its own: the linked plugins start in it

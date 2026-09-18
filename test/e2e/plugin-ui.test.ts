@@ -142,7 +142,7 @@ test("the TUI draws it, runs a palette action and shows a plugin toast, attribut
   expect(await apply(["ui.status.set", { id: "count", text: "2 need you", tone: "warn", action: "hello" }])).toEqual(["ok"]);
 
   screen.write("\x02:"); // prefix, then the command palette
-  await screen.until("the palette", (s) => s.includes("commands"));
+  await screen.until("the palette", (s) => s.includes("Commands") && s.includes("Type to search"));
   screen.write("Say hello");
   await screen.until("the plugin's action in the palette", (s) => s.includes("ui-demo: Say hello"));
   screen.write("\r");

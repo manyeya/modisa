@@ -17,7 +17,7 @@ beforeAll(async () => {
     `[[plugin]]\nrun = "echo $MODISA_SOCKET > ${sb.root}/plugin.out"\n\n[[plugin]]\nrun = "bun ${EXAMPLE} >> ${sb.root}/notifier.log 2>&1"\n`,
   );
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("attached", (s) => s.includes("SPACES"), 15000);
+  await ui.until("attached", (s) => s.includes("AGENTS"), 15000);
 }, 30000);
 
 afterAll(async () => {

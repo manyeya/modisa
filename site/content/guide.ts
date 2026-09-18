@@ -56,7 +56,7 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
     slug: "quick-start", group: "Start", title: "Quick start",
     description: "Open a session, start two agents, and watch modisa tell you which one needs you.",
     sections: [
-      { id: "open", title: "Open a session", html: code("sh", "modisa") + p(`That attaches the <em>default</em> session, starting its server if needed. You get a shell in a pane, the sidebar on the left (spaces and agents) and the status row at the bottom. Every command starts with the prefix ${kbd("Ctrl+B")}.`) },
+      { id: "open", title: "Open a session", html: code("sh", "modisa") + p(`That attaches the <em>default</em> session, starting its server if needed. You get a shell in a pane, the sidebar on the left (the agents in this space) and the status row at the bottom. Every command starts with the prefix ${kbd("Ctrl+B")}.`) },
       { id: "agents", title: "Start some agents", html: ol([
         `${kbd("Ctrl+B")} ${kbd("a")} opens the agent picker. Pick one: it starts in a new pane.`,
         `Or split with ${kbd("Ctrl+B")} ${kbd("v")} and run ${c("claude")}, ${c("codex")} or any other agent by hand. Modisa recognises it from its process either way.`,
@@ -87,11 +87,12 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
         "Click a pane to focus it; scroll for its scrollback.",
         "Drag the border between two panes to resize them — the pointer turns into a move cursor over a border.",
         "Drag the sidebar's edge to make it wider or narrower; the width is kept for next time.",
-        "Click a tab to switch to it; click a space in the sidebar to switch spaces.",
+        "Click a tab to switch to it; click the space's name at the top left to switch spaces.",
         "Right-click a pane or a tab for split, zoom, rename, copy visible output, search, theme, sidebar and close.",
-        "Menus take arrows, Enter and Escape, and close when you click outside them.",
+        "Every menu, picker and dialog works with the mouse: the pointer selects, a click chooses, the wheel scrolls, a click outside closes.",
+        "If the pointer resting on a row shouldn't select it, turn off select on hover on the settings page (general), or set <code>[mouse] hover = false</code>. Shift-drag (Option-drag in iTerm) selects text the terminal's own way.",
       ]) + p("Copying uses OSC 52, so it reaches your clipboard even over ssh in terminals that support it.") },
-      { id: "palette", title: "Command palette", html: p(`${kbd("Ctrl+B")} ${kbd(":")} lists every action by name, including the ones without a key: restart the server, edit config.toml, update modisa, message log, and more.`) },
+      { id: "palette", title: "Command palette", html: p(`${kbd("Ctrl+B")} ${kbd(":")} lists every action by name, including the ones without a key: restart the server, edit config.toml, update modisa, message log, and more. Type to search it; every picker and menu has the same search.`) },
     ],
   },
   {
@@ -101,13 +102,13 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
       { id: "model", title: "The model", html: ul([
         "A <strong>session</strong> holds <strong>spaces</strong>; a space holds <strong>tabs</strong>; a tab is a tree of split <strong>panes</strong>.",
         "Each pane is a real terminal: a shell, a command, or an agent.",
-        "The sidebar lists spaces and the agents in the current one, with whoever needs you first: each agent with its logo in its brand colour and, under its name, the task its terminal title names.",
+        "The sidebar lists the agents in the current space, whoever needs you first: each agent with its logo in its brand colour and, under its name, the task its terminal title names.",
         "The logos come from a small font modisa installs the first time it starts (in your user font folder), telling Ghostty, kitty and VS Code where to find it; restart the terminal once to see them. <code>modisa logos</code> says where they stand, <code>modisa logos uninstall</code> takes them out, and a terminal modisa doesn't recognise shows plain marks unless <code>[sidebar] logos = \"on\"</code>.",
-        "Each space shows where its focused pane's repository stands: the branch (green when clean and in step with its upstream), <strong>↑</strong> commits to push, <strong>↓</strong> commits to pull (as of your last fetch: modisa never fetches), and <strong>●</strong> files changed. It follows the pane when you <code>cd</code>; <code>[sidebar] git = false</code> turns it off.",
+        "The status row shows where the active space's focused pane's repository stands: its name, the branch (green when clean and in step with its upstream), <strong>↑</strong> commits to push, <strong>↓</strong> commits to pull (as of your last fetch: modisa never fetches), and <strong>●</strong> files changed. It follows the pane when you <code>cd</code>; each part can be turned off in <code>[git]</code> or the settings page.",
         "Drag the sidebar's edge to make it wider or narrower (20 to 48 columns, at most a third of the terminal); the width is saved as <code>[sidebar] width</code>, and <code>[sidebar] agents</code> can hand the agent list to a plugin such as <a href=\"https://github.com/manyeya/modisa-radar\">radar</a>.",
       ]) },
       { id: "spaces", title: "Spaces", html: p(
-        `A space is a named group of tabs — one per project, say. ${kbd("Ctrl+B")} ${kbd("W")} creates one; it starts in the current space's working directory. In the sidebar, click a space to switch, double-click its name (or click ✎) to rename it in place, and click ✕ to delete it (it asks first, and closes its panes). The last space can't be deleted.`,
+        `A space is a named group of tabs — one per project, say. ${kbd("Ctrl+B")} ${kbd("W")} creates one; it starts in the current space's working directory. ${kbd("Ctrl+B")} ${kbd("w")}, or a click on the space's name at the top left, lists them to switch between; right-click one there to rename or delete it (deleting asks first, and closes its panes). ${kbd("$")} and ${kbd("&")} do the same for the current space. The last space can't be deleted.`,
       ) },
       { id: "small", title: "Small terminals", html: p(
         "The sidebar hides below 100 columns or 22 rows. If a split would get too small to use, the focused pane fills the space instead; widen the terminal and the splits come back. Tabs that don't fit scroll, keeping the active one visible.",
@@ -150,15 +151,18 @@ ssh -T -p 2222 me@build-01 modisa proxy -s api    # …and ssh://me@build-01:222
   },
   {
     slug: "settings", group: "Using modisa", title: "Settings",
-    description: "Themes, indicators, sounds, alerts, pane labels and integrations, from one page.",
+    description: "Everything modisa lets you change, searchable, from one page.",
     sections: [
-      { id: "page", title: "The settings page", html: p(`${kbd("Ctrl+B")} ${kbd("s")}, or ⚙ settings in the sidebar. Tab switches section, ↑↓ or the pointer selects, ←→ changes a value, Enter or a click applies, Esc closes. Every change applies at once and is saved to ${c("~/.config/modisa/config.toml")}, keeping your comments.`) },
+      { id: "page", title: "The settings page", html: p(`${kbd("Ctrl+B")} ${kbd("s")}, or ⚙ settings in the sidebar. The sections run down the side; type to search every one of them at once. Tab or a click switches section, ↑↓ or the pointer selects, ←→ changes a value, Enter, space or a click applies, Esc closes. The line under the list says what the selected setting does. Every change applies at once and is saved to ${c("~/.config/modisa/config.toml")}, keeping your comments.`) },
       { id: "sections", title: "Sections", html: table(["Section", "What it sets"], [
-        ["theme", "Ion, Tokyo Night, Catppuccin Mocha, Gruvbox, Nord, Dracula — previewed live."],
+        ["theme", "Ion, Tokyo Night, Catppuccin Mocha, Gruvbox, Nord, Dracula and the Bearded themes — previewed live."],
+        ["general", "The prefix key, select on hover, updates (and their channel), and the config file itself."],
+        ["layout", "The sidebar (shown, width, logos, which list it shows), what the status row shows, and pane borders."],
+        ["git", "The repository name, branch, ↑↓ commit counts and ● changed files in the status row, each on or off."],
         ["indicators", "The state glyphs (symbols ! ◆ ✓ ○, dots or letters) and where they show: tab badge, pane border, sidebar."],
         ["sound", `What plays when an agent needs you, is done, or starts working — 17 sounds from <a href="https://cuelume.dev">cuelume</a>, or off — and the volume.`],
-        ["toasts", "Toast, system notification and terminal bell, per event."],
-        ["pane labels", "Agent and state in the border title."],
+        ["alerts", "Toast, system notification and terminal bell, per event."],
+        ["agents", "What an agent may do to panes it didn't start (allow, ask or deny), and how much agents may message each other."],
         ["integrations", `Every agent's integration: installed, update available, available, not found. See <a href="../integrations/">Integrations</a>.`],
       ]) + note("Alerts are for agents you're not looking at", "The focused pane never alerts; a background agent that blocks or finishes does.") },
     ],

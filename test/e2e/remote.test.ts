@@ -15,7 +15,7 @@ test("--remote attaches through ssh running `modisa proxy` on the far side", asy
   await Bun.$`chmod +x ${sb.root}/bin/fakessh`;
   await Bun.write(`${sb.root}/config/config.toml`, `remote_command = "bun ${MAIN}"\n`);
   const remote = new Screen(["-s", "remote", "--remote", "ssh://devbox"], { ...sb.env, MODISA_SSH: `${sb.root}/bin/fakessh` }, sb.root);
-  await remote.until("remote client", (s) => s.includes("SPACES") && s.includes("+ agent"), 15000);
+  await remote.until("remote client", (s) => s.includes("AGENTS") && s.includes("+ agent"), 15000);
   remote.write("echo over-ssh\r");
   await remote.until("remote shell output", (s) => s.includes("over-ssh"));
   remote.write("\x02d");

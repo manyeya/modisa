@@ -52,7 +52,7 @@ async function fixture(name: string, drop: "attach" | "replay" | "adapters", rec
 for (const stage of ["attach", "replay"] as const) test(`a dropped ${stage} request reconnects without an uncaught error`, async () => {
   const f = await fixture(`recover-${stage}`, stage, true);
   try {
-    await f.ui.until("reconnected", (s) => s.includes("reconnected") && s.includes("SPACES"));
+    await f.ui.until("reconnected", (s) => s.includes("reconnected") && s.includes("AGENTS"));
     expect(f.attempts()).toBe(2);
     f.ui.write("\x02d");
     expect(await f.ui.proc.exited).toBe(0);
@@ -73,7 +73,7 @@ test("a repeatedly dropped startup connection exits cleanly after bounded retrie
 test("disconnect during a command palette lookup recovers without an unhandled action promise", async () => {
   const f = await fixture("palette-drop", "adapters", true);
   try {
-    await f.ui.until("initial frame", (s) => s.includes("SPACES"));
+    await f.ui.until("initial frame", (s) => s.includes("AGENTS"));
     await Bun.sleep(300);
     f.ui.write("\x02:");
     await f.ui.until("reconnected", (s) => s.includes("reconnected"));

@@ -1,4 +1,5 @@
 // Everything the user can do by name: prefix keys, the command palette, menus and buttons all run these.
+import type { MouseEvent } from "@opentui/core";
 import { panes as treePanes } from "../core/layout";
 import { self } from "../core/paths";
 import { ensureConfigFile } from "../config/config";
@@ -16,7 +17,7 @@ import { openSettings } from "./modals/settings";
 import { reload } from "./notify";
 import { quit } from "./connection";
 import { render } from "./render";
-import { deleteSpace, renameSpace } from "./spaces";
+import { deleteSpace, renameSpace, spaceMenu } from "./spaces";
 import { pluginKey, pluginKeys, pluginUi, runPluginAction } from "./plugin-ui";
 
 export function createActions(app: App): Record<string, Action> {
@@ -30,22 +31,23 @@ export function createActions(app: App): Record<string, Action> {
       run: async () => {
         // plugins' keys as this client's config binds them
         const plugins = pluginKeys(app).map((k) => ({
-          name: `${app.cfg.prefix}  ${k.key || "(none)"}`,
-          description: k.state === "active" ? `${k.plugin}: ${k.description}` : `${k.plugin}: ${k.description} (off: ${k.reason})`,
+          name: `${k.plugin}: ${k.description}`,
+          description: k.state === "active" ? "" : `off: ${k.reason}`,
+          key: k.key || "–",
           value: k.state === "active" ? `plugin-key:${k.key}` : "",
         }));
-        const action = await pick(app, "KEYBOARD / prefix " + app.cfg.prefix, [...Object.entries(bindings).map(([key, action]) => ({ name: `${app.cfg.prefix}  ${key}`, description: actions[action]?.label ?? action, value: action })), ...plugins]);
+        const action = await pick(app, "Keyboard", [...Object.entries(bindings).map(([key, action]) => ({ name: actions[action]?.label ?? action, description: "", key, value: action })), ...plugins], `prefix ${app.cfg.prefix}`);
         if (action?.startsWith("plugin-key:")) pluginKey(app, action.slice("plugin-key:".length));
         else if (action && action !== "help") actions[action]?.run();
       },
     },
     "pane-menu": { label: "Pane context menu", run: () => contextMenu(app, app.tab().focused, Math.min(r.width - 34, app.area().x + 3), app.area().y + 1) },
     "pane-picker": { label: "Switch pane", run: async () => {
-      const id = await pick(app, "PANES", app.view!.panes.map((p) => ({ name: p.name ? "@" + p.name : p.title, description: `${p.id} · ${p.agent?.state ?? p.status} · ${p.cwd}`, value: p.id })));
+      const id = await pick(app, "Panes", app.view!.panes.map((p) => ({ name: p.name ? "@" + p.name : p.title, description: `${p.id} · ${p.agent?.state ?? p.status} · ${p.cwd}`, value: p.id })));
       if (id) app.call("focusPane", { pane: id });
     } },
-    "working-agents": { label: "Agents working", run: () => pickAgents(app, "working", "WORKING") },
-    "blocked-agents": { label: "Agents that need you", run: () => pickAgents(app, "blocked", "NEEDS YOU") },
+    "working-agents": { label: "Agents working", run: () => pickAgents(app, "working", "Working agents") },
+    "blocked-agents": { label: "Agents that need you", run: () => pickAgents(app, "blocked", "Agents that need you") },
     "split-right": { label: "Split right", run: () => app.call("split", { dir: "row" }) },
     "split-down": { label: "Split down", run: () => app.call("split", { dir: "col" }) },
     "focus-left": { label: "Focus left", run: () => app.call("focusDir", { dir: "left" }) },
@@ -65,8 +67,13 @@ export function createActions(app: App): Record<string, Action> {
     "workspace-picker": {
       label: "Switch space",
       run: async () => {
-        const v = await pick(app, "spaces", [
-          ...app.view!.workspaces.map((w, i) => ({ name: w.name, description: `${w.tabs.length} tabs · ${w.tabs.reduce((n, t) => n + treePanes(t.tree).length, 0)} panes`, value: String(i) })),
+        const v = await pick(app, "Spaces", [
+          ...app.view!.workspaces.map((w, i) => ({
+            name: `${i === app.view!.active ? "● " : "  "}${w.name}`,
+            description: `${w.git ? `⎇ ${w.git.branch} · ` : ""}${plural(w.tabs.length, "tab")} · ${plural(w.tabs.reduce((n, t) => n + treePanes(t.tree).length, 0), "pane")}`,
+            value: String(i),
+            context: (e: MouseEvent) => spaceMenu(app, i, e.x, e.y), // rename, delete
+          })),
           { name: "+ new space", description: "A fresh group of tabs and panes", value: "new" },
         ]);
         if (v === "new") actions["new-workspace"]!.run();
@@ -76,16 +83,16 @@ export function createActions(app: App): Record<string, Action> {
     "new-workspace": {
       label: "New space",
       run: async () => {
-        const name = await prompt(app, "new space — name", `space ${app.view!.workspaces.length + 1}`);
+        const name = await prompt(app, "New space", `space ${app.view!.workspaces.length + 1}`);
         if (name?.trim()) app.call("newWorkspace", { cwd: app.ws().cwd, name: name.trim() });
       },
     },
     "new-agent": {
       label: "New agent pane",
       run: async () => {
-        const h = await pick(app, "new agent", await agentList());
+        const h = await pick(app, "New agent", await agentList());
         if (!h) return;
-        const name = await prompt(app, "name (optional, for @addressing)");
+        const name = await prompt(app, "Name the agent", "", "optional: @name lets agents message it");
         app.call("spawnAgent", { harness: h, name: name || undefined });
       },
     },
@@ -94,7 +101,7 @@ export function createActions(app: App): Record<string, Action> {
     search: {
       label: "Search scrollback",
       run: async () => {
-        const q = await prompt(app, "search");
+        const q = await prompt(app, "Search scrollback", "", "text to find in the focused pane");
         const p = app.focusedPane();
         if (!q || !p) return;
         const res = await app.conn.request<{ total: number; matches: number[] }>("search", { pane: p.id, query: q });
@@ -112,8 +119,8 @@ export function createActions(app: App): Record<string, Action> {
           ...pluginUi(app).flatMap((plugin) => plugin.actions.map((a) => ({ name: `${plugin.plugin}: ${a.title}`, description: a.description ?? "plugin action", value: `plugin:${plugin.plugin}:${plugin.run}:${a.id}` }))),
           { name: "Kill session", description: "close every pane and stop the server", value: "kill" },
         ];
-        const v = await pick(app, "commands", [
-          ...Object.entries(actions).filter(([k]) => k !== "palette" && !k.startsWith("agent-")).map(([k, a]) => ({ name: a.label, description: Object.entries(bindings).find(([, b]) => b === k)?.[0] ?? "", value: k })),
+        const v = await pick(app, "Commands", [
+          ...Object.entries(actions).filter(([k]) => k !== "palette" && !k.startsWith("agent-")).map(([k, a]) => ({ name: a.label, description: "", key: Object.entries(bindings).find(([, b]) => b === k)?.[0] ?? "", value: k })),
           ...extra,
         ]);
         if (!v) return;
@@ -142,7 +149,7 @@ export function createActions(app: App): Record<string, Action> {
         const managed = updateCommand(); // Homebrew or mise installed it: their command, not ours
         if (managed !== "modisa update") return app.toast(`modisa ${m.version} is out: run ${managed}, then modisa restart`, app.th.warn);
         const notes = m.notes.trim().split("\n").filter(Boolean).slice(0, 6).map((l) => fit(l, 60));
-        const ok = await confirm(app, `UPDATE / ${m.version}`, [`modisa ${VERSION} → ${m.version}`, ...(notes.length ? ["", ...notes] : []), "", "Downloads it, then restarts the server; agents resume."].join("\n"), "update and restart");
+        const ok = await confirm(app, `Update to ${m.version}`, [`modisa ${VERSION} → ${m.version}`, ...(notes.length ? ["", ...notes] : []), "", "Downloads it, then restarts the server; agents resume."].join("\n"), "update and restart");
         if (!ok) return;
         const cmd = self().join(" ");
         app.call("newTab", { name: "update", command: `${cmd} update && ${cmd} restart`, ephemeral: true });
@@ -156,14 +163,14 @@ export function createActions(app: App): Record<string, Action> {
       run: async () => {
         const agents = app.view!.panes.filter((p) => p.agent || p.harness);
         if (!agents.length) return app.toast("no agent panes", app.th.warn);
-        const to = await pick(app, "send to", agents.map((p) => ({ name: p.name ? "@" + p.name : p.title, description: p.agent?.state ?? "", value: p.id })));
+        const to = await pick(app, "Send to", agents.map((p) => ({ name: p.name ? "@" + p.name : p.title, description: p.agent?.state ?? "", value: p.id })));
         if (!to) return;
-        const body = await prompt(app, "message");
+        const body = await prompt(app, "Message", "", "what to tell the agent");
         if (body) app.conn.request("send", { to, body }).then(() => app.toast("queued"), (e) => app.toast(e.message, app.th.blocked));
       },
     },
-    "rename-tab": { label: "Rename tab", run: async () => { const n = await prompt(app, "rename tab", app.tab().name ?? ""); if (n !== null) app.call("renameTab", { name: n }); } },
-    "rename-pane": { label: "Rename pane (@name)", run: async () => { const n = await prompt(app, "rename pane", app.info(app.tab().focused)?.name ?? ""); if (n !== null) app.call("renamePane", { name: n }); } },
+    "rename-tab": { label: "Rename tab", run: async () => { const n = await prompt(app, "Rename tab", app.tab().name ?? ""); if (n !== null) app.call("renameTab", { name: n }); } },
+    "rename-pane": { label: "Rename pane (@name)", run: async () => { const n = await prompt(app, "Rename pane", app.info(app.tab().focused)?.name ?? ""); if (n !== null) app.call("renamePane", { name: n }); } },
     "rename-workspace": { label: "Rename space", run: () => renameSpace(app, app.view!.active) },
     "delete-workspace": { label: "Delete space", run: () => deleteSpace(app, app.view!.active) },
     detach: { label: "Detach", run: () => quit(app, "detached") },
@@ -185,6 +192,8 @@ export function createActions(app: App): Record<string, Action> {
   }
   return actions;
 }
+
+const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
 // Only the agents in one state; picking one jumps to it.
 async function pickAgents(app: App, state: "working" | "blocked", title: string) {

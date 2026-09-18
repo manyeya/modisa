@@ -24,8 +24,6 @@ const demo = `
     <div class="tui-tabs"><span class="tui-space">◈ api ▸</span><span class="tui-tab on">1:@coder</span><span class="tui-tab" data-tab-blocked>2:@reviewer <i>!</i></span><span class="tui-tab">3:tests</span><span class="tui-plus">+</span></div>
     <div class="tui-main">
       <aside class="tui-side">
-        <p class="tui-label">SPACES</p>
-        <p class="tui-row sel">api<span class="tui-git">⎇ main <i class="up">↑2</i> <i class="chg">●3</i></span></p><p class="tui-row">web<span class="tui-git">⎇ feat/login <i class="down">↓1</i></span></p><p class="tui-row">infra<span class="tui-git clean">⎇ main</span></p>
         <p class="tui-label">AGENTS / 3</p>
         <div class="tui-agents" data-agents><div class="tui-agent"><span class="tui-mark">◎</span> <b>@reviewer</b> <span class="amber">!</span><small>Review the auth changes · needs you</small></div><div class="tui-agent focus"><span class="tui-mark" style="color:#d97757">✳</span> <b>@coder</b> <span>◆</span><small>Refactor the session middleware · working</small></div><div class="tui-agent"><span class="tui-mark">□</span> <b>@docs</b> <span>✓</span><small>Write the migration notes · done</small></div></div>
         <p class="tui-foot">⚙ settings</p>
@@ -56,7 +54,7 @@ const demo = `
         ])}
       </div>
     </div>
-    <div class="tui-status"><span class="seg on">◧ sidebar</span><span class="seg acc">+ agent</span><span class="seg working" data-count-working>◆ 1 working</span><span class="seg blocked" data-count-blocked>! 1 need you</span><span class="spacer"></span><span class="seg">4 panes</span><span class="seg theme">◐ tokyonight</span></div>
+    <div class="tui-status"><span class="seg on">◧ sidebar</span><span class="seg acc">+ agent</span><span class="seg working" data-count-working>◆ 1 working</span><span class="seg blocked" data-count-blocked>! 1 need you</span><span class="spacer"></span><span class="seg">4 panes</span><span class="seg tui-git"><b>api</b> ⎇ main <i class="up">↑2</i> <i class="chg">●3</i></span></div>
     <div class="tui-toast" data-toast aria-live="off"></div>
   </div>
   <figcaption><span><span class="caption-dot"></span><span data-caption>@reviewer is waiting on you.</span></span><button type="button" data-demo-pause aria-pressed="false">Pause demo ${icon("pause-linear")}</button></figcaption>

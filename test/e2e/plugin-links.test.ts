@@ -32,8 +32,8 @@ async function ctrlClick(text: string, offset = 2) {
 }
 // a clean start: no chooser an earlier test left open, no toast still showing
 async function fresh() {
-  if (ui.text().includes("esc dismiss")) ui.write("\x1b");
-  await ui.until("a clean screen", (s) => !s.includes("esc dismiss") && !s.includes("No plugin handles") && !s.includes(" got "), 15000);
+  if (ui.text().includes("esc close")) ui.write("\x1b");
+  await ui.until("a clean screen", (s) => !s.includes("esc close") && !s.includes("No plugin handles") && !s.includes(" got "), 15000);
 }
 
 // a near-match for slow's regexes, failing only at its last character (a letter: trailing punctuation would be trimmed)
@@ -103,7 +103,7 @@ test("an action counts once however many of its plugin's links match: it runs, n
   await fresh();
   await ctrlClick(`${BOTH_REGEXES} `); // its own line: the pathological one starts with the same text
   await ui.until("slow's answer", (s) => s.includes(`slow got ${BOTH_REGEXES} params {}`));
-  expect(ui.text()).not.toContain("esc dismiss");
+  expect(ui.text()).not.toContain("esc close");
 }, 30000);
 
 test("no matching plugin says so", async () => {

@@ -11,7 +11,7 @@ let ui: Screen;
 beforeAll(async () => {
   await installFakeAgent(sb.root);
   ui = new Screen(["-s", S], sb.env, sb.root);
-  await ui.until("attached", (s) => s.includes("SPACES"), 15000);
+  await ui.until("attached", (s) => s.includes("AGENTS"), 15000);
   await cli("pane", "split", "--name", "server", "echo server-up; sleep 600");
   await cli("agent", "spawn", "fakeagent", "--name", "coder");
 }, 30000);
@@ -28,7 +28,7 @@ test("agents need approval to type into panes they didn't create", async () => {
   const asCoder = { MODISA_PANE_ID: coder };
   // approve
   const allowed = sb.cli(S, ["pane", "keys", "@server", "C-c"], asCoder);
-  await ui.until("permission prompt", (s) => s.includes('@coder wants to keys pane "server"') && s.includes("[y] allow"));
+  await ui.until("permission prompt", (s) => s.includes('@coder wants to keys pane "server"') && s.includes("Allow  y"));
   ui.write("y");
   expect(await allowed).toBe("");
   // deny

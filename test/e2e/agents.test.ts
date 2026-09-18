@@ -49,10 +49,10 @@ test("need-you counts agents in a dialog; the status buttons list only that stat
   await ui.until("need-you count", (s) => s.split("\n").at(-1)!.includes("! 1 need you"));
   let { line, y } = status();
   click(ui, 0, line.indexOf("need you"), y);
-  await ui.until("only blocked agents listed", (s) => s.includes("NEEDS YOU") && s.includes("@asker"));
+  await ui.until("only blocked agents listed", (s) => s.includes("Agents that need you") && s.includes("@asker"));
   expect(ui.lines().filter((l) => l.includes("@coder") && l.includes("fakeagent ·")).length).toBe(0);
   ui.write("\x1b");
-  await ui.until("picker closed", (s) => !s.includes("NEEDS YOU"));
+  await ui.until("picker closed", (s) => !s.includes("Agents that need you"));
   ({ line, y } = status());
   if (line.includes("◆ 0 working")) {
     click(ui, 0, line.indexOf("working"), y);
@@ -64,9 +64,9 @@ test("need-you counts agents in a dialog; the status buttons list only that stat
 test("the sidebar lists agents and toggles", async () => {
   await ui.until("agent in sidebar", (s) => s.includes("AGENTS") && s.includes("@coder"));
   ui.write("\x02b");
-  await ui.until("sidebar hidden", (s) => !s.includes("SPACES"));
+  await ui.until("sidebar hidden", (s) => !s.includes("AGENTS"));
   ui.write("\x02b");
-  await ui.until("sidebar back", (s) => s.includes("SPACES"));
+  await ui.until("sidebar back", (s) => s.includes("AGENTS"));
 }, 10000);
 
 test("the sidebar and status row only count the current space's agents", async () => {

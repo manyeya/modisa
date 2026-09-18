@@ -58,6 +58,7 @@ export function render(app: App) {
     const i = app.info(id)!;
     const focused = id === t.focused;
     const st = i.agent?.state;
+    p.box.borderStyle = app.cfg.panes.border;
     p.box.borderColor = focused ? th.focus : st === "blocked" ? th.blocked : th.border;
     const { indicators, pane_labels: labels } = app.cfg;
     const agentTag = i.agent ? [indicators.pane && app.icon(i.agent.state), labels.agent && `${i.agent.harness} ${i.agent.state}`].filter(Boolean).map((s) => " " + s).join("") : "";
@@ -66,7 +67,7 @@ export function render(app: App) {
     const badges = (view.plugins ?? []).flatMap((plugin) => plugin.badges.filter((b) => b.pane === id && b.instance === i.instance).map((b) => ` [${plugin.plugin}: ${b.text}]`)).join("");
     p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited}${badges} `, Math.max(0, rect.w - 4));
     p.box.titleColor = focused ? th.focus : st ? th[st] : th.dim;
-    const wantFocus = focused && !app.modal && !app.editing && app.mode === "normal";
+    const wantFocus = focused && !app.modal && app.mode === "normal";
     if (wantFocus && !p.term.focused) p.term.focus();
     else if (!wantFocus && p.term.focused) p.term.blur();
   }
@@ -75,7 +76,7 @@ export function render(app: App) {
   const sig = JSON.stringify([
     view.active, view.paused, view.workspaces, view.plugins,
     view.panes.map((p) => [p.id, p.name, p.title, p.status, p.agent?.state, p.agent?.harness]),
-    r.width, r.height, app.sidebar, app.cfg.theme, app.cfg.sidebar.width, app.cfg.indicators, th,
+    r.width, r.height, app.sidebar, app.cfg, th,
   ]);
   if (sig !== app.chromeSig) {
     app.chromeSig = sig;
