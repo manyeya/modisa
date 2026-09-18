@@ -69,10 +69,10 @@ const diagonal = icon("arrow-right-up-linear");
 export function landing(o: { version: string; repo: string }) {
   return `<header class="top landing-top">
   <a class="brand" href="./" aria-label="Modisa home">${mark()}<span>modisa<span class="brand-period">.</span></span></a>
-  <nav class="desktop-nav" aria-label="Main"><a href="#workflow">The workflow</a><a href="docs/introduction/">Documentation</a><a href="${o.repo}">GitHub ${diagonal}</a></nav>
+  <nav class="desktop-nav" aria-label="Main"><a href="#workflow">The workflow</a><a href="docs/introduction/">Documentation</a><a href="plugins/">Plugins</a><a href="${o.repo}">GitHub ${diagonal}</a></nav>
   <a class="nav-install" href="#start">Get modisa ${arrow}</a>
   <button class="mobile-menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-nav" data-nav-toggle>${icon("hamburger-menu-linear")}</button>
-  <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" hidden><a href="#workflow">The workflow</a><a href="docs/introduction/">Documentation</a><a href="${o.repo}">GitHub</a><a href="#start">Get modisa</a></nav>
+  <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" hidden><a href="#workflow">The workflow</a><a href="docs/introduction/">Documentation</a><a href="plugins/">Plugins</a><a href="${o.repo}">GitHub</a><a href="#start">Get modisa</a></nav>
 </header>
 <main id="main">
 <section class="hero">

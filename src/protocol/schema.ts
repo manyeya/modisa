@@ -179,7 +179,7 @@ export const cliResults = {
   "plugin search": z.strictObject({
     query: z.string(),
     total: z.number().int().nonnegative(),
-    results: z.array(z.strictObject({ name: z.string(), repo: z.string(), url: z.string(), description: z.string(), stars: z.number().int().nonnegative(), updated: z.string(), archived: z.boolean(), install: z.string() })),
+    results: z.array(z.strictObject({ name: z.string(), repo: z.string(), url: z.string(), description: z.string(), stars: z.number().int().nonnegative(), updated: z.string(), created: z.string(), archived: z.boolean(), install: z.string() })),
   }),
   "plugin unlink": z.strictObject({
     name: z.string(),

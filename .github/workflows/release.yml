@@ -153,6 +153,7 @@ jobs:
     needs: [test, version, publish]
     if: always() && github.ref_name == 'main' && needs.test.result == 'success' && needs.version.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     runs-on: ubuntu-24.04
+    concurrency: { group: pages, cancel-in-progress: false } # shared with site.yml's daily refresh
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -169,6 +170,7 @@ jobs:
         run: bun site/build.ts
         env:
           MODISA_VERSION: ${{ needs.publish.result == 'success' && needs.version.outputs.version || needs.version.outputs.last }}
+          GITHUB_TOKEN: ${{ github.token }} # the plugin directory's GitHub search
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/out

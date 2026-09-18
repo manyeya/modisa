@@ -67,6 +67,32 @@
     $$(".doc section[id]").forEach((s) => seen.observe(s));
   }
 
+  // ---------- plugin directory: filter and sort the cards the page already has ----------
+  const plugins = $("#plugin-list"), cards = $$(".plugin", plugins ?? document.createElement("div"));
+  if (plugins && cards.length) {
+    const q = $("#plugin-q"), sort = $("#plugin-sort"), count = $("#plugin-count"), empty = $("#plugin-empty");
+    const by = {
+      stars: (a, b) => b.dataset.stars - a.dataset.stars,
+      updated: (a, b) => b.dataset.updated.localeCompare(a.dataset.updated),
+      created: (a, b) => b.dataset.created.localeCompare(a.dataset.created),
+      name: (a, b) => a.dataset.name.localeCompare(b.dataset.name),
+    };
+    const apply = () => {
+      const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const card of [...cards].sort(by[sort.value])) {
+        card.hidden = !words.every((w) => card.dataset.text.includes(w));
+        if (!card.hidden) shown++;
+        plugins.append(card);
+      }
+      count.textContent = `${shown}${words.length ? ` of ${cards.length}` : ""} plugin${(words.length ? cards.length : shown) === 1 ? "" : "s"}`;
+      empty.hidden = shown > 0;
+    };
+    $(".plugin-tools").hidden = false;
+    q.addEventListener("input", apply);
+    sort.addEventListener("change", apply);
+  }
+
   // ---------- search ----------
   const dialog = $("#search"), input = $("#search-input"), results = $("#search-results");
   if (!dialog) return;

@@ -229,6 +229,8 @@ modisa plugin unlink <name>
 - **Startup and event workflows** aren't manifest hooks: a plugin is a long-lived program, so it subscribes to events (a snapshot of every pane, then each change) and reacts.
 - A plugin runs as you, with your files and network. It isn't sandboxed.
 
+**Finding plugins**: the [plugin directory](https://manyeya.github.io/modisa/plugins/) lists every public repository with the `modisa-tui-plugin` topic, searchable and sortable, refreshed daily; `modisa plugin search` asks GitHub the same question from the terminal. [radar](https://github.com/manyeya/modisa-radar) is one: every agent at a glance in the sidebar, grouped by repository.
+
 A `[[plugin]]` `run` line in config.toml still starts a program with no manifest. **[`examples/plugins/`](examples/plugins/) is the full guide** to the protocol underneath: the events, the methods, the error codes, and the rules that will bite you. [`attention-log/`](examples/plugins/attention-log/) is a complete plugin built with `plugin new`.
 
 ## Config

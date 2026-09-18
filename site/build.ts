@@ -1,10 +1,12 @@
-// Builds the modisa site into site/out: the home page, the docs, a search index, sitemap, 404 and
-// the install script. Every local link and #anchor is checked before it finishes.
+// Builds the modisa site into site/out: the home page, the docs, the plugin directory, a search index, sitemap, 404
+// and the install script. Every local link and #anchor is checked before it finishes.
 //   bun site/build.ts            (MODISA_VERSION sets the version shown; else the latest git tag)
 import { guide } from "./content/guide";
 import { escape, type Page } from "./content/html";
 import { landing, mark } from "./content/landing";
+import { pluginsPage } from "./content/plugins";
 import { reference } from "./content/reference";
+import { find } from "../src/cli/plugin-search";
 
 const root = import.meta.dir;
 const out = `${root}/out`;
@@ -40,7 +42,7 @@ ${search()}</body></html>`;
 }
 
 function footer(base: string) {
-  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
+  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${base}plugins/">Plugins</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
 }
 
 function search() {
@@ -48,7 +50,7 @@ function search() {
 }
 
 function docsHeader(base: string) {
-  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="modisa home">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
+  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="modisa home">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${base}plugins/">Plugins</a><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
 }
 
 function docsPage(page: Page, index: number) {
@@ -80,6 +82,15 @@ function docsPage(page: Page, index: number) {
 
 const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
+// The plugin directory's list, from GitHub. In CI a failure stops the build, so a bad fetch never deploys an empty
+// directory over a good one; locally it builds with none.
+const found = await find([], 100).then((r) => r.results, (e: Error) => {
+  if (Bun.env.CI) throw e;
+  console.warn(`plugin directory: ${e.message}; building it empty`);
+  return [];
+});
+const pluginsBlurb = "Community plugins for modisa, the terminal multiplexer for coding agents: search them, sort them, and install any with one command.";
+
 await Bun.$`rm -rf ${out}`;
 // assets/social.svg is the link-preview card's source; assets/social.png is it rasterized. To redo the png after an
 // edit, screenshot the svg at a 1200x630 viewport, e.g.
@@ -96,13 +107,21 @@ await Bun.write(`${out}/index.html`, shell({ title: "Modisa — Run a crew. Keep
   { "@type": "SoftwareApplication", name: "modisa", description: summary, url: site, applicationCategory: "DeveloperApplication", operatingSystem: "macOS, Linux", softwareVersion: version, license: `${repo}/blob/main/LICENSE`, downloadUrl: `${repo}/releases/latest`, installUrl: `${site}docs/install/`, codeRepository: repo, image: `${site}assets/social.png`, offers: { "@type": "Offer", price: "0", priceCurrency: "USD" } },
 ] } }));
 for (const [i, page] of pages.entries()) await Bun.write(`${out}/docs/${page.slug}/index.html`, docsPage(page, i));
+await Bun.write(`${out}/plugins/index.html`, shell({
+  title: "Plugins · modisa", description: pluginsBlurb, base: "../", path: "plugins/",
+  body: `${docsHeader("../")}${pluginsPage({ found, built: new Date().toISOString().slice(0, 10) })}`,
+  data: { "@graph": [
+    { "@type": "CollectionPage", name: "modisa plugins", description: pluginsBlurb, url: `${site}plugins/`, isPartOf: { "@type": "WebSite", name: "modisa", url: site } },
+    { "@type": "ItemList", numberOfItems: found.length, itemListElement: found.map((f, i) => ({ "@type": "ListItem", position: i + 1, item: { "@type": "SoftwareSourceCode", name: f.name, description: f.description || undefined, codeRepository: f.url, url: f.url } })) },
+  ] },
+}));
 await Bun.write(`${out}/docs/index.html`, `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=introduction/"><link rel="canonical" href="${site}docs/introduction/"><a href="introduction/">Documentation</a>`);
-await Bun.write(`${out}/search.json`, JSON.stringify(pages.flatMap((p) => [
+await Bun.write(`${out}/search.json`, JSON.stringify([{ title: "Plugins", group: "Directory", text: pluginsBlurb, url: "plugins/" }, ...pages.flatMap((p) => [
   { title: p.title, group: p.group, text: plain(p.description), url: `docs/${p.slug}/` },
   ...p.sections.map((s) => ({ title: s.title, group: p.title, text: plain(s.html).slice(0, 400), url: `docs/${p.slug}/#${s.id}` })),
-])));
+])]));
 await Bun.write(`${out}/404.html`, shell({ title: "Not found · modisa", description: "This page wandered off.", base: "/modisa/", path: "404.html", noindex: true, body: `${docsHeader("/modisa/")}<main id="main" class="lost"><p class="crumb">404</p><h1>This one wandered off.</h1><p>The page isn't here. The rest of the herd is.</p><a class="btn lantern" href="/modisa/docs/introduction/">Open the docs</a></main>` }));
-await Bun.write(`${out}/sitemap.xml`, `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["", ...pages.map((p) => `docs/${p.slug}/`)].map((u) => `<url><loc>${site}${u}</loc></url>`).join("")}</urlset>`);
+await Bun.write(`${out}/sitemap.xml`, `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["", "plugins/", ...pages.map((p) => `docs/${p.slug}/`)].map((u) => `<url><loc>${site}${u}</loc></url>`).join("")}</urlset>`);
 
 // For AI assistants and crawlers (llmstxt.org): llms.txt indexes the docs, llms-full.txt holds all of them as markdown.
 const entities = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
@@ -126,13 +145,14 @@ ${groups.map((g) => `## ${g}\n\n${pages.filter((p) => p.group === g).map((p) => 
 ## Optional
 
 - [Everything above in one file](${site}llms-full.txt): all of the docs as markdown
+- [Plugins](${site}plugins/): the community plugin directory
 - [Releases](${repo}/releases): binaries, checksums and packages
 `);
 await Bun.write(`${out}/llms-full.txt`, `# modisa\n\n> ${summary}\n\n` + pages.map((p) => `# ${p.title}\n\nSource: ${site}docs/${p.slug}/\n\n> ${p.description}\n\n${p.sections.map((x) => `## ${entities(x.title.replace(/<[^>]+>/g, ""))}\n\n${markdown(x.html)}`).join("\n\n")}`).join("\n\n---\n\n") + "\n");
 
 // Every local href/src must resolve to a file, and every #anchor to an id on that page.
 let checked = 0;
-for (const file of [`${out}/index.html`, ...pages.map((p) => `${out}/docs/${p.slug}/index.html`)]) {
+for (const file of [`${out}/index.html`, `${out}/plugins/index.html`, ...pages.map((p) => `${out}/docs/${p.slug}/index.html`)]) {
   const html = await Bun.file(file).text();
   const dir = file.slice(0, file.lastIndexOf("/"));
   for (const [, href] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
@@ -146,4 +166,4 @@ for (const file of [`${out}/index.html`, ...pages.map((p) => `${out}/docs/${p.sl
     checked++;
   }
 }
-console.log(`built ${pages.length + 1} pages for v${version}; ${checked} local links and anchors check out`);
+console.log(`built ${pages.length + 2} pages for v${version} (${found.length} plugin${found.length === 1 ? "" : "s"} listed); ${checked} local links and anchors check out`);

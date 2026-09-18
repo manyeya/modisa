@@ -134,7 +134,7 @@ modisa plugin unlink attention-log`) + p(
       ) },
       { id: "find", title: "Find one", html: code("sh", `modisa plugin search            # everything with the modisa-tui-plugin topic, most starred first
 modisa plugin search github     # …that also matches these words`) + p(
-        `It lists public GitHub repositories with the ${c("modisa-tui-plugin")} topic, each with the command that installs it. Nothing in the list is vetted: a plugin runs as you, so read it before you install it.`,
+        `It lists public GitHub repositories with the ${c("modisa-tui-plugin")} topic, each with the command that installs it. The same list is on the web, searchable and sortable, in the <a href="../../plugins/">plugin directory</a>. Nothing in either is vetted: a plugin runs as you, so read it before you install it.`,
         `To share one, push it to a public repository with ${c("plugin.json")} at the top and add the ${c("modisa-tui-plugin")} topic. A plugin in a subdirectory is found by its repository, so say which ${c("--subdir")} in the README.`,
       ) },
       { id: "manage", title: "Run it", html: table(["Command", "Does"], [
