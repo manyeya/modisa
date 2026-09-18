@@ -190,13 +190,13 @@ test("a popup is opaque: every cell it covers is its own, over a pane full of te
 
   const lines = ui.lines();
   const top = lines.findIndex((l) => l.includes("Pop · prefix x closes"));
-  const left = lines[top]!.indexOf("╭");
-  const right = lines[top]!.indexOf("╮", left);
+  const left = lines[top]!.indexOf("┌");
+  const right = lines[top]!.indexOf("┐", left);
   const row = (i: number) => lines[i]!.slice(left, right + 1);
-  expect(row(top)).toMatch(/^╭─ Pop · prefix x closes ─+╮$/);
+  expect(row(top)).toMatch(/^┌─ Pop · prefix x closes ─+┐$/);
   expect(row(top + 1)).toMatch(/^│in-popup +│$/);
   for (let i = top + 2; i < top + 11; i++) expect(row(i)).toMatch(/^│ +│$/);
-  expect(row(top + 11)).toMatch(/^╰─+╯$/);
+  expect(row(top + 11)).toMatch(/^└─+┘$/);
   ui.write("\x02x");
   await ui.until("the popup gone, the X back", (s) => !s.includes("in-popup") && s.split("\n")[top]!.includes("X".repeat(60)));
 }, 60000);
@@ -216,8 +216,8 @@ test("output from the pane underneath never draws over a popup, through a resize
     const top = lines.findIndex((l) => l.includes("Pop · "));
     expect(top).toBeGreaterThanOrEqual(0);
     expect(lines[top]).toContain("Pop · prefix x closes");
-    const left = lines[top]!.indexOf("╭");
-    const right = lines[top]!.lastIndexOf("╮");
+    const left = lines[top]!.indexOf("┌");
+    const right = lines[top]!.lastIndexOf("┐");
     const body = lines.slice(top + 1, top + 9).map((l) => l.slice(left + 1, right));
     expect(body.join("\n")).toContain("in-popup");
     expect(body.join("\n")).not.toContain("noise");
@@ -249,12 +249,12 @@ test("a popup always fits the terminal, through a resize below its minimum, and 
     expect(body).toBeGreaterThan(0);
     const left = lines[body]!.lastIndexOf("│", lines[body]!.indexOf("in-popup"));
     const top = body - 1;
-    const right = lines[top]!.indexOf("╮", left);
-    expect(lines[top]![left]).toBe("╭");
+    const right = lines[top]!.indexOf("┐", left);
+    expect(lines[top]![left]).toBe("┌");
     expect(right).toBeGreaterThan(left);
-    const bottom = lines.findIndex((l, i) => i > top && l[left] === "╰");
+    const bottom = lines.findIndex((l, i) => i > top && l[left] === "└");
     expect(bottom).toBeGreaterThan(body);
-    expect(lines[bottom]![right]).toBe("╯");
+    expect(lines[bottom]![right]).toBe("┘");
     expect(right).toBeLessThan(Math.max(...lines.map((l) => l.length)));
   };
 

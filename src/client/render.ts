@@ -66,8 +66,6 @@ export function render(app: App) {
     const badges = (view.plugins ?? []).flatMap((plugin) => plugin.badges.filter((b) => b.pane === id && b.instance === i.instance).map((b) => ` [${plugin.plugin}: ${b.text}]`)).join("");
     p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited}${badges} `, Math.max(0, rect.w - 4));
     p.box.titleColor = focused ? th.focus : st ? th[st] : th.dim;
-    p.box.bottomTitle = labels.status && rect.w >= 40 ? fit(` ${i.id} / ${i.agent?.state ?? i.status} ${focused ? "· active" : ""} `, rect.w - 4) : undefined;
-    p.box.bottomTitleAlignment = "right";
     const wantFocus = focused && !app.modal && !app.editing && app.mode === "normal";
     if (wantFocus && !p.term.focused) p.term.focus();
     else if (!wantFocus && p.term.focused) p.term.blur();

@@ -80,7 +80,7 @@ export class ClientPane {
     });
     terminal.hooks = hooks;
     this.term = terminal;
-    this.box = new BoxRenderable(r, { position: "absolute", border: true, borderStyle: "rounded", zIndex: 1 });
+    this.box = new BoxRenderable(r, { position: "absolute", border: true, borderStyle: "single", zIndex: 1 });
     this.box.add(this.term);
     // The border: press on a divider to resize, anywhere else to focus.
     this.box.onMouseDown = (e) => {

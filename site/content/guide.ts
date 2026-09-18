@@ -154,7 +154,7 @@ ssh -T -p 2222 me@build-01 modisa proxy -s api    # …and ssh://me@build-01:222
         ["indicators", "The state glyphs (symbols ! ◆ ✓ ○, dots or letters) and where they show: tab badge, pane border, sidebar."],
         ["sound", `What plays when an agent needs you, is done, or starts working — 17 sounds from <a href="https://cuelume.dev">cuelume</a>, or off — and the volume.`],
         ["toasts", "Toast, system notification and terminal bell, per event."],
-        ["pane labels", "Agent and state in the border title; the id/status line on the bottom border."],
+        ["pane labels", "Agent and state in the border title."],
         ["integrations", `Every agent's integration: installed, update available, available, not found. See <a href="../integrations/">Integrations</a>.`],
       ]) + note("Alerts are for agents you're not looking at", "The focused pane never alerts; a background agent that blocks or finishes does.") },
     ],

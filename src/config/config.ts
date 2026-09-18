@@ -17,7 +17,7 @@ export type Config = {
   notify: Record<NotifyEvent, NotifyKind[]>;
   sound: { volume: number } & Record<NotifyEvent, string>; // a cuelume sound name per event
   indicators: { style: IndicatorStyle; tab: boolean; pane: boolean; sidebar: boolean };
-  pane_labels: { agent: boolean; status: boolean };
+  pane_labels: { agent: boolean };
   update: { check: boolean; channel: "stable" | "staging" };
   messaging: { max_hops: number; per_minute: number };
   permissions: { keys_foreign: Policy; close_foreign: Policy; run_foreign: Policy };
@@ -34,7 +34,7 @@ export const DEFAULTS: Config = {
   notify: { blocked: ["toast", "system", "sound"], done: ["toast"], working: [] },
   sound: { volume: 0.7, blocked: "chime", done: "success", working: "loading" },
   indicators: { style: "symbols", tab: true, pane: true, sidebar: true },
-  pane_labels: { agent: true, status: true },
+  pane_labels: { agent: true },
   update: { check: true, channel: "stable" },
   messaging: { max_hops: 10, per_minute: 5 },
   permissions: { keys_foreign: "ask", close_foreign: "ask", run_foreign: "ask" },
@@ -71,7 +71,6 @@ sidebar = true
 
 [pane_labels]
 agent = true                # agent and state in the pane's border title
-status = true               # the bottom line: pane id, status, active
 
 [update]
 check = true                # tell me when a new modisa is out (modisa update installs it)

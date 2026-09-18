@@ -103,4 +103,4 @@ export class Screen {
 }
 
 // How many pane boxes are on screen.
-export const borders = (s: string) => s.split("╭").length - 1;
+export const borders = (s: string) => s.split("┌").length - 1;

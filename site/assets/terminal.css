@@ -20,7 +20,7 @@
 .tui-agent.focus { background: #232538; }
 .tui-foot { margin-top: auto; color: var(--t-dim); }
 .tui-panes { display: grid; grid-template-columns: 1.15fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 8px; min-height: 0; }
-.pane { position: relative; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--t-line); border-radius: 9px; overflow: hidden; transition: border-color 400ms var(--ease), box-shadow 400ms var(--ease); }
+.pane { position: relative; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--t-line); border-radius: 0; overflow: hidden; transition: border-color 400ms var(--ease), box-shadow 400ms var(--ease); }
 .pane-title { display: flex; align-items: center; gap: 8px; padding: 3px 10px; font-size: 12px; color: var(--t-dim); border-bottom: 1px solid #292e42; white-space: nowrap; overflow: hidden; }
 .pane-title b { color: var(--t-fg); }
 .pane-glyph::before { content: "◇"; color: var(--t-dim); }

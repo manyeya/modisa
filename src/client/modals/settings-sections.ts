@@ -112,10 +112,10 @@ function toasts(app: App): Section {
 }
 
 function paneLabels(app: App): Section {
-  const toggle = (label: string, key: "agent" | "status"): Row => ({ kind: "toggle", label, on: app.cfg.pane_labels[key], flip: () => save(app, "pane_labels", key, !app.cfg.pane_labels[key]) });
+  const toggle = (label: string, key: "agent"): Row => ({ kind: "toggle", label, on: app.cfg.pane_labels[key], flip: () => save(app, "pane_labels", key, !app.cfg.pane_labels[key]) });
   return {
     name: "pane labels",
-    rows: () => [toggle("agent and state in the border title", "agent"), toggle("id and status on the bottom border", "status")],
+    rows: () => [toggle("agent and state in the border title", "agent")],
   };
 }
 

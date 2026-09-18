@@ -39,7 +39,7 @@ afterAll(async () => {
 
 // Skip the sidebar's new divider and the outer edge of the first pane.
 function verticalDivider(y: number) {
-  const paneLeft = ui.lines().find(line => line.includes("╭"))!.indexOf("╭");
+  const paneLeft = ui.lines().find(line => line.includes("┌"))!.indexOf("┌");
   return ui.lines()[y]!.indexOf("││", paneLeft + 1);
 }
 
