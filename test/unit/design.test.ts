@@ -57,7 +57,9 @@ test("hover and selection tints blend theme colors", () => {
 test("an agent's mark is its brand colour, or the theme's text where that would be faint; its task drops the spinner", async () => {
   const { agentMark, agentTask } = await import("../../src/client/design");
   const { THEMES } = await import("../../src/config/themes");
-  expect(agentMark(THEMES.ion!, "claude-code")).toEqual({ glyph: "✳", color: "#d97757" });
+  expect(agentMark(THEMES.ion!, "claude-code")).toEqual({ glyph: "✳", color: "#d97757", cells: 2 }); // mark, gap
+  expect(agentMark(THEMES.ion!, "claude-code", true)).toEqual({ glyph: String.fromCodePoint(0xf5a00), color: "#d97757", cells: 3 }); // a logo's two cells, gap
+  expect(agentMark(THEMES.ion!, "aider", true).cells).toBe(2); // no logo: its glyph, one cell
   expect(agentMark(THEMES.ion!, "codex").color).toBe(THEMES.ion!.fg); // a monochrome brand
   expect(agentMark(THEMES["bearded-solarized-light"]!, "kilo").color).toBe(THEMES["bearded-solarized-light"]!.fg); // yellow on cream
   expect(agentMark(THEMES.ion!, "who-knows").glyph).toBe("•");

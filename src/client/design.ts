@@ -32,10 +32,13 @@ export function contrast(a: string, b: string): number {
 }
 
 // An agent's mark: its logo where the terminal shows modisa's logo font (else its glyph), in its brand colour, or in
-// the theme's text colour when the brand has none or it would be faint on this theme's sidebar.
+// the theme's text colour when the brand has none or it would be faint on this theme's sidebar. `cells` is the room
+// it takes, its gap after it included: a logo is drawn two cells wide over a one-cell character, so it's given the
+// cell after it too, then the gap.
 export function agentMark(th: Theme, agent: string, logos = false) {
   const { glyph, color } = brand(agent);
-  return { glyph: (logos && logo(agent)) || glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg };
+  const drawn = logos && logo(agent);
+  return { glyph: drawn || glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg, cells: drawn ? 3 : 2 };
 }
 
 // The task an agent's terminal title names, without the spinner or mark it puts in front; "" when the title only

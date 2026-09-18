@@ -25,9 +25,10 @@ export function spanText(app: App, spans: Span[], base: Tone, width: number): St
   for (const x of spans) {
     if (left <= 0) break;
     if ("icon" in x) {
-      const { glyph, color } = agentMark(app.th, x.icon, app.logos);
-      chunks.push(fg(color)(glyph));
-      left -= 1;
+      // a logo is drawn two cells wide: the cell after it is its own, so what follows doesn't run into it
+      const { glyph, color, cells } = agentMark(app.th, x.icon, app.logos);
+      chunks.push(fg(color)(glyph + " ".repeat(cells - 2)));
+      left -= cells - 1;
       continue;
     }
     const text = fit(x.text, left);

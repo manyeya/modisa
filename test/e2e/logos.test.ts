@@ -41,7 +41,7 @@ test("install puts the font in and tells each terminal; the TUI draws the logos;
     await cli("report", id, "--source", "logos-test", "--agent", "codex", "--state", "working");
     if ((await cli("wait", id, "--state", "working", "--timeout", "1")).code === 0) break;
   }
-  await ui.until("codex's logo", (s) => s.includes(`${logo("codex")} @review`), 15000);
+  await ui.until("codex's logo", (s) => s.includes(`${logo("codex")}  @review`), 15000);
   ui.close();
 
   expect((await cli("logos", "uninstall")).code).toBe(0);

@@ -109,13 +109,14 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
     const color = state === "blocked" ? th.warn : state === "working" ? th.focus : th.dim;
     // the agent's mark, then its name (its tool when unnamed); under it, the task its terminal title names
     const mark = agentMark(th, harness, app.logos);
-    const width = contentWidth(app) - 2;
+    const width = contentWidth(app) - mark.cells;
     const name = sidebarColumns(pane.name ? "@" + pane.name : harness, app.cfg.indicators.sidebar ? app.icon(state) : "", width);
     const task = agentTask(pane.terminalTitle ?? pane.title, pane.name, harness);
     const meta = sidebarColumns(task || (pane.name ? harness : ""), labels[state], width);
     const body = row(app, side, { height: 2, selected, run: () => app.call("focusPane", { pane: pane.id }) });
+    const gap = " ".repeat(mark.cells - 1), indent = " ".repeat(mark.cells); // the task lines up under the name
     body.add(new TextRenderable(r, {
-      content: t`${fg(mark.color)(mark.glyph)} ${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n  ${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
+      content: t`${fg(mark.color)(mark.glyph)}${gap}${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n${indent}${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
       width: contentWidth(app), height: 2, flexShrink: 0, fg: state === "done" || state === "idle" ? th.dim : th.fg,
     }));
   }
