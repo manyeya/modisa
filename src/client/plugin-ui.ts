@@ -1,18 +1,43 @@
 // What plugins contribute to the TUI, drawn in the user's theme from the data the server sends with the view, and
 // running their actions from a status segment, sidebar row, menu entry or the palette. Everything a plugin shows is
 // attributed to it by name, so none of it can pass for modisa's own prompts.
-import { BoxRenderable } from "@opentui/core";
-import type { PluginUiView, Tone } from "../protocol/types";
+import { BoxRenderable, StyledText, bold, fg, type TextChunk } from "@opentui/core";
+import type { PluginUiView, Span, Tone } from "../protocol/types";
+import { brand } from "../config/agents/brands";
 import { linkMatches } from "../protocol/links";
 import { bindPluginKeys } from "../config/keys";
 import type { App } from "./context";
 import { systemNotification } from "./notify";
 import { menu } from "./modals/menu";
-import { fit } from "./design";
+import { contrast, fit } from "./design";
 import { render } from "./render";
 
 export const pluginUi = (app: App): PluginUiView[] => app.view?.plugins ?? [];
-export const toneColor = (app: App, tone: Tone) => ({ fg: app.th.fg, dim: app.th.dim, accent: app.th.accent, warn: app.th.warn })[tone] ?? app.th.fg;
+export const toneColor = (app: App, tone: Tone) => {
+  const th = app.th;
+  return ({ fg: th.fg, dim: th.dim, accent: th.accent, warn: th.warn, working: th.working, blocked: th.blocked, done: th.done, idle: th.idle })[tone] ?? th.fg;
+};
+
+// A sidebar row's spans as styled text, cut to `width` cells with … where it runs out. An icon is the agent's glyph
+// in its brand colour, or in the theme's text colour when the brand has none or it would be faint on this theme.
+export function spanText(app: App, spans: Span[], base: Tone, width: number): StyledText {
+  const chunks: TextChunk[] = [];
+  let left = width;
+  for (const x of spans) {
+    if (left <= 0) break;
+    if ("icon" in x) {
+      const { glyph, color } = brand(x.icon);
+      chunks.push(fg(color && contrast(color, app.th.bar) >= 3 ? color : app.th.fg)(glyph));
+      left -= 1;
+      continue;
+    }
+    const text = fit(x.text, left);
+    const chunk = fg(toneColor(app, x.tone ?? base))(text);
+    chunks.push(x.bold ? bold(chunk) : chunk);
+    left -= Bun.stringWidth(text);
+  }
+  return new StyledText(chunks);
+}
 const titleOf = (app: App, plugin: string, action: string) => pluginUi(app).find((p) => p.plugin === plugin)?.actions.find((a) => a.id === action)?.title ?? action;
 const short = (value: unknown) => {
   const text = typeof value === "string" ? value : JSON.stringify(value);

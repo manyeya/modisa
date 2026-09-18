@@ -57,6 +57,9 @@ export class PtyPane {
       onWritePty: (b) => queueMicrotask(() => this.write(b)),
       onTitleChanged: (t) => {
         this.oscTitle = t;
+        // read on request (list, a snapshot): not pushed to clients, which a spinning title would do many times a second
+        if (t) this.info.terminalTitle = t;
+        else delete this.info.terminalTitle;
         if (!this.info.name && t) {
           this.info.title = t;
           queueMicrotask(() => this.hooks.title(this));

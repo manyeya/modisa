@@ -19,7 +19,8 @@ import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
 import { cleanText } from "../core/text";
-import type { PluginKey, PluginStatus, PluginUiView, Tone } from "../protocol/types";
+import type { PluginKey, PluginStatus, PluginUiView, Span, Tone } from "../protocol/types";
+import { brand } from "../config/agents/brands";
 import { linkedPlugins, readInstall, readManifest } from "../config/plugins";
 import { understandsPlugins, type Client, type ServerContext } from "./context";
 import type { Handlers } from "./rpc/dispatch";
@@ -67,7 +68,7 @@ export class OwnedGroup {
 
 // ---------- what a run shows in the TUI ----------
 // Limits keep a plugin from crowding out modisa's own chrome or flooding clients with redraws.
-const LIMIT = { statusSegments: 4, statusText: 32, sidebarTitle: 30, sidebarRows: 20, rowText: 60, badgeText: 12, badges: 50, menuItems: 8, menuTitle: 40, toastText: 120 };
+const LIMIT = { statusSegments: 4, statusText: 32, sidebarTitle: 30, sidebarRows: 40, rowText: 60, badgeText: 12, badges: 50, menuItems: 8, menuTitle: 40, toastText: 120 };
 const UPDATES = { burst: 30, perSecond: 10 }; // ui.* calls per run
 const TOASTS = { burst: 3, windowMs: 10_000 };
 // and across all the session's plugins together, so many plugins, each within its own limits, can't do it either:
@@ -87,6 +88,26 @@ const emptyUi = (): UiState => ({ status: new Map(), badges: new Map(), menu: []
 
 // Text a plugin sends is shown in the TUI, cleaned and cut to cells (core/text.ts, shared with `plugin search`)
 export { cleanText };
+
+// A row's spans, cleaned like any plugin text and cut to the row's budget of cells: an icon takes one, and text is cut
+// (with …) where the budget runs out; what's past it is dropped.
+function cleanSpans(spans: any[]): Span[] {
+  const out: Span[] = [];
+  let left = LIMIT.rowText;
+  for (const x of spans) {
+    if (left <= 0) break;
+    if ("icon" in x) {
+      const icon = cleanText(x.icon, 40);
+      if (icon) (out.push({ icon }), left--);
+      continue;
+    }
+    const text = cleanText(x.text, left);
+    if (!text) continue;
+    out.push({ text, ...(x.tone && { tone: x.tone }), ...(x.bold && { bold: true }) });
+    left -= Bun.stringWidth(text);
+  }
+  return out;
+}
 
 // id: public, shown with the run's UI so an action taken from it can be refused once the run has ended
 type Run = { id: string; group: OwnedGroup; token: string; revoked: boolean; note(line: string): void };
@@ -434,7 +455,11 @@ export function createPluginHost(ctx: ServerContext) {
       for (const row of p.rows) if (row.pane && ctx.s.panes.get(row.pane)?.info.instance !== row.instance) throw fail("pane_gone", `no pane ${row.pane} with instance ${row.instance ?? "(none given: a row's pane needs its instance)"}`);
       pl.ui.sidebar = {
         title: cleanText(p.title, LIMIT.sidebarTitle),
-        rows: p.rows.slice(0, LIMIT.sidebarRows).map((row: any) => ({ text: cleanText(row.text, LIMIT.rowText), tone: row.tone, ...(row.action && { action: row.action }), ...(row.pane && { pane: row.pane, instance: row.instance }) })),
+        rows: p.rows.slice(0, LIMIT.sidebarRows).map((row: any) => {
+          const spans: Span[] | undefined = row.spans ? cleanSpans(row.spans) : undefined;
+          const text = spans ? spans.map((x) => ("icon" in x ? brand(x.icon).glyph : x.text)).join("") : cleanText(row.text, LIMIT.rowText);
+          return { text, tone: row.tone, ...(spans && { spans }), ...(row.action && { action: row.action }), ...(row.pane && { pane: row.pane, instance: row.instance }) };
+        }),
       };
       return changed(pl);
     },

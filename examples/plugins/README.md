@@ -157,7 +157,8 @@ Events are **notifications** — no `id`, always `method: "event"`:
 ```
 
 Call `events.subscribe` once to start receiving them. Pass `snapshot: true` to get every pane as of
-that moment in the same reply:
+that moment in the same reply (`list` gives the same panes any time). A pane's `title` is its name when
+it has one; `terminalTitle` is what the program in it last set, such as the task an agent is on:
 
 ```json
 {"jsonrpc":"2.0","id":2,"method":"events.subscribe","params":{"snapshot":true}}
@@ -273,7 +274,7 @@ These work only on a plugin's bound connection (after `plugin.hello`); from any 
 | Method | Params | |
 |---|---|---|
 | `ui.status.set` / `ui.status.clear` | `id`, `text`, `tone`, `action` / `id` | a status row segment |
-| `ui.sidebar.set` / `ui.sidebar.clear` | `title`, `rows[]` (`text`, `tone`, `action`, `pane` + `instance`) | the plugin's sidebar section |
+| `ui.sidebar.set` / `ui.sidebar.clear` | `title`, `rows[]` (`text`, `tone`, `spans`, `action`, `pane` + `instance`) | the plugin's sidebar section; `spans` are `{ text, tone, bold }` and `{ icon: <agent id> }` pieces |
 | `ui.badge.set` / `ui.badge.clear` | `pane`, `instance`, `text`, `tone` / `pane` | a label on a pane's border |
 | `ui.menu.set` | `items[]` (`id`, `title`, `action`) | pane context menu entries |
 | `ui.toast` | `text`, `tone`, `system` | a passing message in every attached client |

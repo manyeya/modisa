@@ -5,7 +5,7 @@ import type { App } from "../context";
 import { fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
 import { render } from "../render";
 import { deleteSpace, spaceMenu } from "../spaces";
-import { pluginUi, runPluginAction, toneColor } from "../plugin-ui";
+import { pluginUi, runPluginAction, spanText, toneColor } from "../plugin-ui";
 
 type RowOptions = { selected?: boolean; height?: number; run: () => any; context?: (e: MouseEvent) => void; hover?: (on: boolean) => void };
 const selectedBg = (app: App) => mix(app.th.bar, app.th.focus, 0.12);
@@ -66,8 +66,31 @@ export function drawSidebar(app: App) {
   if (budget.moreSpaces) action(app, side, "More spaces…", "", () => app.actions["workspace-picker"]!.run());
   action(app, side, "New space", "+", () => app.actions["new-workspace"]!.run());
   blank();
-  heading("AGENTS", agents.length);
-  blank();
+  // a plugin the config names in [sidebar] agents takes the AGENTS list's place and its room, while it shows a section;
+  // otherwise (not installed, stopped, nothing to show) modisa's own list is there as ever
+  const takeover = app.cfg.sidebar.agents ? pluginUi(app).find((p) => p.plugin === app.cfg.sidebar.agents && p.sidebar) : undefined;
+  if (takeover) pluginSection(app, takeover, budget.lines);
+  else agentList(app, agents, budget);
+  for (const plugin of pluginUi(app)) {
+    if (!plugin.sidebar || plugin === takeover) continue;
+    blank();
+    pluginSection(app, plugin, 8);
+  }
+  const footer = new BoxRenderable(r, { position: "absolute", left: 0, bottom: 1, width: w - 1, height: 4, flexDirection: "column" });
+  side.add(footer);
+  footer.add(new TextRenderable(r, { content: "  " + "─".repeat(contentWidth(app)), height: 1, width: w - 1, flexShrink: 0, fg: th.border }));
+  action(app, footer, "Commands", ":", () => app.actions.palette!.run());
+  action(app, footer, "Keyboard guide", "?", () => app.actions.help!.run());
+  action(app, footer, "Settings", "⚙", () => app.actions.settings!.run());
+}
+
+// modisa's own list of agents: most pressing first, the focused one never hidden behind the overflow row
+function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: ReturnType<typeof sidebarBudget>) {
+  const { r, th, ui: { side } } = app;
+  const w = app.sideWidth();
+  const columns = sidebarColumns("AGENTS", String(agents.length), contentWidth(app));
+  side.add(new TextRenderable(r, { content: t`  ${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
+  side.add(new BoxRenderable(r, { width: w - 1, height: 1, flexShrink: 0 }));
   const focused = app.tab().focused;
   const visible = sidebarAgents(agents, focused, budget.agentRows);
   const labels = { blocked: "Needs you", working: "Working", done: "Done", idle: "Idle" };
@@ -88,39 +111,36 @@ export function drawSidebar(app: App) {
     action(app, side, "Launch an agent", "+", () => app.actions["new-agent"]!.run());
   }
   if (budget.moreAgents) action(app, side, `${agents.length - visible.length} more agents`, "›", () => app.actions["pane-picker"]!.run());
-  // a section per plugin that has one: click its heading to fold it, a row to run its action or focus its pane
-  for (const plugin of pluginUi(app)) {
-    const section = plugin.sidebar;
-    if (!section) continue;
-    blank();
-    const folded = app.collapsedPlugins.has(plugin.plugin);
-    const head = row(app, side, {
-      run: () => {
-        if (folded) app.collapsedPlugins.delete(plugin.plugin);
-        else app.collapsedPlugins.add(plugin.plugin);
-        app.chromeSig = "";
-        render(app);
-      },
-    });
-    // headed by the plugin's name on its own row, so a section can't pass for one of modisa's however narrow the
-    // sidebar; the title the plugin chose goes under it
-    const columns = sidebarColumns(`${folded ? "▸" : "▾"} ${plugin.plugin}`, String(section.rows.length), contentWidth(app));
-    head.add(new TextRenderable(r, { content: t`${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: contentWidth(app), height: 1, flexShrink: 0, fg: th.dim }));
-    if (folded) continue;
-    side.add(new TextRenderable(r, { content: "  " + fit(section.title, contentWidth(app)), width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
-    for (const item of section.rows.slice(0, 8)) {
-      // focus the process the row was set for (the server checks the instance), never another pane given its id
-      const focus = () => app.conn.request("pane.focus", { target: `${item.pane}:${item.instance}` }).catch(() => app.toast(`${plugin.plugin}: that pane is gone`, th.warn));
-      const body = row(app, side, { run: () => (item.pane ? focus() : item.action && runPluginAction(app, plugin, item.action)) });
-      body.add(new TextRenderable(r, { content: fit(item.text, contentWidth(app)), width: contentWidth(app), height: 1, flexShrink: 0, fg: toneColor(app, item.tone) }));
-    }
+}
+
+// A plugin's section, at most `rows` of its rows: click its heading to fold it, a row to run its action or focus its pane.
+// It's headed by the plugin's name on its own row, so it can't pass for one of modisa's however narrow the sidebar; the
+// title the plugin chose goes under it.
+function pluginSection(app: App, plugin: ReturnType<typeof pluginUi>[number], rows: number) {
+  const { r, th, ui: { side } } = app;
+  const section = plugin.sidebar!;
+  const folded = app.collapsedPlugins.has(plugin.plugin);
+  const head = row(app, side, {
+    run: () => {
+      if (folded) app.collapsedPlugins.delete(plugin.plugin);
+      else app.collapsedPlugins.add(plugin.plugin);
+      app.chromeSig = "";
+      render(app);
+    },
+  });
+  // the count is of rows that do something (focus a pane, run an action), not a plugin's headers and spacing
+  const items = section.rows.filter((x) => x.pane || x.action).length;
+  const columns = sidebarColumns(`${folded ? "▸" : "▾"} ${plugin.plugin}`, String(items || section.rows.length), contentWidth(app));
+  head.add(new TextRenderable(r, { content: t`${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: contentWidth(app), height: 1, flexShrink: 0, fg: th.dim }));
+  if (folded) return;
+  side.add(new TextRenderable(r, { content: "  " + fit(section.title, contentWidth(app)), width: app.sideWidth() - 1, height: 1, flexShrink: 0, fg: th.dim }));
+  for (const item of section.rows.slice(0, rows)) {
+    // focus the process the row was set for (the server checks the instance), never another pane given its id
+    const focus = () => app.conn.request("pane.focus", { target: `${item.pane}:${item.instance}` }).catch(() => app.toast(`${plugin.plugin}: that pane is gone`, th.warn));
+    const body = row(app, side, { run: () => (item.pane ? focus() : item.action && runPluginAction(app, plugin, item.action)) });
+    const content = item.spans?.length ? spanText(app, item.spans, item.tone, contentWidth(app)) : fit(item.text, contentWidth(app));
+    body.add(new TextRenderable(r, { content, width: contentWidth(app), height: 1, flexShrink: 0, fg: toneColor(app, item.tone) }));
   }
-  const footer = new BoxRenderable(r, { position: "absolute", left: 0, bottom: 1, width: w - 1, height: 4, flexDirection: "column" });
-  side.add(footer);
-  footer.add(new TextRenderable(r, { content: "  " + "─".repeat(contentWidth(app)), height: 1, width: w - 1, flexShrink: 0, fg: th.border }));
-  action(app, footer, "Commands", ":", () => app.actions.palette!.run());
-  action(app, footer, "Keyboard guide", "?", () => app.actions.help!.run());
-  action(app, footer, "Settings", "⚙", () => app.actions.settings!.run());
 }
 
 // ---------- spaces ----------

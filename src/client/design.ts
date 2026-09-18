@@ -19,11 +19,21 @@ export function mix(a: string, b: string, t: number): string {
   return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, "0")).join("");
 }
 
+// WCAG contrast ratio of two #rrggbb colours (1 to 21).
+export function contrast(a: string, b: string): number {
+  const lum = (c: string) => {
+    const [r, g, b] = [0, 1, 2].map((i) => parseInt(c.slice(1 + 2 * i, 3 + 2 * i), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x! + 0.05) / (y! + 0.05);
+}
+
 export function chrome(width: number, height: number, sidebar: boolean, preferred: number) {
   const top = 1; // tab bar
   const bottom = 1; // status row
   const side = sidebar && width >= 100 && height >= 22
-    ? Math.min(Math.max(20, Number.isFinite(preferred) ? preferred : 26), 34, Math.floor(width * 0.24)) : 0;
+    ? Math.min(Math.max(20, Number.isFinite(preferred) ? preferred : 26), 48, Math.floor(width * 0.24)) : 0;
   return { top, bottom, side, area: { x: side, y: top, w: Math.max(1, width - side), h: Math.max(1, height - top - bottom) } satisfies Rect };
 }
 
@@ -49,7 +59,7 @@ export function sidebarBudget(height: number, spaces: number, agents: number) {
   const remaining = Math.max(0, content - 6 - spaceRows - Number(moreSpaces));
   const moreAgents = agents * 2 > remaining;
   const agentRows = Math.min(agents, Math.max(0, Math.floor((remaining - Number(moreAgents)) / 2)));
-  return { spaceRows, moreSpaces, agentRows, moreAgents: agents > agentRows };
+  return { spaceRows, moreSpaces, agentRows, moreAgents: agents > agentRows, lines: remaining }; // lines: what the agent list may use
 }
 
 // Keep priority order, but never strand the focused agent behind an overflow row.

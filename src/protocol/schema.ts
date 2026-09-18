@@ -98,7 +98,7 @@ export const events = {
 const agentInfo = z.strictObject({ harness: z.string(), state, source: z.enum(["hook", "screen"]) });
 export const paneInfo = z.strictObject({
   id: z.string(), instance: z.string(), // the same pair events call `pane` and `instance`
-  name: z.string().optional(), title: z.string(), cwd: z.string(), command: z.string().optional(), harness: z.string().optional(), createdBy: z.string(),
+  name: z.string().optional(), title: z.string(), terminalTitle: z.string().optional(), cwd: z.string(), command: z.string().optional(), harness: z.string().optional(), createdBy: z.string(),
   status: z.enum(["running", "exited"]), exitCode: z.number().int().optional(), // set once exited; signal n: 128+n
   agent: agentInfo.optional(),
   session: z.strictObject({ agent: z.string(), id: z.string(), source: z.string() }).optional(), // the agent's own session, reported by its integration
@@ -114,13 +114,14 @@ const pluginStatus = z.strictObject({
   connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
   install: z.strictObject({ source: z.string(), ref: z.string().nullable(), commit: z.string() }).optional(),
 });
-const tone = z.enum(["fg", "dim", "accent", "warn"]);
+const tone = z.enum(["fg", "dim", "accent", "warn", "working", "blocked", "done", "idle"]);
+const span = z.union([z.strictObject({ text: z.string(), tone: tone.optional(), bold: z.boolean().optional() }), z.strictObject({ icon: z.string() })]);
 export const pluginUiView = z.strictObject({
   plugin: z.string(),
   run: z.string(),
   actions: z.array(z.strictObject({ id: z.string(), title: z.string(), description: z.string().optional() })),
   status: z.array(z.strictObject({ id: z.string(), text: z.string(), tone, action: z.string().optional() })),
-  sidebar: z.strictObject({ title: z.string(), rows: z.array(z.strictObject({ text: z.string(), tone, action: z.string().optional(), pane: z.string().optional(), instance: z.string().optional() })) }).optional(),
+  sidebar: z.strictObject({ title: z.string(), rows: z.array(z.strictObject({ text: z.string(), tone, spans: z.array(span).optional(), action: z.string().optional(), pane: z.string().optional(), instance: z.string().optional() })) }).optional(),
   badges: z.array(z.strictObject({ pane: z.string(), instance: z.string(), text: z.string(), tone })),
   menu: z.array(z.strictObject({ id: z.string(), title: z.string(), action: z.string() })),
   keys: z.array(z.strictObject({ key: z.string(), action: z.string().optional(), pane: z.string().optional(), description: z.string() })),
@@ -228,7 +229,7 @@ export const api = {
   "ui.status.set": z.object({ caller, id: z.string().min(1).max(40), text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional() }),
   "ui.status.clear": z.object({ caller, id: z.string().min(1).max(40) }),
   // a row with `pane` needs that pane's `instance`: clicking it reaches that process or nothing
-  "ui.sidebar.set": z.object({ caller, title: z.string(), rows: z.array(z.object({ text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional(), pane: z.string().min(1).optional(), instance: z.string().min(1).optional() })).max(50) }),
+  "ui.sidebar.set": z.object({ caller, title: z.string(), rows: z.array(z.object({ text: z.string().default(""), tone: tone.default("fg"), spans: z.array(z.union([z.object({ text: z.string(), tone: tone.optional(), bold: z.boolean().optional() }), z.object({ icon: z.string().max(40) })])).max(16).optional(), action: z.string().min(1).optional(), pane: z.string().min(1).optional(), instance: z.string().min(1).optional() })).max(50) }),
   "ui.sidebar.clear": z.object({ caller }),
   "ui.toast": z.object({ caller, text: z.string(), tone: tone.default("fg"), system: z.boolean().optional() }),
   "ui.badge.set": z.object({ caller, pane: z.string().min(1), instance: z.string().min(1), text: z.string(), tone: tone.default("accent") }),

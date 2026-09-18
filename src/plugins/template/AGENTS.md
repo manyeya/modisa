@@ -48,15 +48,18 @@ nothing a plugin shows can pass for modisa's own. Everything is cleared when the
 
 - From the library, after `hello`:
   - `modisa.ui.status(id, text, { tone, action })`: a segment in the status row (up to 4); clicking runs `action`.
-  - `modisa.ui.sidebar(title, rows)`: the plugin's section in the sidebar (up to 20 rows). A row runs its `action`,
-    or focuses its `pane`; a row's `pane` comes with that pane's `instance`, so a click reaches that process or says
-    it's gone.
+  - `modisa.ui.sidebar(title, rows)`: the plugin's section in the sidebar (up to 40 rows; the sidebar shows 8 of a
+    section, or all that fit when the user's `[sidebar] agents` names the plugin, putting its section in place of
+    modisa's agent list). A row runs its `action`, or focuses its `pane`; a row's `pane` comes with that pane's
+    `instance`, so a click reaches that process or says it's gone. A row is `text` in one `tone`, or `spans`:
+    `{ text, tone, bold }` pieces and `{ icon: "claude-code" }`, an agent's mark, which modisa draws in its brand
+    colour. Give `text` and a plain `tone` with spans too: an older modisa ignores spans and shows those.
   - `modisa.ui.badge(pane, instance, text, tone)`: a label on a pane's border, for that process only.
   - `modisa.ui.menu(items)`: entries in the pane context menu (up to 8).
   - `modisa.ui.toast(text, { tone, system })`: a passing message in every attached client (3 every 10s).
   - `clearStatus`, `clearSidebar`, `clearBadge` and `closePopup` take them away; `modisa.ui.state()` is what shows now.
-- Tones are `fg`, `dim`, `accent` and `warn`, mapped to the user's theme. Text loses control characters and escape
-  sequences and is cut to fit.
+- Tones are `fg`, `dim`, `accent`, `warn`, and the agent states' `working`, `blocked`, `done` and `idle`, mapped to
+  the user's theme. Text loses control characters and escape sequences and is cut to fit.
 - An `action` must be one the plugin offered in `hello`. Offer them in `plugin.json` too, with titles, so they're listed
   in the command palette:
   `"actions": [{ "id": "clear", "title": "Clear the log" }]`.

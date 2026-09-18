@@ -43,6 +43,7 @@ export type PaneInfo = {
   instance: string; // random per spawned process: tells a pane apart from a later one given the same id or name
   name?: string;
   title: string;
+  terminalTitle?: string; // the title the program last set (OSC 0/2), e.g. an agent's task: a named pane's `title` stays its name
   cwd: string;
   command?: string; // set for process/agent panes; undefined = interactive shell
   harness?: string; // adapter id when spawned as an agent
@@ -60,13 +61,17 @@ export type TabView = { id: string; name?: string; tree: Node; focused: string; 
 export type WorkspaceView = { id: string; name: string; cwd: string; active: number; tabs: TabView[] };
 
 // What a plugin's current run shows in the TUI, from its ui.* calls: drawn by modisa, in the user's theme.
-export type Tone = "fg" | "dim" | "accent" | "warn";
+// The theme's own colours: text, dim, accent, warning, and the four agent states.
+export type Tone = "fg" | "dim" | "accent" | "warn" | "working" | "blocked" | "done" | "idle";
+// A piece of a sidebar row: text in a tone (bold if asked), or an agent's mark: `icon` names a built-in agent
+// (claude-code, codex, …) and modisa draws its glyph in its brand colour.
+export type Span = { text: string; tone?: Tone; bold?: boolean } | { icon: string };
 export type PluginUiView = {
   plugin: string;
   run: string; // the run that set it: an action taken from what it showed is refused once that run has ended
   actions: { id: string; title: string; description?: string }[]; // offered by the connected run: palette entries
   status: { id: string; text: string; tone: Tone; action?: string }[]; // status bar segments
-  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string; instance?: string }[] }; // a sidebar section; a row's pane comes with its instance
+  sidebar?: { title: string; rows: { text: string; tone: Tone; spans?: Span[]; action?: string; pane?: string; instance?: string }[] }; // a sidebar section; a row's pane comes with its instance, and `text` is its spans as plain text
   badges: { pane: string; instance: string; text: string; tone: Tone }[]; // labels on pane borders
   menu: { id: string; title: string; action: string }[]; // pane context menu entries
   keys: { key: string; action?: string; pane?: string; description: string }[]; // plugin.json's, under the prefix: each client binds them with its own [plugin_keys]

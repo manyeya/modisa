@@ -198,3 +198,33 @@ test("updates are rate-limited, and toasts more so", async () => {
   expect(toasts.slice(0, 3)).toEqual(["ok", "ok", "ok"]);
   expect(toasts.slice(3)).toEqual(["rate_limited", "rate_limited"]);
 }, 30000);
+
+test("a sidebar row can be spans: text in the theme's tones, bold, and agents' icons, cleaned and cut like any row", async () => {
+  expect(
+    await apply(["ui.sidebar.set", { title: "Agents", rows: [
+      { spans: [{ icon: "claude-code" }, { text: " ✓ ", tone: "done" }, { text: "claude", tone: "done", bold: true }, { text: " · \x1b[31mAudit", tone: "dim" }] },
+      { spans: [{ text: "y".repeat(80), tone: "working" }, { text: "past the row's end" }] },
+      { spans: [{ icon: "no-such-agent" }, { text: " unknown" }] },
+    ] }]),
+  ).toEqual(["ok"]);
+  const rows = (await state()).sidebar.rows; // state() checks it against the published schema
+  expect(rows[0]).toEqual({ text: "✳ ✓ claude · Audit", tone: "fg", spans: [{ icon: "claude-code" }, { text: " ✓ ", tone: "done" }, { text: "claude", tone: "done", bold: true }, { text: " · Audit", tone: "dim" }] });
+  expect(rows[1].spans).toHaveLength(1); // the row's 60 cells ran out inside the first span
+  expect(rows[1].text).toHaveLength(60);
+  expect(rows[2].text).toBe("• unknown"); // an agent modisa doesn't know gets the generic mark
+  expect(await apply(["ui.sidebar.set", { title: "t", rows: [{ spans: [{ text: "x", tone: "rainbow" }] }] }])).toEqual(["invalid_params"]);
+});
+
+test("[sidebar] agents gives a plugin's section the AGENTS list's place, and the list comes back when the plugin goes", async () => {
+  await Bun.sleep(3000); // let the plugin's update budget refill
+  const config = `${sb.root}/config/config.toml`;
+  const before = await Bun.file(config).text().catch(() => "");
+  await Bun.write(config, `${before}\n[sidebar]\nagents = "ui-demo"\n`);
+  expect(await apply(["ui.sidebar.set", { title: "radar-ish", rows: [{ spans: [{ icon: "gemini" }, { text: " working ", tone: "working" }, { text: "on it", tone: "dim" }] }] }])).toEqual(["ok"]);
+  screen?.close();
+  screen = new Screen(["-s", S], sb.env, sb.root);
+  await screen.until("the plugin's section where AGENTS was, still named", (s) => !s.includes("AGENTS") && s.includes("▾ ui-demo") && s.includes("✦ working on it"), 20000);
+  await run("plugin", "stop", "ui-demo");
+  await screen.until("modisa's own list back", (s) => s.includes("AGENTS") && !s.includes("▾ ui-demo"), 20000);
+  await Bun.write(config, before);
+}, 60000);

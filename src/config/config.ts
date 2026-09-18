@@ -13,7 +13,7 @@ export type IndicatorStyle = "symbols" | "dots" | "letters";
 export type Config = {
   prefix: string;
   theme: string;
-  sidebar: { visible: boolean; width: number };
+  sidebar: { visible: boolean; width: number; agents: string }; // agents: a plugin whose section replaces the AGENTS list
   notify: Record<NotifyEvent, NotifyKind[]>;
   sound: { volume: number } & Record<NotifyEvent, string>; // a cuelume sound name per event
   indicators: { style: IndicatorStyle; tab: boolean; pane: boolean; sidebar: boolean };
@@ -30,7 +30,7 @@ export type Config = {
 export const DEFAULTS: Config = {
   prefix: "C-b",
   theme: "ion",
-  sidebar: { visible: true, width: 26 },
+  sidebar: { visible: true, width: 26, agents: "" },
   notify: { blocked: ["toast", "system", "sound"], done: ["toast"], working: [] },
   sound: { volume: 0.7, blocked: "chime", done: "success", working: "loading" },
   indicators: { style: "symbols", tab: true, pane: true, sidebar: true },
@@ -50,7 +50,8 @@ theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, 
 
 [sidebar]
 visible = true
-width = 26
+width = 26                  # 20 to 48 columns, and at most a quarter of the terminal
+agents = ""                 # a plugin whose sidebar section takes the AGENTS list's place ("radar"); "" keeps modisa's
 
 [notify]                    # toast, system, sound, bell — when an agent you're not looking at…
 blocked = ["toast", "system", "sound"]   # …needs you

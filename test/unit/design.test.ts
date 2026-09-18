@@ -7,7 +7,7 @@ test("chrome fits wide, compact and short terminals", () => {
     const { area, side } = chrome(width!, height!, true, 999);
     expect(area.x + area.w).toBe(width!);
     expect(area.y + area.h).toBeLessThan(height!);
-    expect(side).toBeLessThanOrEqual(34);
+    expect(side).toBeLessThanOrEqual(Math.min(48, Math.floor(width! * 0.24)));
     if (width! < 100) expect(side).toBe(0);
   }
 });

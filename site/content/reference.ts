@@ -145,7 +145,8 @@ modisa plugin search github     # …that also matches these words`) + p(
         [c("plugin dev <dir>"), "A throwaway session with the plugin running, to try it by hand."],
       ]) },
       { id: "tui", title: "In the TUI", html: ul([
-        `<strong>Status segments</strong>, a <strong>sidebar section</strong> whose rows run an action or focus a pane, <strong>badges</strong> on pane borders, entries in the <strong>pane menu</strong>, and <strong>toasts</strong>.`,
+        `<strong>Status segments</strong>, a <strong>sidebar section</strong> whose rows run an action or focus a pane, <strong>badges</strong> on pane borders, entries in the <strong>pane menu</strong>, and <strong>toasts</strong>. A sidebar row can mix colours from your theme, bold, and agents' marks in their brand colours.`,
+        `${c('[sidebar] agents = "radar"')} in config.toml puts that plugin's section where modisa's agent list is, with all its room; when the plugin isn't running or shows nothing, modisa's list is back.`,
         `<strong>Panes</strong> the plugin can open: a ${c("split")}, ${c("tab")} or ${c("zoomed")} pane that stays after the plugin stops, an ${c("overlay")} over the focused pane that gives focus back when it closes, or a ${c("popup")} over everything in the client that asked (${kbd("Ctrl+B")} ${kbd("x")} closes it).`,
         `Its actions are in the command palette. An action taken on a pane gets that pane, already checked to be the same process.`,
         `Modisa draws everything in your theme and names the plugin on every piece, so nothing a plugin shows can pass for modisa's own. Each plugin, and a session's plugins together, can only show so much and update so often. It's all cleared when the plugin stops.`,

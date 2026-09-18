@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 8;
+export const SDK_VERSION = 9;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -18,6 +18,7 @@ export type Pane = {
   instance: string;
   name?: string;
   title: string;
+  terminalTitle?: string; // the title the program last set, e.g. an agent's task: a named pane's `title` stays its name
   cwd: string;
   command?: string;
   status: "running" | "exited";
@@ -38,17 +39,22 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // the manifest's links matched it (modisa checks the pattern); treat it as data, never as a command.
 export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string }) => unknown;
 
-// What a plugin shows in modisa's TUI (see Client.ui). Tones map to the user's theme.
-export type Tone = "fg" | "dim" | "accent" | "warn";
-// a row that focuses a pane names its instance too: clicking reaches that process, or tells the user it's gone
-export type SidebarRow = { text: string; tone?: Tone; action?: string; pane?: string; instance?: string };
+// What a plugin shows in modisa's TUI (see Client.ui). Tones map to the user's theme: its text, dim, accent and
+// warning colours, and its colours for the four agent states.
+export type Tone = "fg" | "dim" | "accent" | "warn" | "working" | "blocked" | "done" | "idle";
+// A piece of a sidebar row: text in a tone (bold if asked), or an agent's mark: `icon` is a built-in agent's id
+// (claude-code, codex, gemini, …) and modisa draws its glyph in its brand colour.
+export type Span = { text: string; tone?: Tone; bold?: boolean } | { icon: string };
+// A row is `text` in one tone, or `spans` (then `text` may be left out). A row that focuses a pane names its instance
+// too: clicking reaches that process, or tells the user it's gone.
+export type SidebarRow = { text?: string; tone?: Tone; spans?: Span[]; action?: string; pane?: string; instance?: string };
 export type MenuItem = { id: string; title: string; action: string };
 export type UiState = {
   plugin: string;
   run: string;
   actions: { id: string; title: string; description?: string }[];
   status: { id: string; text: string; tone: Tone; action?: string }[];
-  sidebar?: { title: string; rows: { text: string; tone: Tone; action?: string; pane?: string; instance?: string }[] };
+  sidebar?: { title: string; rows: { text: string; tone: Tone; spans?: Span[]; action?: string; pane?: string; instance?: string }[] };
   badges: { pane: string; instance: string; text: string; tone: Tone }[];
   menu: MenuItem[];
   keys: { key: string; action?: string; pane?: string; description: string }[]; // as plugin.json declares them: each client binds them with its own config
