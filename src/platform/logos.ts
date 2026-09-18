@@ -75,17 +75,17 @@ export function withVscodeFont(text: string, add: boolean, created = false): { t
   return { text: text.replace(KEY, `$1${rest}$3`), created: false };
 }
 
-export type LogoStatus = { font: string | undefined; terminals: { name: string; path: string; configured: boolean }[] };
+export type LogoStatus = { font: string | undefined; current: boolean; terminals: { name: string; path: string; configured: boolean }[] };
 
 export async function logoStatus(): Promise<LogoStatus> {
   const terminals: LogoStatus["terminals"] = [];
   for (const t of MAPPED) {
     if (!(await t.present())) continue;
     const path = await t.path();
-    terminals.push({ name: t.name, path, configured: (await Bun.file(path).text().catch(() => "")).includes(BEGIN) });
+    terminals.push({ name: t.name, path, configured: (await Bun.file(path).text().catch(() => "")).includes(`${BEGIN}\n${t.line}\n${END}`) });
   }
   for (const [name, path] of await vscodeSettings()) terminals.push({ name, path, configured: KEY.exec(await Bun.file(path).text())?.[2]?.includes(FAMILY) ?? false });
-  return { font: (await exists(FONT)) ? FONT : undefined, terminals };
+  return { font: (await exists(FONT)) ? FONT : undefined, current: await current(), terminals };
 }
 
 // The font, and every terminal found that needs telling: returns the terminals it set up.
@@ -127,11 +127,42 @@ export async function uninstallLogos(): Promise<void> {
   await Bun.write(STATE, JSON.stringify({ removed: true }));
 }
 
-// The first time a TUI starts: install them, unless the user took them out. Returns the terminals set up, or nothing.
-export async function installLogosOnce(): Promise<string[] | undefined> {
+// Whether the installed font is this modisa's: a newer one has more in it (and its terminals' maps cover more).
+const current = async () => (await exists(FONT)) && Bun.hash(await Bun.file(FONT).bytes()) === Bun.hash(await Bun.file(MARKS).bytes());
+
+// When a TUI starts: install them the first time, and bring them up to date after an update, unless the user took them
+// out. Returns what it did and the terminals it set up, or nothing when there was nothing to do.
+export async function installLogosOnce(): Promise<{ updated: boolean; terminals: string[] } | undefined> {
   const state = await readState();
-  if (state.removed || (await exists(FONT))) return undefined;
-  return installLogos();
+  if (state.removed || (await current())) return undefined;
+  const updated = await exists(FONT);
+  return { updated, terminals: await installLogos() };
+}
+
+// The font this terminal draws text in, from its settings (or its default): for guessing its cell height when it
+// doesn't say how big its cells are.
+export async function terminalFont(): Promise<{ family: string; lineHeight: number }> {
+  const program = Bun.env.TERM_PROGRAM ?? "", term = Bun.env.TERM ?? "";
+  const setting = (text: string, re: RegExp) => re.exec(text)?.[1]?.trim();
+  if (program === "vscode") {
+    for (const [, path] of await vscodeSettings()) {
+      const text = await Bun.file(path).text();
+      const family = setting(text, /"terminal\.integrated\.fontFamily"\s*:\s*"((?:[^"\\]|\\.)*)"/) || setting(text, /"editor\.fontFamily"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      const lineHeight = Number(setting(text, /"terminal\.integrated\.lineHeight"\s*:\s*([\d.]+)/) ?? 1) || 1;
+      if (family) return { family, lineHeight };
+    }
+    return { family: MAC ? "Menlo" : "Droid Sans Mono", lineHeight: 1 };
+  }
+  if (program === "ghostty" || term === "xterm-ghostty" || Bun.env.GHOSTTY_RESOURCES_DIR) {
+    const text = await Bun.file(await MAPPED[0]!.path()).text().catch(() => "");
+    return { family: setting(text, /^\s*font-family\s*=\s*"?([^"\n]+)"?\s*$/m) || "JetBrains Mono", lineHeight: 1 };
+  }
+  if (Bun.env.KITTY_WINDOW_ID || term === "xterm-kitty") {
+    const text = await Bun.file(await MAPPED[1]!.path()).text().catch(() => "");
+    return { family: setting(text, /^\s*font_family\s+(.+)$/m) || (MAC ? "Menlo" : "DejaVu Sans Mono"), lineHeight: 1 };
+  }
+  if (program === "WezTerm") return { family: "JetBrains Mono", lineHeight: 1 };
+  return { family: "", lineHeight: 1 };
 }
 
 // Whether the terminal this runs in will draw the logos: the font is installed and the terminal is one that finds it

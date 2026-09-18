@@ -6,7 +6,7 @@ import type { Conn } from "../protocol/conn";
 import type { AgentState, View } from "../protocol/types";
 import { parsePrefix, type Config, type IndicatorStyle } from "../config/config";
 import { theme, type Theme } from "../config/themes";
-import { chrome, fit } from "./design";
+import { cellEms, chrome, fit } from "./design";
 import type { ClientPane } from "./panes/pane";
 import type { Manifest } from "../cli/update";
 
@@ -46,6 +46,12 @@ export class App {
   resizing: { x: number; y: number; sawButtonMotion: boolean; sidebar?: boolean } | undefined; // a pane border, or the sidebar's edge, being dragged
   pointerShape: PointerShape = "default";
   logos = false; // draw agents' logos (this terminal shows modisa's logo font): see ./logos.ts
+  cellGuess = 1.2; // this terminal's cell height in ems, from its font, when it doesn't say its size in pixels
+  // this terminal's cell height in ems of its font: where a logo's halves meet
+  cellEms() {
+    const px = this.r.resolution;
+    return px && px.width > 0 && px.height > 0 ? cellEms(px, this.r.width, this.r.height) : this.cellGuess;
+  }
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
   readonly promptIds = new Map<number, BoxRenderable>(); // open permission prompts
   readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded

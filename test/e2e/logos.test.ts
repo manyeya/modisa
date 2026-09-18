@@ -2,7 +2,7 @@
 // out again exactly, never to come back unasked.
 import { test, expect, afterAll } from "bun:test";
 import { Screen, sandbox } from "../support/harness";
-import { logo } from "../../src/config/agents/brands";
+import { HALF_VARIANTS, HALVES_FIRST, LOGO_RANGE } from "../../src/config/agents/brands";
 
 const sb = sandbox("logos");
 const home = `${sb.root}/home`;
@@ -26,7 +26,7 @@ test("install puts the font in and tells each terminal; the TUI draws the logos;
   expect(installed.out).toContain("kitty");
   expect(installed.out).toContain("VS Code");
   expect((await Bun.file(fontAt).bytes()).length).toBeGreaterThan(1000);
-  expect(await Bun.file(`${home}/.config/kitty/kitty.conf`).text()).toContain("symbol_map U+F5A00-U+F5AFF Modisa Marks");
+  expect(await Bun.file(`${home}/.config/kitty/kitty.conf`).text()).toContain(`symbol_map ${LOGO_RANGE} Modisa Marks`);
   expect(await Bun.file(vscodeAt).text()).toContain(`"terminal.integrated.fontFamily": "`);
   expect(await Bun.file(vscodeAt).text()).toContain("// mine");
   expect((await cli("logos", "status")).out).toMatch(/kitty\s+set up/);
@@ -41,7 +41,17 @@ test("install puts the font in and tells each terminal; the TUI draws the logos;
     await cli("report", id, "--source", "logos-test", "--agent", "codex", "--state", "working");
     if ((await cli("wait", id, "--state", "working", "--timeout", "1")).code === 0) break;
   }
-  await ui.until("codex's logo", (s) => s.includes(`${logo("codex")}  @review`), 15000);
+  // codex's logo, centred between the row's two lines: its top half before the name, its bottom half under it
+  const halves = (s: string) => {
+    const lines = s.split("\n");
+    const at = lines.findIndex((l) => l.includes("  @review"));
+    if (at < 0) return false;
+    const top = [...lines[at]!.slice(0, lines[at]!.indexOf("  @review"))].at(-1)!.codePointAt(0)!;
+    const v = (top - HALVES_FIRST - 1) / 0x100; // codex is logo 1
+    const bottom = [...(lines[at + 1] ?? "")].find((c) => c.codePointAt(0)! >= HALVES_FIRST)?.codePointAt(0);
+    return Number.isInteger(v) && v >= 0 && v < HALF_VARIANTS && bottom === top + 0x80;
+  };
+  await ui.until("codex's logo, in halves", halves, 15000);
   ui.close();
 
   expect((await cli("logos", "uninstall")).code).toBe(0);

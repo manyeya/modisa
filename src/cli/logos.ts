@@ -19,7 +19,7 @@ export async function runLogos(verb = "status"): Promise<number> {
     return 2;
   }
   const s = await logoStatus();
-  console.log(s.font ? `font: ${s.font}` : "font: not installed (modisa logos install)");
+  console.log(s.font ? `font: ${s.font}${s.current ? "" : " (an older one: modisa logos install updates it)"}` : "font: not installed (modisa logos install)");
   for (const t of s.terminals) console.log(`${t.name.padEnd(15)} ${t.configured ? "set up" : "not set up"}  ${t.path}`);
   console.log(`this terminal: ${(await logosVisible()) ? "shows the logos" : "shows plain marks"}`);
   return 0;

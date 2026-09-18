@@ -1,5 +1,5 @@
 import type { Rect } from "../core/layout";
-import { brand, logo } from "../config/agents/brands";
+import { brand, halfVariant, logo, logoHalves } from "../config/agents/brands";
 import type { Theme } from "../config/themes";
 
 // Measure terminal cells, not UTF-16 code units (paths and titles can contain emoji/CJK).
@@ -34,11 +34,28 @@ export function contrast(a: string, b: string): number {
 // An agent's mark: its logo where the terminal shows modisa's logo font (else its glyph), in its brand colour, or in
 // the theme's text colour when the brand has none or it would be faint on this theme's sidebar. `cells` is the room
 // it takes, its gap after it included: a logo is drawn two cells wide over a one-cell character, so it's given the
-// cell after it too, then the gap.
-export function agentMark(th: Theme, agent: string, logos = false) {
+// cell after it too, then the gap. `halves` are the logo to centre between two lines, for cells `cell` ems tall.
+export function agentMark(th: Theme, agent: string, logos = false, cell = 1.2) {
   const { glyph, color } = brand(agent);
   const drawn = logos && logo(agent);
-  return { glyph: drawn || glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg, cells: drawn ? 3 : 2 };
+  const halves = drawn ? logoHalves(agent, halfVariant(cell)) : undefined;
+  return { glyph: drawn || glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg, cells: drawn ? 3 : 2, halves };
+}
+
+// How tall a terminal's cells are in ems of its font, from its size in pixels: a monospace cell is about 0.6em wide.
+export const cellEms = (pixels: { width: number; height: number }, cols: number, rows: number) => (0.6 * (pixels.height / rows)) / (pixels.width / cols);
+
+// The line height of common monospace fonts, in ems (ascent + descent + line gap): for a terminal that doesn't say how
+// big its cells are. Nerd Font builds of them are the same.
+const LINE_EMS: Record<string, number> = {
+  menlo: 1.164, sfmono: 1.193, jetbrainsmono: 1.32, firacode: 1.311, firamono: 1.2, cascadiacode: 1.172, cascadiamono: 1.172,
+  hack: 1.164, sourcecodepro: 1.257, droidsansmono: 1.164, dejavusansmono: 1.164, ibmplexmono: 1.3, robotomono: 1.319,
+  iosevka: 1.25, ubuntumono: 1.0, consolas: 1.172, monaco: 1.334, inconsolata: 1.1, victormono: 1.37, commitmono: 1.3, geistmono: 1.3,
+};
+// the first font of a CSS-style list, as a key: no case, spaces or quotes, and no Nerd Font suffix
+export function fontEms(family: string | undefined, lineHeight = 1): number | undefined {
+  const key = (family ?? "").split(",")[0]!.toLowerCase().replace(/['"\s]/g, "").replace(/(nerdfont(mono|propo)?|nfm|nfp|nf|nl)$/, "");
+  return LINE_EMS[key] && LINE_EMS[key]! * lineHeight;
 }
 
 // The task an agent's terminal title names, without the spinner or mark it puts in front; "" when the title only

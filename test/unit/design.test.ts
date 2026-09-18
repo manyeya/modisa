@@ -57,8 +57,9 @@ test("hover and selection tints blend theme colors", () => {
 test("an agent's mark is its brand colour, or the theme's text where that would be faint; its task drops the spinner", async () => {
   const { agentMark, agentTask } = await import("../../src/client/design");
   const { THEMES } = await import("../../src/config/themes");
-  expect(agentMark(THEMES.ion!, "claude-code")).toEqual({ glyph: "✳", color: "#d97757", cells: 2 }); // mark, gap
-  expect(agentMark(THEMES.ion!, "claude-code", true)).toEqual({ glyph: String.fromCodePoint(0xf5a00), color: "#d97757", cells: 3 }); // a logo's two cells, gap
+  expect(agentMark(THEMES.ion!, "claude-code")).toEqual({ glyph: "✳", color: "#d97757", cells: 2, halves: undefined }); // mark, gap
+  const { logoHalves, halfVariant } = await import("../../src/config/agents/brands");
+  expect(agentMark(THEMES.ion!, "claude-code", true, 1.164)).toEqual({ glyph: String.fromCodePoint(0xf5a00), color: "#d97757", cells: 3, halves: logoHalves("claude-code", halfVariant(1.164)) }); // a logo's two cells, gap
   expect(agentMark(THEMES.ion!, "aider", true).cells).toBe(2); // no logo: its glyph, one cell
   expect(agentMark(THEMES.ion!, "codex").color).toBe(THEMES.ion!.fg); // a monochrome brand
   expect(agentMark(THEMES["bearded-solarized-light"]!, "kilo").color).toBe(THEMES["bearded-solarized-light"]!.fg); // yellow on cream
@@ -66,4 +67,17 @@ test("an agent's mark is its brand colour, or the theme's text where that would 
   expect(agentTask("✳ Audit the token cache")).toBe("Audit the token cache");
   expect(agentTask("⠋ codex", "codex")).toBe("");
   expect(agentTask(undefined)).toBe("");
+});
+
+test("a logo's halves are sized for the terminal's cells: from its pixels when it says, else from its font", async () => {
+  const { cellEms, fontEms } = await import("../../src/client/design");
+  const { halfVariant, logoHalves, HALVES_FIRST } = await import("../../src/config/agents/brands");
+  expect(cellEms({ width: 1200, height: 700 }, 100, 25)).toBeCloseTo(1.4); // 12×28 px cells: 0.6em wide, so 1.4em tall
+  expect(fontEms("Menlo, Monaco, 'Courier New', monospace")).toBe(1.164); // VS Code's default on macOS
+  expect(fontEms("JetBrainsMono Nerd Font")).toBe(1.32); // Ghostty's default, as a Nerd Font too
+  expect(fontEms("Menlo", 1.2)).toBeCloseTo(1.397); // times the terminal's line height
+  expect(fontEms("Some Font")).toBeUndefined();
+  expect([halfVariant(1.0), halfVariant(1.164), halfVariant(1.32), halfVariant(9)]).toEqual([0, 3, 11, 20]); // clamped
+  const [top, bottom] = logoHalves("codex", 3)!;
+  expect([top.codePointAt(0), bottom.codePointAt(0)]).toEqual([HALVES_FIRST + 0x300 + 1, HALVES_FIRST + 0x300 + 0x81]);
 });
