@@ -35,10 +35,10 @@ export function contrast(a: string, b: string): number {
 // the theme's text colour when the brand has none or it would be faint on this theme's sidebar. `cells` is the room
 // it takes, its gap after it included: a logo is drawn two cells wide over a one-cell character, so it's given the
 // cell after it too, then the gap. `halves` are the logo to centre between two lines, for cells `cell` ems tall.
-export function agentMark(th: Theme, agent: string, logos = false, cell = 1.2) {
+export function agentMark(th: Theme, agent: string, logos: boolean | "whole" | "halves" = false, cell = 1.2) {
   const { glyph, color } = brand(agent);
   const drawn = logos && logo(agent);
-  const halves = drawn ? logoHalves(agent, halfVariant(cell)) : undefined;
+  const halves = drawn && logos !== "whole" ? logoHalves(agent, halfVariant(cell)) : undefined;
   return { glyph: drawn || glyph, color: color && contrast(color, th.bar) >= 3 ? color : th.fg, cells: drawn ? 3 : 2, halves };
 }
 

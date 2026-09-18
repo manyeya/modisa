@@ -18,7 +18,9 @@ const SUPPORT = `${HOME}/Library/Application Support`;
 const BEGIN = "# >>> modisa agent logos (managed; `modisa logos uninstall` removes it)";
 const END = "# <<< modisa agent logos";
 
-type State = { removed?: boolean; inserted?: string[] }; // inserted: VS Code settings whose font list modisa created
+// inserted: VS Code settings whose font list modisa created; installed/updated: when the font went in, and when this
+// version of it did (epoch ms)
+type State = { removed?: boolean; inserted?: string[]; installed?: number; updated?: number };
 const readState = async (): Promise<State> => Bun.file(STATE).json().catch(() => ({}));
 const exists = (path: string) => Bun.file(path).exists();
 const dirExists = async (path: string) => (await Bun.$`test -d ${path}`.quiet().nothrow()).exitCode === 0;
@@ -107,7 +109,8 @@ export async function installLogos(): Promise<string[]> {
     if (created) inserted.add(path);
     done.push(name);
   }
-  await Bun.write(STATE, JSON.stringify({ inserted: [...inserted] }));
+  const now = Date.now();
+  await Bun.write(STATE, JSON.stringify({ inserted: [...inserted], installed: state.installed ?? now, updated: now }));
   return done;
 }
 
@@ -163,6 +166,37 @@ export async function terminalFont(): Promise<{ family: string; lineHeight: numb
   }
   if (program === "WezTerm") return { family: "JetBrains Mono", lineHeight: 1 };
   return { family: "", lineHeight: 1 };
+}
+
+// When the terminal this runs in started: the app at the top of this process's ancestry (Ghostty, VS Code, kitty…),
+// the one just below launchd or init. A terminal loads its fonts when it starts, so this says which font it has.
+export async function terminalStarted(pid = process.pid): Promise<number | undefined> {
+  const table = new Map<number, { parent: number; started: number }>();
+  for (const line of (await Bun.$`ps -axo pid=,ppid=,lstart=`.quiet().nothrow().text()).split("\n")) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line);
+    if (m) table.set(Number(m[1]), { parent: Number(m[2]), started: Date.parse(m[3]!) });
+  }
+  let at = table.get(pid);
+  for (let hops = 0; at && at.parent > 1 && hops < 64; hops++) {
+    const up = table.get(at.parent);
+    if (!up) break;
+    at = up;
+  }
+  return at && Number.isFinite(at.started) ? at.started : undefined;
+}
+
+// Which of the logo font's glyphs the terminal can draw. A terminal finds a newly installed font while it runs
+// (Ghostty does), but keeps the version it first loaded: after an update it has the older font's whole logos, which
+// are at the same characters, and gets a logo's halves once it's been started since the update. So an update never
+// takes the logos away meanwhile.
+export function fontLoaded(started: number | undefined, updated: number): "whole" | "halves" {
+  const slack = 60_000; // ps reports whole seconds, and a terminal that started just before still hadn't looked
+  return started !== undefined && started < updated - slack ? "whole" : "halves";
+}
+export async function logosLoaded(): Promise<"whole" | "halves"> {
+  const state = await readState();
+  // a modisa before 0.1.14 didn't note when it updated the font: the font file says when it last changed
+  return fontLoaded(await terminalStarted(), state.updated ?? Bun.file(FONT).lastModified);
 }
 
 // Whether the terminal this runs in will draw the logos: the font is installed and the terminal is one that finds it

@@ -45,7 +45,7 @@ export class App {
   lastSpaceClick = { index: -1, at: 0 };
   resizing: { x: number; y: number; sawButtonMotion: boolean; sidebar?: boolean } | undefined; // a pane border, or the sidebar's edge, being dragged
   pointerShape: PointerShape = "default";
-  logos = false; // draw agents' logos (this terminal shows modisa's logo font): see ./logos.ts
+  logos: false | "whole" | "halves" = false; // agents' logos, as much of modisa's logo font as this terminal has: see ./logos.ts
   cellGuess = 1.2; // this terminal's cell height in ems, from its font, when it doesn't say its size in pixels
   // this terminal's cell height in ems of its font: where a logo's halves meet
   cellEms() {

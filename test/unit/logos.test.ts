@@ -33,3 +33,14 @@ test("every agent with a logo gets its own character, in order, from U+F5A00", (
   expect(logo("aider")).toBeUndefined(); // no logo: its glyph instead
   expect(new Set(LOGOS.map(([a]) => a)).size).toBe(LOGOS.length);
 });
+
+test("after an update a terminal draws the older font's whole logos, and their halves once it's restarted", async () => {
+  const { fontLoaded, terminalStarted } = await import("../../src/platform/logos");
+  const hour = 3_600_000, updated = 20 * hour;
+  expect(fontLoaded(15 * hour, updated)).toBe("whole"); // running since before the update: it has the older font
+  expect(fontLoaded(21 * hour, updated)).toBe("halves"); // restarted since
+  expect(fontLoaded(updated - 30_000, updated)).toBe("halves"); // within ps's second and a bit
+  expect(fontLoaded(undefined, updated)).toBe("halves"); // can't tell
+  const started = await terminalStarted();
+  expect(started === undefined || started <= Date.now()).toBe(true);
+});
