@@ -116,6 +116,7 @@ function layout(app: App): Section {
           kind: "choice", label: "agent logos", value: sidebar.logos, about: "auto: agents' real logos where the terminal can show them. off: plain marks",
           step: (by) => { save(app, "sidebar", "logos", cycle(["auto", "on", "off"] as const, app.cfg.sidebar.logos, by)); void setupLogos(app); },
         },
+        toggle(app, "branch lines", "sidebar", "graph", "Draw the AGENTS list as a git graph of its tabs; off: just the tab names over their agents"),
         {
           kind: "choice", label: "agents list", value: sidebar.agents || "modisa's", about: "A plugin whose sidebar section takes the AGENTS list's place",
           step: (by) => save(app, "sidebar", "agents", cycle(takers, app.cfg.sidebar.agents, by)),

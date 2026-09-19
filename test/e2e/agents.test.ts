@@ -81,8 +81,8 @@ test("the sidebar groups agents under their tab, git-graph style, and a click fo
   await cli("agent", "spawn", "fakeagent", "--name", "rev");
   const side = () => ui.lines().map((l) => l.slice(0, 26));
   const at = (re: RegExp) => side().findIndex((l) => re.test(l));
-  // the tab is a node, the agent branches off under it: the trunk ends there, the last tab's last agent
-  await ui.until("review's node, @rev under it", () => at(/◉ \d+ review/) >= 0 && at(/╰─.*@rev/) > at(/◉ \d+ review/));
+  // the tab is a node, its agent listed under it (branch lines are off by default)
+  await ui.until("review's node, @rev under it", () => at(/◉ \d+ review/) >= 0 && at(/@rev/) > at(/◉ \d+ review/));
   click(ui, 0, 4, at(/◉ \d+ review/));
   await ui.until("folded: its agents counted on its row", () => at(/◉ \d+ review.*▸/) >= 0 && at(/@rev/) < 0);
   click(ui, 0, 4, at(/◉ \d+ review/));

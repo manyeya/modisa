@@ -113,8 +113,10 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
   const labels = { blocked: "Needs you", working: "Working", done: "Done", idle: "Idle" };
   const stateColor = (s: AgentState) => (s === "blocked" ? th.warn : s === "working" ? th.focus : th.dim);
 
+  const lines = app.cfg.sidebar.graph;
   for (const g of graph.rows) {
     if (g.kind === "rail") {
+      if (!lines) continue;
       side.add(new TextRenderable(r, { content: t`  ${fg(trunk)("│")}`, width: w - 1, height: 1, flexShrink: 0 }));
       continue;
     }
@@ -130,8 +132,8 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
       const body = row(app, side, { run: toggle, context: (e) => contextMenu(app, tab.focused, e.x, e.y) });
       // on the right: open, how many agents and ▾; folded, a count per state, what needs you first, and ▸
       const counts = (["blocked", "working", "done", "idle"] as const).map((s) => [s, tabAgents.filter((p) => p.agent!.state === s).length] as const).filter(([, n]) => n);
-      const right = !tabAgents.length ? [] : g.open ? [fg(th.dim)(`${tabAgents.length} ▾`)] : [...counts.flatMap(([s, n]) => [fg(stateColor(s))(`${app.icon(s)}${n}`), fg(th.dim)(" ")]), fg(th.dim)("▸")];
-      const rightWidth = !tabAgents.length ? 0 : g.open ? Bun.stringWidth(`${tabAgents.length} ▾`) : counts.reduce((n, [s, c]) => n + Bun.stringWidth(`${app.icon(s)}${c} `), 1);
+      const right = !tabAgents.length ? [] : g.open ? [fg(th.dim)(`${tabAgents.length} ▾`)] : [...counts.flatMap(([s, n]) => [fg(stateColor(s))(`${app.icon(s)}${n}`), fg(th.dim)("  ")]), fg(th.dim)("▸")];
+      const rightWidth = !tabAgents.length ? 0 : g.open ? Bun.stringWidth(`${tabAgents.length} ▾`) : counts.reduce((n, [s, c]) => n + Bun.stringWidth(`${app.icon(s)}${c}  `), 1);
       const number = `${g.tab + 1} `;
       const name = fit(tabLabel(app, tab), Math.max(1, cw - 2 - number.length - rightWidth - 1));
       const needsYou = !g.open && counts.some(([s]) => s === "blocked");
@@ -155,7 +157,7 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
     const body = row(app, side, { height: 2, selected, run: () => app.call("focusPane", { pane: pane.id }) });
     const [top, bottom] = mark.halves ?? [mark.glyph, " "];
     const gap = " ".repeat(mark.cells - 1);
-    const [g1, g2] = g.graph;
+    const [g1, g2] = lines ? g.graph : ["  ", "  "];
     body.add(new TextRenderable(r, {
       content: t`${fg(trunk)(g1[0]!)}${fg(branch)(g1[1]!)}${fg(mark.color)(top)}${gap}${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n${fg(trunk)(g2)}${fg(mark.color)(bottom)}${gap}${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
       width: cw, height: 2, flexShrink: 0, fg: state === "done" || state === "idle" ? th.dim : th.fg,

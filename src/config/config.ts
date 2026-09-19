@@ -15,7 +15,7 @@ export type Config = {
   prefix: string;
   theme: string;
   mouse: { hover: boolean }; // hover: the pointer resting on a list row selects it
-  sidebar: { visible: boolean; width: number; agents: string; logos: "auto" | "on" | "off" }; // agents: a plugin whose section replaces the AGENTS list
+  sidebar: { visible: boolean; width: number; agents: string; logos: "auto" | "on" | "off"; graph: boolean }; // agents: a plugin whose section replaces the AGENTS list
   status: { agents: boolean; panes: boolean; theme: boolean }; // what the status row shows besides the buttons
   git: { status: boolean; repo: boolean; counts: boolean; changes: boolean }; // the active space's repository in the status row
   panes: { border: BorderStyle };
@@ -36,7 +36,7 @@ export const DEFAULTS: Config = {
   prefix: "C-b",
   theme: "ion",
   mouse: { hover: true },
-  sidebar: { visible: true, width: 26, agents: "", logos: "auto" },
+  sidebar: { visible: true, width: 26, agents: "", logos: "auto", graph: false },
   status: { agents: true, panes: true, theme: false },
   git: { status: true, repo: true, counts: true, changes: true },
   panes: { border: "single" },
@@ -62,6 +62,7 @@ visible = true
 width = 26                  # 20 to 48 columns, at most a third of the terminal; dragging its edge sets it
 agents = ""                 # a plugin whose sidebar section takes the AGENTS list's place ("radar"); "" keeps modisa's
 logos = "auto"              # agents' logos where the terminal can show them (modisa logos); "on", or "off" for plain marks
+graph = false               # true draws the AGENTS list as a git graph of its tabs; the dots stay either way
 
 [status]                    # the bottom row, besides its buttons
 agents = true               # how many agents are working and need you
