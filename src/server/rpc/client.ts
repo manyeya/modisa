@@ -46,7 +46,7 @@ export function clientMethods(ctx: ServerContext): Handlers {
         dragStart: () => s.dragStart(c, a.x, a.y),
         dragMove: () => s.dragMove(c, a.x, a.y),
         dragEnd: () => s.dragEnd(c),
-        spawnAgent: () => s.split("row", ctx.agentOpts(a.harness, undefined, a.name)),
+        spawnAgent: () => s.split(a.dir === "col" ? "col" : "row", ctx.agentOpts(a.harness, undefined, a.name)),
         pause: () => { ctx.mail.paused = !ctx.mail.paused; ctx.changed(); },
       };
       const op = ops[p.name];

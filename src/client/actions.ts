@@ -17,12 +17,24 @@ import { openSettings } from "./modals/settings";
 import { reload } from "./notify";
 import { quit } from "./connection";
 import { render } from "./render";
+import { tabLabel } from "./chrome/tabs";
 import { deleteSpace, renameSpace, spaceMenu } from "./spaces";
 import { pluginKey, pluginKeys, pluginUi, runPluginAction } from "./plugin-ui";
 
 export function createActions(app: App): Record<string, Action> {
   const { r } = app;
   const agentList = async () => (await app.conn.request<{ id: string; name: string }[]>("adapters")).map((a) => ({ name: a.name, description: a.id, value: a.id }));
+
+  // Beside the focused pane, to the right or below: asked each time, as the focused pane may be anything
+  const launchAgent = async (harness: string) => {
+    const dir = await pick(app, "Open it", [
+      { name: "Right", description: "split the focused pane side by side", key: "v", value: "row" },
+      { name: "Down", description: "split the focused pane top and bottom", key: "-", value: "col" },
+    ]);
+    if (!dir) return;
+    const name = await prompt(app, "Name the agent", "", "optional: @name lets agents message it");
+    app.call("spawnAgent", { harness, dir, name: name?.trim() || undefined });
+  };
 
   const actions: Record<string, Action> = {
     "theme-picker": { label: "Change theme", run: () => openSettings(app, "theme") },
@@ -60,7 +72,16 @@ export function createActions(app: App): Record<string, Action> {
     "resize-down": { label: "Resize down", run: () => app.call("resize", { dir: "down" }) },
     zoom: { label: "Zoom pane", run: () => app.call("zoom") },
     "close-pane": { label: "Close pane", run: () => app.call("close") },
-    "close-tab": { label: "Close tab", run: () => app.call("closeTab") },
+    "close-tab": {
+      label: "Close tab",
+      run: async () => {
+        const ids = treePanes(app.tab().tree);
+        const agents = ids.filter((id) => app.info(id)?.agent).length;
+        // ponytail: asks only when agents would die; plain shells close straight away
+        if (agents && !(await confirm(app, "Close tab", `Close "${tabName(app)}"?\nThis closes its ${plural(ids.length, "pane")}, ${agents} running an agent.`, "close"))) return;
+        app.call("closeTab");
+      },
+    },
     // named, so the sidebar's graph can group its agents under it (Enter keeps the suggestion, Esc cancels)
     "new-tab": {
       label: "New tab",
@@ -110,9 +131,7 @@ export function createActions(app: App): Record<string, Action> {
       label: "New agent pane",
       run: async () => {
         const h = await pick(app, "New agent", await agentList());
-        if (!h) return;
-        const name = await prompt(app, "Name the agent", "", "optional: @name lets agents message it");
-        app.call("spawnAgent", { harness: h, name: name || undefined });
+        if (h) launchAgent(h);
       },
     },
     "toggle-sidebar": { label: "Toggle sidebar", run: () => { app.sidebar = !app.sidebar; app.conn.notify("area", { area: app.area() }); render(app); } },
@@ -143,7 +162,7 @@ export function createActions(app: App): Record<string, Action> {
           ...extra,
         ]);
         if (!v) return;
-        if (v.startsWith("agent:")) return app.call("spawnAgent", { harness: v.slice(6) });
+        if (v.startsWith("agent:")) return launchAgent(v.slice(6));
         if (v.startsWith("plugin:")) {
           const [, plugin, run, action] = v.split(":");
           const focused = app.tab().focused; // the target is the pane focused now, not when the action finishes
@@ -188,7 +207,7 @@ export function createActions(app: App): Record<string, Action> {
         if (body) app.conn.request("send", { to, body }).then(() => app.toast("queued"), (e) => app.toast(e.message, app.th.blocked));
       },
     },
-    "rename-tab": { label: "Rename tab", run: async () => { const n = await prompt(app, "Rename tab", app.tab().name ?? ""); if (n !== null) app.call("renameTab", { name: n }); } },
+    "rename-tab": { label: "Rename tab", run: async () => { const n = await prompt(app, "Rename tab", tabName(app)); if (n !== null) app.call("renameTab", { name: n.trim() }); } },
     "rename-pane": { label: "Rename pane (@name)", run: async () => { const n = await prompt(app, "Rename pane", app.info(app.tab().focused)?.name ?? ""); if (n !== null) app.call("renamePane", { name: n }); } },
     "rename-workspace": { label: "Rename space", run: () => renameSpace(app, app.view!.active) },
     "delete-workspace": { label: "Delete space", run: () => deleteSpace(app, app.view!.active) },
@@ -212,6 +231,7 @@ export function createActions(app: App): Record<string, Action> {
   return actions;
 }
 
+const tabName = (app: App) => tabLabel(app, app.tab());
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
 // Only the agents in one state; picking one jumps to it.

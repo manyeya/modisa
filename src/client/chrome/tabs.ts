@@ -4,6 +4,7 @@ import { panes as treePanes } from "../../core/layout";
 import type { App } from "../context";
 import { fit, tabWindow } from "../design";
 import { contextMenu } from "../modals/context-menu";
+import { menu } from "../modals/menu";
 import { button } from "./button";
 import type { TabView } from "../../protocol/types";
 
@@ -26,7 +27,7 @@ export function drawTabs(app: App) {
   const brand = brandWidth >= 6 ? ` ◈ ${fit(w.name, brandWidth - 6)} ▸ ` : fit(` ${w.name}`, brandWidth);
   button(app, tabBar, brand, brandWidth, th.bg, th.focus, () => app.actions["workspace-picker"]!.run());
   tabBar.add(new BoxRenderable(r, { width: 1, height: 1, flexShrink: 0 }));
-  const available = Math.max(1, r.width - brandWidth - 8);
+  const available = Math.max(1, r.width - brandWidth - 10); // 2 for the active tab's ✕
   const window = tabWindow(w.tabs.length, w.active, available);
   for (let i = window.start; i < window.end; i++) {
     const t = w.tabs[i]!;
@@ -36,10 +37,12 @@ export function drawTabs(app: App) {
     const prefix = ` ${i + 1}:`;
     const name = tabLabel(app, t);
     const text = prefix + fit(name, window.width - Bun.stringWidth(prefix + suffix) - 2) + suffix + " ";
-    // sized to the label so tabs sit side by side; window.width only caps long names
+    // sized to the label so tabs sit side by side; window.width only caps long names.
+    // Clicking the tab you're on renames it.
     button(app, tabBar, text, Math.min(window.width - 1, Bun.stringWidth(text)), blocked ? th.warn : on ? th.fg : th.dim, on ? th.border : th.bar,
-      () => app.call("selectTab", { index: i }),
-      (e) => contextMenu(app, t.focused, e.x, e.y));
+      () => (on ? app.actions["rename-tab"]!.run() : app.call("selectTab", { index: i })),
+      (e) => tabMenu(app, i, e.x, e.y).catch((err) => app.toast(String(err), th.blocked)));
+    if (on) button(app, tabBar, "✕ ", 2, th.dim, th.border, () => app.actions["close-tab"]!.run());
     tabBar.add(new BoxRenderable(r, { width: 1, height: 1, flexShrink: 0 }));
   }
   button(app, tabBar, " + ", 3, th.focus, th.bar, () => app.actions["new-tab"]!.run());
@@ -48,4 +51,18 @@ export function drawTabs(app: App) {
     button(app, tabBar, " ‹", 2, th.dim, th.bar, () => app.actions["prev-tab"]!.run());
     button(app, tabBar, " ›", 2, th.dim, th.bar, () => app.actions["next-tab"]!.run());
   }
+}
+
+// Right-click on a tab: it becomes the active one, then rename, close, or its focused pane's menu.
+async function tabMenu(app: App, index: number, x: number, y: number) {
+  const t = app.ws().tabs[index];
+  if (app.modal || !t) return;
+  await app.conn.request("cmd", { name: "selectTab", args: { index } });
+  const action = await menu(app, `Tab · ${tabLabel(app, t)}`, [
+    { name: "Rename tab", key: "r", action: "rename-tab" },
+    { name: "Pane menu", key: "p", action: "pane" },
+    { name: "Close tab", key: "x", action: "close-tab", danger: true },
+  ], x, y);
+  if (action === "pane") contextMenu(app, t.focused, x, y);
+  else if (action) app.actions[action]?.run();
 }
