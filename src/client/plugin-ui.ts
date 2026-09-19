@@ -164,6 +164,6 @@ function showPopup(app: App, opened: { pane: string; title: string; width?: numb
 
 // A plugin's toast. A system notification too only if it asked and the user has system notifications on for something.
 export function pluginToast(app: App, d: { plugin: string; text: string; tone: Tone; system?: boolean }) {
-  app.toast(`${d.plugin}: ${d.text}`, toneColor(app, d.tone));
+  app.toast(d.text, toneColor(app, d.tone), undefined, d.plugin);
   if (d.system && Object.values(app.cfg.notify).some((kinds) => kinds.includes("system"))) systemNotification(app, `${d.plugin}: ${d.text}`);
 }

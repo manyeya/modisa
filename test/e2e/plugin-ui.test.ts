@@ -149,7 +149,7 @@ test("the TUI draws it, runs a palette action and shows a plugin toast, attribut
   await screen.until("the action's result", (s) => s.includes("ui-demo: Say hello → hi there"));
 
   expect(await apply(["ui.toast", { text: "hello from a plugin", tone: "accent" }])).toEqual(["ok"]);
-  await screen.until("the toast", (s) => s.includes("ui-demo: hello from a plugin"));
+  await screen.until("the toast, titled with its plugin", (s) => /ui-demo[^\n]*\n[^\n]*hello from a plugin/.test(s));
 
   expect((await run("plugin", "stop", "ui-demo")).code).toBe(0);
   await screen.until("everything it showed to go", (s) => !s.includes("2 need you") && !s.includes("▾ ui-demo") && !s.includes("[ui-demo: "));

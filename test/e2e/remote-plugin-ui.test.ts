@@ -93,7 +93,7 @@ test("a remote client draws plugins' status and sidebar, runs a palette action, 
   remote.write("\r");
   await remote.until("the action's result", (s) => s.includes("rui-demo: Say hello → hi from the far side"));
   expect(await apply(["ui.toast", { text: "from the far side" }])).toEqual(["ok"]);
-  await remote.until("the toast", (s) => s.includes("rui-demo: from the far side"));
+  await remote.until("the toast, titled with its plugin", (s) => /rui-demo[^\n]*\n[^\n]*from the far side/.test(s));
 }, 40000);
 
 test("the remote client draws in its own theme and binds plugin keys with its own [plugin_keys]; the action runs on the server's side", async () => {

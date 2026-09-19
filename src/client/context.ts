@@ -26,13 +26,15 @@ export const INDICATORS: Record<IndicatorStyle, Record<AgentState, string>> = {
   letters: { blocked: "B", working: "W", done: "D", idle: "I" },
 };
 
+const TOASTS = 3; // cards shown at once; an older one beyond that goes
+
 export class App {
   conn!: Conn; // set by the first attach
   view: ServerView | undefined;
   th: Theme;
   prefix: { ctrl: boolean; name: string };
   readonly panes = new Map<string, ClientPane>();
-  readonly ui: { tabBar: BoxRenderable; side: BoxRenderable; telemetry: BoxRenderable; toastBox: TextRenderable };
+  readonly ui: { tabBar: BoxRenderable; side: BoxRenderable; telemetry: BoxRenderable; toasts: { box: BoxRenderable; text: TextRenderable }[] };
   actions: Record<string, Action> = {};
 
   // UI state
@@ -60,7 +62,7 @@ export class App {
   restarting = false; // the server told us it's restarting: wait for the new one instead of giving up
   restartedByUs = false; // we asked for it, so we start the new server
   readonly cleanup: (() => void)[] = []; // run on quit
-  private toastTimer: Timer | undefined;
+  private toasts: { text: string; color: Theme["fg"]; title?: string; timer: Timer }[] = []; // newest first
 
   constructor(readonly r: CliRenderer, readonly opts: ClientOptions, public cfg: Config, readonly debug: (line: string) => void) {
     this.th = theme(cfg);
@@ -70,9 +72,17 @@ export class App {
       tabBar: new BoxRenderable(r, { position: "absolute", left: 0, top: 0, width: "100%", height: 1, flexDirection: "row", zIndex: 5 }),
       side: new BoxRenderable(r, { position: "absolute", left: 0, top: 1, flexDirection: "column", zIndex: 5, paddingLeft: 1 }),
       telemetry: new BoxRenderable(r, { position: "absolute", left: 0, bottom: 0, width: "100%", height: 1, zIndex: 5, flexDirection: "row" }),
-      toastBox: new TextRenderable(r, { position: "absolute", right: 1, top: 1, zIndex: 50, content: "", visible: false }),
+      // a stack of cards at the top right, the newest on top: one toast doesn't wipe out another. Over dialogs and
+      // popups too, so news shows wherever you are
+      toasts: Array.from({ length: TOASTS }, () => {
+        const box = new BoxRenderable(r, { position: "absolute", right: 1, top: 1, height: 3, zIndex: 300, border: true, borderStyle: "rounded", paddingLeft: 1, paddingRight: 1, visible: false });
+        const text = new TextRenderable(r, { content: "" });
+        box.add(text);
+        return { box, text };
+      }),
     };
-    for (const x of Object.values(this.ui)) r.root.add(x);
+    const { toasts, ...rest } = this.ui;
+    for (const x of [...Object.values(rest), ...toasts.map((t) => t.box)]) r.root.add(x);
   }
 
   // ---------- geometry ----------
@@ -114,23 +124,35 @@ export class App {
     return this.conn.request("cmd", { name, args }).catch((e) => this.toast(String(e.message ?? e), this.th.blocked));
   }
 
-  toast(text: string, color = this.th.fg, ms = 4000) {
+  // A card in the toast stack, in `color`'s border; `title` names who it's from (a plugin). Warnings and what needs
+  // you stay twice as long as the rest.
+  toast(text: string, color = this.th.fg, ms?: number, title?: string) {
     if (this.quitting) return;
-    const { toastBox } = this.ui;
-    const content = fit(` ${text} `, Math.max(1, this.r.width - 2));
-    toastBox.content = content;
-    toastBox.top = this.metrics().top;
-    toastBox.width = Math.max(1, Bun.stringWidth(content));
-    toastBox.fg = color;
-    toastBox.bg = this.th.bar;
-    toastBox.visible = true;
-    clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => (toastBox.visible = false), ms);
+    ms ??= color === this.th.warn || color === this.th.blocked ? 10000 : 5000;
+    const t = { text, color, title, timer: setTimeout(() => ((this.toasts = this.toasts.filter((x) => x !== t)), this.drawToasts()), ms) };
+    this.toasts.unshift(t);
+    for (const old of this.toasts.splice(TOASTS)) clearTimeout(old.timer);
+    this.drawToasts();
   }
 
   clearToast() {
-    clearTimeout(this.toastTimer);
-    this.ui.toastBox.visible = false;
+    for (const t of this.toasts) clearTimeout(t.timer);
+    this.toasts = [];
+    this.drawToasts();
+  }
+
+  drawToasts() {
+    let top = this.metrics().top;
+    this.ui.toasts.forEach(({ box, text }, i) => {
+      const t = this.toasts[i];
+      box.visible = !!t;
+      if (!t) return;
+      const content = fit(t.text, Math.max(1, this.r.width - 6));
+      const width = Math.max(Bun.stringWidth(content), Bun.stringWidth(t.title ?? "") + 2) + 4; // border and padding
+      Object.assign(box, { top, width, borderColor: t.color, backgroundColor: this.th.bar, title: t.title ? ` ${t.title} ` : undefined, titleColor: t.color });
+      Object.assign(text, { content, fg: this.th.fg });
+      top += 3;
+    });
   }
 
   setConfig(cfg: Config) {

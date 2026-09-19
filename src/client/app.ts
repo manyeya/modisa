@@ -37,7 +37,7 @@ export async function runClient(opts: ClientOptions) {
     endResize(app, "terminal resize");
     app.conn?.notify("area", { area: app.area() });
     app.modal?.resize();
-    app.ui.toastBox.visible = false;
+    app.drawToasts();
     render(app);
   });
   watchConfig(() => reload(app));
