@@ -11,7 +11,7 @@ import { jump } from "./input/copy-mode";
 import { confirm } from "./modals/confirm";
 import { contextMenu } from "./modals/context-menu";
 import { fit } from "./design";
-import { pick } from "./modals/pick";
+import { list, pick } from "./modals/pick";
 import { prompt } from "./modals/prompt";
 import { openSettings } from "./modals/settings";
 import { reload } from "./notify";
@@ -67,16 +67,28 @@ export function createActions(app: App): Record<string, Action> {
     "workspace-picker": {
       label: "Switch space",
       run: async () => {
-        const v = await pick(app, "Spaces", [
-          ...app.view!.workspaces.map((w, i) => ({
-            name: `${i === app.view!.active ? "● " : "  "}${w.name}`,
-            description: `${w.git ? `⎇ ${w.git.branch} · ` : ""}${plural(w.tabs.length, "tab")} · ${plural(w.tabs.reduce((n, t) => n + treePanes(t.tree).length, 0), "pane")}`,
-            value: String(i),
-            context: (e: MouseEvent) => spaceMenu(app, i, e.x, e.y), // rename, delete
-          })),
-          { name: "+ new space", description: "A fresh group of tabs and panes", value: "new" },
-        ]);
+        const spaces = app.view!.workspaces;
+        const v = await list(app, {
+          title: "Spaces",
+          items: [
+            ...spaces.map((w, i) => ({
+              name: `${i === app.view!.active ? "● " : "  "}${w.name}`,
+              description: `${w.git ? `⎇ ${w.git.branch} · ` : ""}${plural(w.tabs.length, "tab")} · ${plural(w.tabs.reduce((n, t) => n + treePanes(t.tree).length, 0), "pane")}`,
+              value: String(i),
+              context: (e: MouseEvent) => spaceMenu(app, i, e.x, e.y), // rename, delete
+              // the last space can't be deleted, so it offers no ✕
+              buttons: [
+                { icon: "✎", value: `rename:${i}`, key: "r", title: "rename" },
+                ...(spaces.length > 1 ? [{ icon: "✕", value: `delete:${i}`, key: "d", title: "delete", danger: true }] : []),
+              ],
+            })),
+            { name: "+ new space", description: "A fresh group of tabs and panes", value: "new" },
+          ],
+        });
+        const [verb, index] = v?.split(":") ?? [];
         if (v === "new") actions["new-workspace"]!.run();
+        else if (verb === "rename") renameSpace(app, +index!);
+        else if (verb === "delete") deleteSpace(app, +index!);
         else if (v !== null) app.call("selectWorkspace", { index: +v });
       },
     },

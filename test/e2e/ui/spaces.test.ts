@@ -77,3 +77,38 @@ test("spaces from the picker: right-click one to rename or delete it; the last s
   ui.write("\x02&");
   await ui.until("refused in the UI too", (s) => s.includes("can't delete the only space"));
 }, 30000);
+
+test("each space in the picker shows ✎ and ✕: a click or ^r renames, ^d deletes; the last space has no ✕", async () => {
+  const row = (name: string) => ui.lines().findIndex((l) => l.includes(name) && l.includes("tab"));
+  const open = async (name: string) => {
+    ui.write("\x02w");
+    await ui.until("space picker", (s) => s.includes("Spaces") && row(name) > 0);
+  };
+  const listed = async (name: string, is: boolean) => {
+    for (let i = 0; i < 100 && (await cli("workspace", "list")).includes(name) !== is; i++) await Bun.sleep(50);
+    expect(await cli("workspace", "list")).toEqual(is ? expect.stringContaining(name) : expect.not.stringContaining(name));
+  };
+  await cli("workspace", "create", "alpha");
+  await open("alpha");
+  expect(ui.lines()[row("alpha")]).toMatch(/✎\s+✕/);
+  click(ui, 0, ui.lines()[row("alpha")]!.indexOf("✎"), row("alpha"));
+  await ui.until("rename prompt", (s) => s.includes("Rename space") && s.includes("Cancel"));
+  ui.write("\x01\x0bbeta\r");
+  await listed("beta", true);
+
+  await open("beta");
+  // select beta, its name bold: ↓ until it is (the pointer, left on a row by the click above, may have selected it)
+  const bold = () => !!ui.vt.cellAt({ x: ui.lines()[row("beta")]!.indexOf("beta"), y: row("beta") })?.style?.bold;
+  for (let i = 0; i < 3 && !bold(); i++) (ui.write("\x1b[B"), await Bun.sleep(200));
+  await ui.until("beta selected, its keys in the footer", (s) => bold() && s.includes("^r rename") && s.includes("^d delete"));
+  ui.write("\x04"); // ^d
+  await ui.until("confirmation", (s) => s.includes('Delete space "beta"?'));
+  ui.write("y");
+  await listed("beta", false);
+
+  const only = (await cli("workspace", "list", "--json").then((s) => JSON.parse(s)))[0].name;
+  await open(only);
+  expect(ui.lines()[row(only)]).toContain("✎");
+  expect(ui.lines()[row(only)]).not.toContain("✕");
+  ui.write("\x1b");
+}, 30000);

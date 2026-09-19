@@ -7,7 +7,9 @@ import { fit, mix } from "../design";
 import { keyName } from "../input/bindings";
 import { blank, clear, footer, frame, frameLayouts, header, highlight, innerHeight, innerWidth, matches, open, pointerMoved, row, searchField, spacer, text, thumb, typed } from "./frame";
 
-export type ListItem = { name: string; description?: string; value: string; key?: string; danger?: boolean; context?: (e: MouseEvent) => void };
+export type ListItem = { name: string; description?: string; value: string; key?: string; danger?: boolean; context?: (e: MouseEvent) => void; buttons?: ListButton[] };
+// An action on the right of an item's row: a click chooses `value`, and so does ^key while the item is selected.
+export type ListButton = { icon: string; value: string; key: string; title: string; danger?: boolean };
 export type ListOptions = {
   title: string;
   meta?: string; // on the right of the header
@@ -30,6 +32,7 @@ export function list(app: App, o: ListOptions): Promise<string | null> {
   const moved = pointerMoved();
   const place = frameLayouts.get(box)!;
   const keyWidth = Math.max(0, ...o.items.map((i) => Bun.stringWidth(i.key ?? ""))); // keycaps line up
+  const buttonsWidth = Math.max(0, ...o.items.map((i) => (i.buttons?.length ?? 0) * 3)); // so do buttons: " ✎ " each
 
   const paint = () => {
     if (box.isDestroyed) return;
@@ -63,9 +66,9 @@ export function list(app: App, o: ListOptions): Promise<string | null> {
         else if (e.button === 2 && item.context) { choose(null); item.context(e); }
       };
       app.clickable.add(line);
-      text(app, line, on ? "▌" : " ", th.focus, { bg });
+      text(app, line, " ", th.focus, { bg }); // left padding inside the highlight
       const right = item.key ?? "";
-      const rightWidth = keyWidth ? keyWidth + 2 : 0;
+      const rightWidth = (keyWidth ? keyWidth + 2 : 0) + buttonsWidth;
       const room = width - 3 - rightWidth; // the marker, a space before it, and the scrollbar
       const nameColor = item.danger ? th.blocked : th.fg;
       const name = fit(item.name, Math.max(1, Math.min(room, Math.max(Math.ceil(room * 0.55), room - Bun.stringWidth(item.description ?? "") - 2))));
@@ -78,6 +81,9 @@ export function list(app: App, o: ListOptions): Promise<string | null> {
       spacer(app, line);
       if (right) text(app, line, ` ${right.padStart(keyWidth)} `, on ? th.fg : th.dim, { bg: mix(th.bar, th.fg, on ? 0.14 : 0.07) });
       else if (keyWidth) text(app, line, " ".repeat(keyWidth + 2), th.dim, { bg });
+      const buttons = item.buttons ?? [];
+      if (buttonsWidth > buttons.length * 3) text(app, line, " ".repeat(buttonsWidth - buttons.length * 3), th.dim, { bg });
+      for (const b of buttons) text(app, line, ` ${b.icon} `, on ? (b.danger ? th.blocked : th.fg) : th.dim, { bg, run: () => choose(b.value) });
       text(app, line, bar && k >= bar.top && k < bar.top + bar.size ? "▐" : " ", th.border, { bg });
     });
     if (!shown.length) {
@@ -86,7 +92,8 @@ export function list(app: App, o: ListOptions): Promise<string | null> {
     }
     for (let k = Math.max(lines.length, shown.length ? 0 : 1); k < capacity; k++) blank(app, box);
     blank(app, box);
-    footer(app, box, [["↑↓", "move"], ["↵", o.at ? "run" : "choose"], ["esc", "close"]], query ? "^u clear" : "");
+    const buttonHints = (shown[sel]?.buttons ?? []).map((b): [string, string] => [`^${b.key}`, b.title]);
+    footer(app, box, [["↑↓", "move"], ["↵", o.at ? "run" : "choose"], ...buttonHints, ["esc", "close"]], query ? "^u clear" : "");
   };
 
   const step = (by: number) => {
@@ -110,6 +117,7 @@ export function list(app: App, o: ListOptions): Promise<string | null> {
       else if (k.name === "pageup") scroll(-8);
       else if (k.name === "pagedown") scroll(8);
       else if (k.name === "return") { if (shown[sel]) done(shown[sel]!.value); }
+      else if (k.ctrl && shown[sel]?.buttons?.some((b) => b.key === k.name)) done(shown[sel]!.buttons!.find((b) => b.key === k.name)!.value);
       else {
         // a menu item's own key, while nothing's been typed
         const own = o.at && !query ? o.items.find((i) => i.key && i.key.length === 1 && i.key === keyName(k)) : undefined;

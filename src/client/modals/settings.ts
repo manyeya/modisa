@@ -118,7 +118,7 @@ export async function openSettings(app: App, start = "theme") {
       const bg = on ? mix(th.bar, th.focus, 0.16) : th.bar;
       const line = row(app, nav, { bg });
       const dim = query && !found[i];
-      text(app, line, on ? "▌" : " ", th.focus, { bg });
+      text(app, line, " ", th.focus, { bg }); // left padding inside the highlight
       text(app, line, fit(` ${title(section.name)}`, NAV - 5), on ? th.fg : dim ? mix(th.dim, th.bar, 0.4) : th.dim, { bg, attributes: on ? BOLD : 0 });
       spacer(app, line);
       if (query && found[i]) text(app, line, `${found[i]} `, th.accent, { bg });
@@ -155,7 +155,7 @@ export async function openSettings(app: App, start = "theme") {
       line.onMouseOut = () => { if (!line.isDestroyed) line.backgroundColor = bg; };
       line.onMouseDown = (e) => { e.stopPropagation(); if (e.button === 0) { sel = index; activate(r); } };
       app.clickable.add(line);
-      text(app, line, selected ? "▌" : " ", th.focus, { bg });
+      text(app, line, " ", th.focus, { bg }); // left padding inside the highlight
       const label = (room: number) => text(app, line, new StyledText([fg(th.fg)(" "), ...highlight(fit(r.label, room).padEnd(room), query, th.fg, th.accent, selected ? BOLD : 0)]), th.fg, { bg });
       if (r.kind === "radio") {
         text(app, line, r.current ? " ◉" : " ○", r.current ? th.accent : th.dim, { bg });

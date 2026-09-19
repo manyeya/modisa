@@ -20,8 +20,15 @@ async function openSection(name: string) {
   await ui.until("settings page", (s) => SECTIONS.every((x) => s.includes(x[0]!.toUpperCase() + x.slice(1))));
   ui.write("\t".repeat(SECTIONS.indexOf(name)));
 }
-// the selected row: its marker, after the side list's │ (the page's own border is the first)
-const selectedRow = () => ui.lines().find((l) => /│[^│]*│ ▌/.test(l)) ?? "";
+// the selected row: the one whose first cell after the side list's │ (the page's own border is the first) has a
+// background no other row has, its highlight
+const selectedRow = () => {
+  const rows = ui.lines().flatMap((l, y) => {
+    const m = /^[^│]*│[^│]*│ /.exec(l);
+    return m ? [{ l, bg: JSON.stringify(ui.vt.cellAt({ x: Bun.stringWidth(m[0]), y })?.style?.bg ?? null) }] : [];
+  });
+  return rows.find((r) => r.bg !== "null" && rows.filter((o) => o.bg === r.bg).length === 1)?.l ?? "";
+};
 const close = async () => {
   ui.write("\x1b");
   await ui.until("settings closed", (s) => !s.includes("Integrations"));
