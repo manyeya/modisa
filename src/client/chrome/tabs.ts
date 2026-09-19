@@ -5,6 +5,13 @@ import type { App } from "../context";
 import { fit, tabWindow } from "../design";
 import { contextMenu } from "../modals/context-menu";
 import { button } from "./button";
+import type { TabView } from "../../protocol/types";
+
+// A tab's name: the one it was given, else its focused pane's @name or title
+export function tabLabel(app: App, t: TabView) {
+  const focused = app.info(t.focused);
+  return t.name ?? (focused?.name ? "@" + focused.name : focused?.title ?? "shell");
+}
 
 export function drawTabs(app: App) {
   const { r, th, ui: { tabBar } } = app;
@@ -24,11 +31,10 @@ export function drawTabs(app: App) {
   for (let i = window.start; i < window.end; i++) {
     const t = w.tabs[i]!;
     const on = i === w.active;
-    const focused = app.info(t.focused);
     const blocked = app.cfg.indicators.tab && treePanes(t.tree).some((id) => app.info(id)?.agent?.state === "blocked");
     const suffix = `${t.zoomed ? " [Z]" : ""}${blocked ? " " + app.icon("blocked") : ""}`;
     const prefix = ` ${i + 1}:`;
-    const name = t.name ?? (focused?.name ? "@" + focused.name : focused?.title ?? "shell");
+    const name = tabLabel(app, t);
     const text = prefix + fit(name, window.width - Bun.stringWidth(prefix + suffix) - 2) + suffix + " ";
     // sized to the label so tabs sit side by side; window.width only caps long names
     button(app, tabBar, text, Math.min(window.width - 1, Bun.stringWidth(text)), blocked ? th.warn : on ? th.fg : th.dim, on ? th.border : th.bar,

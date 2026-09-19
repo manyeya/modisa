@@ -1,9 +1,13 @@
 // A compact navigator: selection is a slim rail, attention is a warning signal,
 // and every list owns a measured amount of space above the pinned shortcuts.
-import { BoxRenderable, TextRenderable, bold, fg, t, type MouseEvent } from "@opentui/core";
+import { BoxRenderable, StyledText, TextRenderable, bold, fg, t, type MouseEvent } from "@opentui/core";
 import type { App } from "../context";
-import { agentMark, agentTask, fit, mix, sidebarAgents, sidebarBudget, sidebarColumns } from "../design";
+import { panes as treePanes } from "../../core/layout";
+import type { AgentState } from "../../protocol/types";
+import { agentGraph, agentMark, agentTask, fit, mix, sidebarBudget, sidebarColumns } from "../design";
+import { contextMenu } from "../modals/context-menu";
 import { render } from "../render";
+import { tabLabel } from "./tabs";
 import { pluginUi, runPluginAction, spanText, toneColor } from "../plugin-ui";
 import { beginResize } from "../panes/resize";
 
@@ -80,40 +84,84 @@ export function drawSidebar(app: App) {
   action(app, footer, "Settings", "⚙", () => app.actions.settings!.run());
 }
 
-// modisa's own list of agents: most pressing first, the focused one never hidden behind the overflow row
+// modisa's own list of agents, as a git graph of the space's tabs: each tab a node on one trunk, in its own lane colour,
+// its agents branching off under it (most pressing first). Click a tab to fold it: its row then counts its agents by
+// state. An agent needing you lights its branch.
 function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: ReturnType<typeof sidebarBudget>) {
   const { r, th, ui: { side } } = app;
   const w = app.sideWidth();
-  const columns = sidebarColumns("AGENTS", String(agents.length), contentWidth(app));
+  const cw = contentWidth(app);
+  const columns = sidebarColumns("AGENTS", String(agents.length), cw);
   side.add(new TextRenderable(r, { content: t`  ${bold(columns.left)}${fg(th.dim)(columns.right)}`, width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
   side.add(new BoxRenderable(r, { width: w - 1, height: 1, flexShrink: 0 }));
+  if (!agents.length) {
+    side.add(new TextRenderable(r, { content: "  " + fit("No agents here", cw), width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
+    action(app, side, "Launch an agent", "+", () => app.actions["new-agent"]!.run());
+    return;
+  }
+  const ws = app.ws();
+  const tabs = ws.tabs.map((tab) => {
+    const mine = new Set(treePanes(tab.tree));
+    return { id: tab.id, tab, agents: agents.filter((p) => mine.has(p.id)) };
+  });
+  const graph = agentGraph(tabs, ws.active, app.collapsedTabs, budget.lines);
   const focused = app.tab().focused;
-  const visible = sidebarAgents(agents, focused, budget.agentRows);
+  const trunk = mix(th.border, th.dim, 0.35);
+  // a lane per tab, git-graph style; the active tab's at full strength, the others' quieter
+  const lanes = [th.focus, th.accent, th.done, th.working];
+  const lane = (i: number) => (i === ws.active ? lanes[i % lanes.length]! : mix(lanes[i % lanes.length]!, th.bar, 0.4));
   const labels = { blocked: "Needs you", working: "Working", done: "Done", idle: "Idle" };
-  for (const pane of visible) {
+  const stateColor = (s: AgentState) => (s === "blocked" ? th.warn : s === "working" ? th.focus : th.dim);
+
+  for (const g of graph.rows) {
+    if (g.kind === "rail") {
+      side.add(new TextRenderable(r, { content: t`  ${fg(trunk)("│")}`, width: w - 1, height: 1, flexShrink: 0 }));
+      continue;
+    }
+    const { tab, agents: tabAgents } = tabs[g.tab]!;
+    if (g.kind === "tab") {
+      const on = g.tab === ws.active;
+      const toggle = () => {
+        if (app.collapsedTabs.has(tab.id)) app.collapsedTabs.delete(tab.id);
+        else app.collapsedTabs.add(tab.id);
+        app.chromeSig = "";
+        render(app);
+      };
+      const body = row(app, side, { run: toggle, context: (e) => contextMenu(app, tab.focused, e.x, e.y) });
+      // on the right: open, how many agents and ▾; folded, a count per state, what needs you first, and ▸
+      const counts = (["blocked", "working", "done", "idle"] as const).map((s) => [s, tabAgents.filter((p) => p.agent!.state === s).length] as const).filter(([, n]) => n);
+      const right = !tabAgents.length ? [] : g.open ? [fg(th.dim)(`${tabAgents.length} ▾`)] : [...counts.flatMap(([s, n]) => [fg(stateColor(s))(`${app.icon(s)}${n}`), fg(th.dim)(" ")]), fg(th.dim)("▸")];
+      const rightWidth = !tabAgents.length ? 0 : g.open ? Bun.stringWidth(`${tabAgents.length} ▾`) : counts.reduce((n, [s, c]) => n + Bun.stringWidth(`${app.icon(s)}${c} `), 1);
+      const number = `${g.tab + 1} `;
+      const name = fit(tabLabel(app, tab), Math.max(1, cw - 2 - number.length - rightWidth - 1));
+      const needsYou = !g.open && counts.some(([s]) => s === "blocked");
+      const nameColor = needsYou ? th.warn : !tabAgents.length ? th.dim : th.fg;
+      const gapWidth = Math.max(1, cw - 2 - number.length - Bun.stringWidth(name) - rightWidth);
+      const content = new StyledText([fg(lane(g.tab))(g.node), fg(th.dim)(` ${number}`), fg(nameColor)(on ? bold(name) : name), fg(th.fg)(" ".repeat(gapWidth)), ...right]);
+      body.add(new TextRenderable(r, { content, width: cw, height: 1, flexShrink: 0, fg: th.fg }));
+      continue;
+    }
+    // an agent: its branch off the trunk, its mark, its name and state; under them the task its terminal title names
+    const pane = g.agent;
     const { harness, state } = pane.agent!;
     const selected = pane.id === focused;
-    const color = state === "blocked" ? th.warn : state === "working" ? th.focus : th.dim;
-    // the agent's mark, then its name (its tool when unnamed); under it, the task its terminal title names
+    const color = stateColor(state);
+    const branch = state === "blocked" ? th.warn : lane(g.tab); // what needs you lights up its branch
     const mark = agentMark(th, harness, app.logos, app.cellEms());
-    const width = contentWidth(app) - mark.cells;
+    const width = cw - 2 - mark.cells;
     const name = sidebarColumns(pane.name ? "@" + pane.name : harness, app.cfg.indicators.sidebar ? app.icon(state) : "", width);
     const task = agentTask(pane.terminalTitle ?? pane.title, pane.name, harness);
     const meta = sidebarColumns(task || (pane.name ? harness : ""), labels[state], width);
     const body = row(app, side, { height: 2, selected, run: () => app.call("focusPane", { pane: pane.id }) });
-    // a logo sits centred between the two lines (its halves), a plain mark on the first; the task lines up under the name
     const [top, bottom] = mark.halves ?? [mark.glyph, " "];
     const gap = " ".repeat(mark.cells - 1);
+    const [g1, g2] = g.graph;
     body.add(new TextRenderable(r, {
-      content: t`${fg(mark.color)(top)}${gap}${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n${fg(mark.color)(bottom)}${gap}${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
-      width: contentWidth(app), height: 2, flexShrink: 0, fg: state === "done" || state === "idle" ? th.dim : th.fg,
+      content: t`${fg(trunk)(g1[0]!)}${fg(branch)(g1[1]!)}${fg(mark.color)(top)}${gap}${selected ? bold(name.left) : name.left}${fg(color)(name.right)}\n${fg(trunk)(g2)}${fg(mark.color)(bottom)}${gap}${fg(th.dim)(meta.left)}${fg(color)(meta.right)}`,
+      width: cw, height: 2, flexShrink: 0, fg: state === "done" || state === "idle" ? th.dim : th.fg,
     }));
   }
-  if (!agents.length) {
-    side.add(new TextRenderable(r, { content: "  " + fit("No agents here", contentWidth(app)), width: w - 1, height: 1, flexShrink: 0, fg: th.dim }));
-    action(app, side, "Launch an agent", "+", () => app.actions["new-agent"]!.run());
-  }
-  if (budget.moreAgents) action(app, side, `${agents.length - visible.length} more agents`, "›", () => app.actions["pane-picker"]!.run());
+  if (graph.hidden) action(app, side, `${graph.hidden} more agents`, "›", () => app.actions["pane-picker"]!.run());
 }
 
 // A plugin's section, at most `rows` of its rows: click its heading to fold it, a row to run its action or focus its pane.

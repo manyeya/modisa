@@ -18,6 +18,8 @@ async function sizes(): Promise<Record<string, [number, number]>> {
 // a fresh tab split into `split` (v = side by side, - = stacked)
 async function freshTab(split: "v" | "-") {
   ui.write("\x02c");
+  await ui.until("tab name prompt", (s) => s.includes("New tab"));
+  ui.write("\r");
   await ui.until("new tab", (s) => borders(s) === 1);
   ui.write(`\x02${split}`);
   await ui.until("split", (s) => borders(s) === 2);
@@ -178,6 +180,8 @@ test("pane resize releases on a fresh click, focus loss, and release outside the
 
 test("in a short terminal (VS Code's panel), dragging a bottom pane's border never collapses the split", async () => {
   ui.write("\x02c");
+  await ui.until("tab name prompt", (s) => s.includes("New tab"));
+  ui.write("\r");
   await ui.until("new tab", (s) => borders(s) === 1);
   resizeTerminal(ui, 140, 20);
   await Bun.sleep(400);

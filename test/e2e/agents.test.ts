@@ -76,6 +76,20 @@ test("the sidebar and status row only count the current space's agents", async (
   await ui.until("back to the agents' space", (s) => s.includes("◈ proj") && s.includes("@coder") && !/AGENTS +0/.test(s));
 }, 15000);
 
+test("the sidebar groups agents under their tab, git-graph style, and a click folds a tab", async () => {
+  await cli("tab", "create", "review");
+  await cli("agent", "spawn", "fakeagent", "--name", "rev");
+  const side = () => ui.lines().map((l) => l.slice(0, 26));
+  const at = (re: RegExp) => side().findIndex((l) => re.test(l));
+  // the tab is a node, the agent branches off under it: the trunk ends there, the last tab's last agent
+  await ui.until("review's node, @rev under it", () => at(/◉ \d+ review/) >= 0 && at(/╰─.*@rev/) > at(/◉ \d+ review/));
+  click(ui, 0, 4, at(/◉ \d+ review/));
+  await ui.until("folded: its agents counted on its row", () => at(/◉ \d+ review.*▸/) >= 0 && at(/@rev/) < 0);
+  click(ui, 0, 4, at(/◉ \d+ review/));
+  await ui.until("open again", () => at(/@rev/) > 0);
+  await cli("pane", "close", "@rev");
+}, 20000);
+
 test("closing a pane while detection is reading the process table doesn't crash the server", async () => {
   const { PtyPane } = await import("../../src/server/session/pane");
   const { Detector } = await import("../../src/server/agents/detect");

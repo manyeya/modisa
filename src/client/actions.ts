@@ -61,7 +61,14 @@ export function createActions(app: App): Record<string, Action> {
     zoom: { label: "Zoom pane", run: () => app.call("zoom") },
     "close-pane": { label: "Close pane", run: () => app.call("close") },
     "close-tab": { label: "Close tab", run: () => app.call("closeTab") },
-    "new-tab": { label: "New tab", run: () => app.call("newTab") },
+    // named, so the sidebar's graph can group its agents under it (Enter keeps the suggestion, Esc cancels)
+    "new-tab": {
+      label: "New tab",
+      run: async () => {
+        const name = await prompt(app, "New tab", `tab ${app.ws().tabs.length + 1}`, "what's in it, e.g. backend or review");
+        if (name !== null) app.call("newTab", { name: name.trim() || undefined });
+      },
+    },
     "next-tab": { label: "Next tab", run: () => app.call("cycleTab", { step: 1 }) },
     "prev-tab": { label: "Previous tab", run: () => app.call("cycleTab", { step: -1 }) },
     "workspace-picker": {

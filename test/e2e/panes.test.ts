@@ -38,7 +38,9 @@ test("prefix keys: split, focus, zoom, tabs", async () => {
   ui.write("\x02z");
   await ui.until("zoomed", (s) => borders(s) === 1 && s.includes("[Z]"));
   ui.write("\x02z\x02c");
-  await ui.until("second tab", (s) => s.includes(" 2:"));
+  await ui.until("tab name prompt", (s) => s.includes("New tab"));
+  ui.write("\r");
+  await ui.until("second tab", (s) => s.includes(" 2:tab 2"));
   ui.write("\x02p");
   await ui.until("back on tab 1", (s) => borders(s) === 2);
 }, 15000);

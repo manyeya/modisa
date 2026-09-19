@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { sidebarAgents, sidebarBudget, sidebarColumns } from "../../src/client/design";
+import { agentGraph, sidebarBudget, sidebarColumns } from "../../src/client/design";
 
 test("sidebar lists leave the footer and bottom spacing clear at every supported height", () => {
   for (const height of [20, 22, 30, 38, 58]) {
@@ -13,16 +13,21 @@ test("sidebar lists leave the footer and bottom spacing clear at every supported
   }
 });
 
-test("agent overflow retains attention priority and the focused agent without duplicates", () => {
-  const agents = ["blocked-a", "blocked-b", "done", "working", "focused"].map(id => ({ id }));
-  expect(sidebarAgents(agents, "focused", 3).map(p => p.id)).toEqual(["blocked-a", "blocked-b", "focused"]);
-  expect(sidebarAgents(agents, "focused", 1).map(p => p.id)).toEqual(["focused"]);
-  expect(sidebarAgents(agents, "blocked-a", 3)).toEqual(agents.slice(0, 3));
-  expect(sidebarAgents(agents, "shell-not-an-agent", 3)).toEqual(agents.slice(0, 3));
-  expect(sidebarAgents(agents, "focused", 10)).toEqual(agents);
-  expect(sidebarAgents(agents, "focused", 0)).toEqual([]);
-  expect(sidebarAgents([], "focused", 2)).toEqual([]);
-  expect(agents.map(p => p.id)).toEqual(["blocked-a", "blocked-b", "done", "working", "focused"]);
+test("agents as a git graph: tabs on one trunk, their agents branching off, the trunk ending under the last", () => {
+  const tabs = [{ id: "a", agents: ["x", "y"] }, { id: "b", agents: [] }, { id: "c", agents: ["z"] }];
+  const draw = (g: ReturnType<typeof agentGraph<string>>) =>
+    g.rows.map((r) => (r.kind === "tab" ? `${r.node}${r.tab}${r.open ? "" : "+"}` : r.kind === "rail" ? "|" : `${r.graph.join("")}${r.agent}`));
+  // room for everything: rails between tabs; the active tab's node is ◉, an empty tab's ○ and never open
+  expect(draw(agentGraph(tabs, 0, new Set(), 20))).toEqual(["◉0", "├─│ x", "├─│ y", "|", "○1+", "|", "●2", "╰─  z"]);
+  // a folded tab keeps its node and drops its agents
+  expect(draw(agentGraph(tabs, 0, new Set(["a"]), 20))).toEqual(["◉0+", "|", "○1+", "|", "●2", "╰─  z"]);
+  // too tall for rails: none; too tall still: every tab but the active one folds
+  expect(draw(agentGraph(tabs, 2, new Set(), 9))).toEqual(["●0", "├─│ x", "├─│ y", "○1+", "◉2", "╰─  z"]);
+  expect(draw(agentGraph(tabs, 2, new Set(), 5))).toEqual(["●0+", "○1+", "◉2", "╰─  z"]);
+  // too tall even then: cut, a line left for the overflow row, the cut agents counted
+  const cut = agentGraph([{ id: "a", agents: ["x", "y", "w"] }], 0, new Set(), 4);
+  expect(draw(cut)).toEqual(["◉0", "├─│ x"]);
+  expect(cut.hidden).toBe(2);
 });
 
 test("sidebar columns keep complete states aligned and fit Unicode into terminal cells", () => {

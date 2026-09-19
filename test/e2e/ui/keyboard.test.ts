@@ -25,13 +25,15 @@ test("command palette opens, filters and runs", async () => {
   ui.write("new tab");
   await ui.until("filtered", (s) => /Commands\s+\d+ of \d+/.test(s) && s.includes("New tab"));
   ui.write("\r");
-  await ui.until("new tab opened", (s) => s.includes(" 2:"));
+  await ui.until("its name asked for", (s) => s.includes("› tab 2"));
+  ui.write("\r");
+  await ui.until("new tab opened", (s) => s.includes(" 2:tab 2"));
 }, 15000);
 
 test("rename tab and pane from the keyboard", async () => {
   ui.write("\x02,");
   await ui.until("rename prompt", (s) => s.includes("Rename tab"));
-  ui.write("work\r");
+  ui.write("\x01\x0bwork\r"); // over its name: every tab has one now
   await ui.until("tab renamed", (s) => s.includes("2:work"));
   ui.write("\x02.");
   await ui.until("pane rename prompt", (s) => s.includes("Rename pane"));

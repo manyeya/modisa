@@ -55,6 +55,7 @@ export class App {
   readonly clickable = new WeakSet<object>(); // renderables that get the hand pointer
   readonly promptIds = new Set<number>(); // open permission prompts
   readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded
+  readonly collapsedTabs = new Set<string>(); // tabs (by id) whose agents the user folded in the sidebar's graph
   popup: { pane: string; title: string; width?: number | string; height?: number | string } | undefined; // a plugin popup this client opened
   chromeSig = ""; // what the tab bar, sidebar and status row last drew
   quitting = false;

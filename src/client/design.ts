@@ -95,13 +95,43 @@ export function sidebarBudget(height: number, agents: number) {
   return { agentRows, moreAgents: agents > agentRows, lines: remaining }; // lines: what the agent list may use
 }
 
-// Keep priority order, but never strand the focused agent behind an overflow row.
-export function sidebarAgents<T extends { id: string }>(agents: T[], focused: string, budget: number): T[] {
-  if (budget <= 0) return [];
-  const visible = agents.slice(0, budget);
-  const active = agents.find((agent) => agent.id === focused);
-  if (active && !visible.includes(active)) visible[visible.length - 1] = active;
-  return visible;
+// The space's agents as a git graph: its tabs are commits on one trunk, each tab's agents branch off under it.
+// A tab row is one line, an agent two (the graph's cells for each in `graph`), a rail one; rails between tabs only when
+// everything else fits. Too tall, and every tab but the active one folds; still too tall, and it's cut, `hidden` agents
+// behind the overflow row.
+export type GraphRow<T> =
+  | { kind: "tab"; tab: number; node: "◉" | "●" | "○"; open: boolean }
+  | { kind: "agent"; tab: number; agent: T; graph: [string, string] }
+  | { kind: "rail" };
+export function agentGraph<T>(tabs: { id: string; agents: T[] }[], active: number, collapsed: ReadonlySet<string>, lines: number) {
+  const build = (foldOthers: boolean, rails: boolean) => {
+    const rows: GraphRow<T>[] = [];
+    tabs.forEach((t, i) => {
+      if (rails && i > 0) rows.push({ kind: "rail" });
+      const open = t.agents.length > 0 && !collapsed.has(t.id) && !(foldOthers && i !== active);
+      rows.push({ kind: "tab", tab: i, node: i === active ? "◉" : t.agents.length ? "●" : "○", open });
+      if (!open) return;
+      // the trunk runs on to the next tab; under the last tab's last agent it ends
+      t.agents.forEach((agent, k) => {
+        const end = i === tabs.length - 1 && k === t.agents.length - 1;
+        rows.push({ kind: "agent", tab: i, agent, graph: end ? ["╰─", "  "] : ["├─", "│ "] });
+      });
+    });
+    return rows;
+  };
+  const height = (rows: GraphRow<T>[]) => rows.reduce((n, r) => n + (r.kind === "agent" ? 2 : 1), 0);
+  let rows = build(false, true);
+  if (height(rows) > lines) rows = build(false, false);
+  if (height(rows) > lines) rows = build(true, false);
+  if (height(rows) <= lines) return { rows, hidden: 0 };
+  // cut, leaving a line for the overflow row
+  const kept: GraphRow<T>[] = [];
+  for (const r of rows) {
+    if (height(kept) + (r.kind === "agent" ? 2 : 1) > lines - 1) break;
+    kept.push(r);
+  }
+  const agents = (rs: GraphRow<T>[]) => rs.filter((r) => r.kind === "agent").length;
+  return { rows: kept, hidden: agents(rows) - agents(kept) }; // a folded tab's agents aren't hidden: its row counts them
 }
 
 // Right-hand state labels keep their cell budget; Unicode names fit the remainder.
