@@ -132,8 +132,8 @@ function agentList(app: App, agents: ReturnType<App["sortedAgents"]>, budget: Re
       const body = row(app, side, { run: toggle, context: (e) => contextMenu(app, tab.focused, e.x, e.y) });
       // on the right: open, how many agents and ▾; folded, a count per state, what needs you first, and ▸
       const counts = (["blocked", "working", "done", "idle"] as const).map((s) => [s, tabAgents.filter((p) => p.agent!.state === s).length] as const).filter(([, n]) => n);
-      const right = !tabAgents.length ? [] : g.open ? [fg(th.dim)(`${tabAgents.length} ▾`)] : [...counts.flatMap(([s, n]) => [fg(stateColor(s))(`${app.icon(s)}${n}`), fg(th.dim)("  ")]), fg(th.dim)("▸")];
-      const rightWidth = !tabAgents.length ? 0 : g.open ? Bun.stringWidth(`${tabAgents.length} ▾`) : counts.reduce((n, [s, c]) => n + Bun.stringWidth(`${app.icon(s)}${c}  `), 1);
+      const right = !tabAgents.length ? [] : g.open ? [fg(th.dim)(`${tabAgents.length} ▾`)] : [...counts.flatMap(([s, n]) => [fg(stateColor(s))(`${app.icon(s)} ${n}`), fg(th.dim)("  ")]), fg(th.dim)("▸")];
+      const rightWidth = !tabAgents.length ? 0 : g.open ? Bun.stringWidth(`${tabAgents.length} ▾`) : counts.reduce((n, [s, c]) => n + Bun.stringWidth(`${app.icon(s)} ${c}  `), 1);
       const number = `${g.tab + 1} `;
       const name = fit(tabLabel(app, tab), Math.max(1, cw - 2 - number.length - rightWidth - 1));
       const needsYou = !g.open && counts.some(([s]) => s === "blocked");
