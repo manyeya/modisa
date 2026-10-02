@@ -55,6 +55,7 @@ export type PaneInfo = {
   cols: number;
   rows: number;
   popup?: boolean; // a plugin's popup: no place in the layout, shown only by the client that opened it
+  takeover?: boolean; // driven from another terminal (pane attach): at its size, and typing from elsewhere is dropped
 };
 
 // The pane a target names: "p3", "@coder", "coder", "@p3" (ids still work once a pane is named), "p3:1a2b3c4d" (only that

@@ -12,6 +12,7 @@ import { installPermissions } from "./permissions";
 import { startMonitor } from "./agents/monitor";
 import { startGit } from "./git";
 import { createPluginHost } from "./plugins";
+import { createAttach } from "./attach";
 import { createDispatcher } from "./rpc/dispatch";
 import { clientMethods } from "./rpc/client";
 import { apiMethods } from "./rpc/api";
@@ -50,11 +51,12 @@ export async function runServer(session: string) {
   const monitor = startMonitor(ctx);
   const git = startGit(ctx);
   const plugins = createPluginHost(ctx);
+  const attach = createAttach(ctx);
   ctx.pluginUi = plugins.uiView;
-  ctx.paneExited = plugins.paneExited;
-  ctx.paneClosing = plugins.paneClosing;
+  ctx.paneExited = (p) => (plugins.paneExited(p), attach.paneExited(p));
+  ctx.paneClosing = (id, focused) => (plugins.paneClosing(id, focused), attach.paneClosing(id));
   ctx.movable = plugins.movable;
-  const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods });
+  const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods, ...attach.methods });
 
   // ---------- socket ----------
   await Bun.file(sock).delete().catch(() => {});
@@ -69,6 +71,7 @@ export async function runServer(session: string) {
         conn.onClose = () => {
           ctx.clients.delete(client);
           plugins.disconnected(client);
+          attach.disconnected(client);
           ctx.s.dragEnd(client);
           ctx.changed();
         };

@@ -75,6 +75,9 @@ const readFormat = z.enum(["text", "ansi"]);
 // they're on disk. MODISA_ ones are modisa's: MODISA_PANE_ID is always the pane's own.
 const envKey = z.string().regex(/^[A-Za-z_]\w*$/, "isn't a variable name (letters, digits and _)").refine((k) => !k.startsWith("MODISA_"), "is modisa's: MODISA_ variables can't be set");
 const env = z.record(envKey, z.string(), { error: (i) => (i.code === "invalid_key" ? i.issues[0]?.message : undefined) }).optional();
+// pane.attach: drive the pane (takeover) or only watch it (observe), from a terminal this big
+const attachMode = z.enum(["takeover", "observe"]);
+const termSize = { cols: z.number().int().min(2).max(1000), rows: z.number().int().min(1).max(500) };
 
 // The protocol version: bumped when a request, result or event changes incompatibly. Plugins declare the one
 // they speak.
@@ -114,6 +117,7 @@ export const paneInfo = z.strictObject({
   session: z.strictObject({ agent: z.string(), id: z.string(), source: z.string() }).optional(), // the agent's own session, reported by its integration
   cols: z.number().int(), rows: z.number().int(),
   popup: z.boolean().optional(), // a plugin's popup: no place in the layout, shown only by the client that opened it
+  takeover: z.boolean().optional(), // driven from another terminal (pane.attach): at its size, and typing from elsewhere is dropped
 });
 const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string().optional(), workspaceId: z.string().optional(), tabId: z.string().optional() }); // where it is: a popup has no place
 const created = paneInfo.extend({ workspaceId: z.string(), tabId: z.string() }); // a new pane, and where it is
@@ -169,12 +173,23 @@ export const results = {
   "pane.move": z.strictObject({ ...paneRef, workspaceId: z.string(), tabId: z.string() }), // where it is now
   "pane.resize": z.strictObject({ changed: z.boolean() }), // false: no border on that side, or it's as far as it goes
   "pane.zoom": z.strictObject({ zoomed: z.boolean() }),
+  // data: base64 VT that redraws the pane's screen, its modes included; cols×rows: its size now (the terminal's, taken over)
+  "pane.attach": z.strictObject({ ...paneRef, mode: attachMode, cols: z.number().int(), rows: z.number().int(), data: z.string() }),
+  "pane.attach.resize": z.strictObject({ cols: z.number().int(), rows: z.number().int() }),
   "agent.list": z.array(z.strictObject({ id: z.string(), name: z.string().optional(), title: z.string(), harness: z.string(), state, source: z.enum(["hook", "screen"]), workspace: z.string().optional() })),
   wait: z.union([z.strictObject({ exitCode: z.number().int() }), z.strictObject({ state }), z.strictObject({ match: z.string() })]),
   send: z.strictObject({ id: z.number(), queued: z.literal(true), delivered: z.literal(false), recipientState: state.optional() }),
   "plugin.list": z.array(pluginStatus),
   notify: z.strictObject({ clients: z.number().int().nonnegative() }), // the TUI clients it reached: 0 when none is attached
   "plugin.hello": z.strictObject({ name: z.string(), protocol: z.number().int(), session: z.string(), epoch: z.string() }),
+};
+// What a pane.attach connection is sent, as notifications (not events): the pane's output, base64, from right after the
+// reply's replay (output that switches screens comes as the screen it switched to, redrawn: the terminal showing it
+// stays on its alternate screen); then once, why it ended: its process exited (with its code) or it was closed. Nothing
+// is sent when the connection itself closes.
+export const attachNotifications = {
+  output: z.strictObject({ pane: z.string(), data: z.string() }),
+  "attach.end": z.strictObject({ pane: z.string(), reason: z.enum(["exited", "closed"]), exitCode: z.number().int().optional() }),
 };
 // A failed request's `error`: code is JSON-RPC's (-32601 unknown method, -32602 invalid params, -32000 the request
 // failed); data.code is modisa's stable reason
@@ -276,6 +291,12 @@ export const api = {
   "pane.swap": z.object({ caller, target: target.optional(), with: target.optional(), dir: direction.optional() }).refine((p) => (p.with === undefined) !== (p.dir === undefined), "exactly one of with or dir"),
   "pane.resize": z.object({ caller, target: target.optional(), dir: direction, amount: z.number().int().positive().max(1000).default(2) }), // amount: cells
   "pane.zoom": z.object({ caller, target: target.optional(), mode: z.enum(["on", "off", "toggle"]).default("toggle") }),
+  // One pane full-screen in another terminal (`modisa pane attach`), which is cols×rows. takeover: one connection at a
+  // time drives it, held at that size, and anyone else's `input` to it is dropped (pane.run, pane.keys and send still
+  // reach it); asked like pane.keys from inside a pane, never of the caller's own. observe: watch it at its own size.
+  // Until the connection closes it gets attachNotifications.
+  "pane.attach": z.object({ caller, target: target.optional(), mode: attachMode.default("takeover"), ...termSize }),
+  "pane.attach.resize": z.object({ caller, ...termSize }), // the taking-over terminal's new size
   "agent.spawn": z.object({ caller, harness: z.string(), name: z.string().optional(), prompt: z.string().optional(), target: target.optional(), dir, tab: z.boolean().optional(), focus: z.boolean().optional(), env }),
   "agent.list": z.object({ caller }),
   wait: z.object({ caller, target, exited: z.boolean().optional(), state: state.optional(), match: z.string().optional(), timeout: z.number().positive().optional() }),

@@ -11,7 +11,7 @@ import { HELP } from "./help";
 const EXIT: Partial<Record<ErrorCode, number>> = { usage: 2, invalid_params: 2, unreachable: 3, timeout: 124 };
 
 // Print a failure (as {"error":{code,message}} with --json) and return its exit status.
-function failed(code: ErrorCode, message: string, json: boolean) {
+export function failed(code: ErrorCode, message: string, json: boolean) {
   console.error(json ? JSON.stringify({ error: { code, message } }) : message);
   return EXIT[code] ?? 1;
 }
@@ -48,6 +48,7 @@ export async function runCli(a: Args): Promise<number> {
   const json = !!f.json;
   const caller = Bun.env.MODISA_PANE_ID;
   if (noun === "report" && !verb && !caller) return 0; // an integration outside any modisa pane
+  if (noun === "pane" && verb === "attach") return (await import("./pane-attach")).paneAttach(a, rest[0]); // its own connection, maybe over ssh
   let conn: Conn;
   try {
     conn = await connectExisting(str(f.session));

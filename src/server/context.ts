@@ -12,6 +12,7 @@ import { Detector } from "./agents/detect";
 import { Mailbox } from "./agents/mailbox";
 import { save } from "./persist/store";
 import { quote } from "./persist/template";
+import { forWatchers } from "./attach";
 
 // plugin: set once a plugin's connection has said plugin.hello; it then acts as that plugin, never as a pane
 export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean; plugin?: string; ui?: number }; // ui: the plugin UI version it attached with
@@ -36,6 +37,8 @@ export type ServerContext = {
   mail: Mailbox;
   detector: Detector;
   clients: Set<Client>;
+  watchers: Map<string, Set<Client>>; // pane → connections attached to it alone (attach.ts): sent its output, nothing else
+  takeovers: Map<string, Client>; // pane → the connection driving it (attach.ts): no one else's input reaches it
   down: boolean;
   // set by server.ts / permissions.ts / monitor.ts once they exist
   shutdown: (empty: boolean, why?: "exit" | "restart") => Promise<void>;
@@ -55,12 +58,12 @@ export type ServerContext = {
   snapshot(p: PtyPane, lines?: number, source?: ReadSource, format?: ReadFormat): PtyPane["info"] & { screen: string; recentOutput: string; content: string; source: ReadSource; format: ReadFormat };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
   toast(t: Toast): number; // shown by every attached client that draws plugin toasts, how many; rate_limited past the limits
-  paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups)
+  paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups; attach.ts)
   paneClosing(id: string, focused: boolean): void; // a pane is being closed; focused: it had the focus on screen
 };
 
 export function createContext(session: string, version: string, cfg: Config, adapters: Adapter[]): ServerContext {
-  const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), down: false, prompts: new Map() } as ServerContext;
+  const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), watchers: new Map(), takeovers: new Map(), down: false, prompts: new Map() } as ServerContext;
 
   ctx.pluginUi = () => [];
   ctx.movable = () => true;
@@ -112,7 +115,13 @@ export function createContext(session: string, version: string, cfg: Config, ada
 
   ctx.s = new Session({
     output: (p, bytes) => {
-      ctx.broadcast("output", { pane: p.id, data: b64(bytes) });
+      const output = { pane: p.id, data: b64(bytes) };
+      ctx.broadcast("output", output);
+      const watchers = ctx.watchers.get(p.id);
+      if (watchers?.size) {
+        const watched = { pane: p.id, data: forWatchers(p, bytes, output.data) };
+        for (const c of watchers) if (!c.attached) c.conn.notify("output", watched); // an attached one has it
+      }
       ctx.emit("pane.output", { pane: p.id, instance: p.info.instance, text: new TextDecoder().decode(bytes) });
     },
     exited: (p) => {

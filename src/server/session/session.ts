@@ -18,6 +18,8 @@ export class Session {
   workspaces: Workspace[] = [];
   active = 0;
   panes = new Map<string, PtyPane>();
+  // panes held at a size of their own, not their box's: one taken over from another terminal (attach.ts)
+  sizeLocks = new Map<string, { cols: number; rows: number }>();
   area: Rect = { x: 0, y: 1, w: 120, h: 38 };
   private seq = 0;
   private paneSeq = 0;
@@ -108,6 +110,7 @@ export class Session {
   dropHidden(id: string) {
     const p = this.panes.get(id);
     if (!p || this.locate(id)) return;
+    this.hooks.closing?.(id, false); // closing all the same, to whoever watches it
     this.panes.delete(id);
     p.dispose();
     this.hooks.changed();
@@ -355,7 +358,7 @@ export class Session {
     this.layout();
   }
 
-  // Size every PTY to its box (hidden tabs too, so they're right when shown), then notify.
+  // Size every PTY to its box (hidden tabs too, so they're right when shown), or to its lock, then notify.
   layout() {
     for (const ws of this.workspaces)
       for (const tab of ws.tabs) {
@@ -363,7 +366,8 @@ export class Session {
         const displayed = displayRects(tab.tree, this.area, tab.focused, tab.zoomed);
         for (const [id, r] of rs) {
           const full = displayed.get(id) ?? r;
-          this.panes.get(id)?.resize(full.w - 2, full.h - 2);
+          const lock = this.sizeLocks.get(id);
+          this.panes.get(id)?.resize(lock?.cols ?? full.w - 2, lock?.rows ?? full.h - 2);
         }
       }
     this.hooks.changed();

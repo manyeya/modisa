@@ -22,7 +22,11 @@ export function clientMethods(ctx: ServerContext): Handlers {
     },
     "detach-all": () => ctx.broadcast("detach", {}),
     area: (p) => s.setArea(p.area),
-    input: (p) => s.panes.get(p.pane)?.write(unb64(p.data)),
+    // a pane taken over from another terminal (pane attach) types only what that terminal does
+    input: (p, c) => {
+      const owner = ctx.takeovers.get(p.pane);
+      if (!owner || owner === c) s.panes.get(p.pane)?.write(unb64(p.data));
+    },
     promptReply: (p) => ctx.prompts.get(p.id)?.(p.answer),
     cmd: (p, c) => {
       const a = p.args ?? {};

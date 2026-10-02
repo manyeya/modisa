@@ -116,6 +116,10 @@ prompts them, so ask before you do it. Reading (`pane read`, `pane list`, `wait`
 prompt either, but they change the layout the human is looking at: do it when asked. `pane move`
 leaves their view where it is unless you add `--focus`.
 
+**A pane can be driven from another terminal.** `modisa pane attach` (it needs a real terminal: it's the
+human's, not yours) shows one pane full-screen elsewhere; while it's taken over, `pane list --json` shows
+`takeover: true` and that terminal's size. `pane run`, `pane keys` and `send` still reach it.
+
 **If a `modisa` command says a sandbox is blocking its socket,** your own command sandbox stops you
 reaching the session: `send`, `inbox` and the rest won't work from here. Tell the user, and point
 them at https://manyeya.github.io/modisa/docs/troubleshooting/#sandbox. `$MODISA_SOCKET` is set

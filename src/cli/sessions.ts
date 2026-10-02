@@ -8,13 +8,17 @@ export async function attach(name: string, dir = cwd(), remote?: string) {
   if (!remote) {
     return runClient({ session: name, connect: (spawn) => (spawn ? ensureServer(name, dir) : connectUnix(socketPath(name))) });
   }
-  // ssh://user@host:port or an ~/.ssh/config alias; the far side runs `modisa proxy`
+  const argv = sshProxy(remote, (await loadConfig()).remote_command, name);
+  return runClient({ session: name, remote: true, connect: async () => connectStdio(argv) });
+}
+
+// The command that reaches a session over ssh: remote is ssh://user@host:port or an ~/.ssh/config alias, and the far
+// side runs `modisa proxy` (remote_command is how modisa is started there).
+export function sshProxy(remote: string, remoteCommand: string, session: string) {
   const u = /^ssh:\/\/([^/:]+)(?::(\d+))?/.exec(remote);
   const host = u ? u[1]! : remote;
   const port = u?.[2] ? ["-p", u[2]] : [];
-  const cfg = await loadConfig();
-  const ssh = Bun.env.MODISA_SSH ?? "ssh";
-  return runClient({ session: name, remote: true, connect: async () => connectStdio([ssh, "-T", ...port, host, cfg.remote_command, "proxy", "-s", name]) });
+  return [Bun.env.MODISA_SSH ?? "ssh", "-T", ...port, host, remoteCommand, "proxy", "-s", session];
 }
 
 // Bridge stdio to the local socket byte-for-byte (used over ssh by --remote).

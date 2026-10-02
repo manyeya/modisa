@@ -37,11 +37,12 @@ export const brand = (agent: string): Brand => BRANDS[agent] ?? GENERIC;
 // The agents with a logo in marks.ttf, and the Lobe Icons (MIT) mark each is drawn from; the font has them from
 // U+F5A00 in this order (a private-use range no common icon font uses). Append only: a codepoint that has shipped keeps
 // its logo, since installed fonts outlive the binary that installed them.
+// omp (oh-my-pi, a fork of pi) has no Lobe mark and none under a licence we could check: it's pi's, in omp's colour.
 export const LOGOS: [agent: string, icon: string][] = [
   ["claude-code", "claude"], ["codex", "codex"], ["gemini", "gemini"], ["cursor-agent", "cursor"], ["copilot", "githubcopilot"],
   ["opencode", "opencode"], ["pi", "pi"], ["amp", "amp"], ["kiro", "kiro"], ["kimi", "kimi"], ["kilo", "kilocode"],
   ["devin", "devin"], ["grok", "grok"], ["hermes", "nousresearch"], ["qodercli", "qoder"], ["qwen", "qwen"],
-  ["antigravity", "antigravity"], ["cline", "cline"], ["mastracode", "mastra"],
+  ["antigravity", "antigravity"], ["cline", "cline"], ["mastracode", "mastra"], ["omp", "pi"],
 ];
 export const LOGO_FIRST = 0xf5a00;
 export function logo(agent: string): string | undefined {

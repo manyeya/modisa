@@ -117,6 +117,7 @@ test("replies match the published result schemas, and errors the error schema", 
   await check("tab.create", { command: "true" });
   await check("workspace.create", { name: "checked", command: "true" });
   await check("notify", { title: "checked", body: "a result check", tone: "done" });
+  await check("pane.attach", { target: "p1", mode: "observe", cols: 80, rows: 24 }); // last: the connection now watches p1
   conn.close();
 
   for (const [request, code] of [

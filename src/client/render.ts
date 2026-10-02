@@ -63,9 +63,11 @@ export function render(app: App) {
     const { indicators, pane_labels: labels } = app.cfg;
     const agentTag = i.agent ? [indicators.pane && app.icon(i.agent.state), labels.agent && `${i.agent.harness} ${i.agent.state}`].filter(Boolean).map((s) => " " + s).join("") : "";
     const exited = i.status === "exited" ? ` [exited ${i.exitCode ?? "?"}]` : "";
+    // driven from another terminal (pane attach), at its size: typing here doesn't reach it
+    const elsewhere = i.takeover ? " [attached elsewhere]" : "";
     // plugins' badges, only for the process they were set for
     const badges = (view.plugins ?? []).flatMap((plugin) => plugin.badges.filter((b) => b.pane === id && b.instance === i.instance).map((b) => ` [${plugin.plugin}: ${b.text}]`)).join("");
-    p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited}${badges} `, Math.max(0, rect.w - 4));
+    p.box.title = fit(` ${focused ? "◆" : "◇"} ${i.name ? "@" + i.name : i.title}${agentTag}${exited}${elsewhere}${badges} `, Math.max(0, rect.w - 4));
     p.box.titleColor = focused ? th.focus : st ? th[st] : th.dim;
     const wantFocus = focused && !app.modal && app.mode === "normal";
     if (wantFocus && !p.term.focused) p.term.focus();

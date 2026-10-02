@@ -148,6 +148,18 @@ agent = "claude-code"
 prompt = "read TODO.md and start on the first item"
 ```
 
+### Attach to one pane
+
+`modisa pane attach` shows one pane full-screen in another terminal, which draws it itself: no sidebar or borders, just the program, in a second window or on another machine.
+
+```bash
+modisa pane attach @coder                          # drive it from this terminal
+modisa pane attach p3 --observe                    # only watch it (q stops)
+modisa pane attach @coder --remote ssh://devbox    # one remote pane, over ssh
+```
+
+By default it takes the pane over: the pane takes this terminal's size and follows it, and typing from anywhere else (the TUI too, whose border says `[attached elsewhere]`) is dropped until you detach; `pane run`, `pane keys` and `send` still reach it. One terminal takes a pane over at a time. `--observe` leaves the pane at its own size and types nothing. `Ctrl+B d` (your prefix, then `d`) detaches and gives the pane back its place, and the prefix twice types it once. It exits 0 on detach, with the pane's own status if its program exits, and 3 if the connection drops.
+
 ## Agents
 
 Modisa has no AI of its own. It notices when a pane runs a known agent and tracks its state: blocked (needs you), working, done (finished while you weren't looking), or idle. The state shows in the pane border, the tab bar and the sidebar, and a background agent that gets blocked or finishes triggers a notification.
@@ -283,12 +295,12 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 ## Layout
 
 - `src/main.ts` — entry point; dispatches to the CLI, server, client or integrations
-- `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart)
+- `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart), single-pane attach (`pane-attach.ts`)
 - `src/core/` — paths and the split-tree layout math
 - `src/protocol/` — shared types, the Zod JSON-RPC schema, connections and transports
 - `src/config/` — config file and its check, prefix keys (`keys.ts`), themes, and the agents modisa knows (`agents/`: process names, launch/resume, screen manifests)
 - `src/server/` — the session server
-  - `server.ts` startup/shutdown, `context.ts` shared state
+  - `server.ts` startup/shutdown, `context.ts` shared state, `attach.ts` single-pane attach (takeover and observe)
   - `rpc/` — dispatch, TUI methods, public API
   - `session/` — spaces, tabs, panes; `PtyPane` is `Bun.Terminal` + a headless libghostty terminal
   - `agents/` — detection (process identification, the manifest rule engine, integration authority), the monitor tick, the mailbox

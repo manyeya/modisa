@@ -7,7 +7,7 @@ test("a --flag=value keeps everything after the first =", () => {
 });
 
 test("switches never take the next word as their value", () => {
-  for (const flag of ["screen", "new-tab", "new-workspace", "on", "off", "toggle"]) expect(parseArgs(["pane", "x", `--${flag}`, "p1"])).toEqual({ _: ["pane", "x", "p1"], flags: { [flag]: true }, lists: {} });
+  for (const flag of ["screen", "new-tab", "new-workspace", "on", "off", "toggle", "takeover", "observe"]) expect(parseArgs(["pane", "x", `--${flag}`, "p1"])).toEqual({ _: ["pane", "x", "p1"], flags: { [flag]: true }, lists: {} });
 });
 
 test("--tab is a switch for agent spawn but names a tab for pane move", () => {

@@ -29,7 +29,9 @@ test("VS Code: an existing terminal font list keeps its fonts, gets the logo fon
 
 test("every agent with a logo gets its own character, in order, from U+F5A00", () => {
   expect(logo("claude-code")).toBe(String.fromCodePoint(0xf5a00));
-  expect(logo("mastracode")).toBe(String.fromCodePoint(0xf5a00 + LOGOS.length - 1));
+  expect(logo("mastracode")).toBe(String.fromCodePoint(0xf5a00 + 18)); // append only: shipped codepoints keep their logos
+  expect(logo("omp")).toBe(String.fromCodePoint(0xf5a00 + LOGOS.length - 1)); // pi's mark, drawn in omp's colour
+  expect(LOGOS.at(-1)).toEqual(["omp", "pi"]);
   expect(logo("aider")).toBeUndefined(); // no logo: its glyph instead
   expect(new Set(LOGOS.map(([a]) => a)).size).toBe(LOGOS.length);
 });

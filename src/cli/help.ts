@@ -29,6 +29,10 @@ panes (from inside a pane, targets default to the calling pane)
   modisa pane neighbor [target] --direction d   the pane on that side of it
   modisa pane edges [target]                the pane on each side of it, or (edge)
   modisa pane process-info [target]         its pid, the job in the foreground of its terminal, and its shell's cwd
+  modisa pane attach [target] [--takeover|--observe] [--remote ssh://host]   one pane full-screen in this terminal.
+                                              --takeover (the default): it takes this terminal's size and only its
+                                              typing, one at a time; --observe only watches (q stops). prefix d detaches;
+                                              exits 0, the pane's status if it exits, or 3 if the connection drops
 
 agents
   modisa agent spawn <harness> [--name n] [--prompt text] [--down] [--tab] [--env K=V]…
@@ -84,7 +88,7 @@ setup
 
 targets: pane id (p3), @name or name; p3:1a2b3c4d (from a message's reply hint) reaches only that pane: it survives a
   rename, but fails once the pane closes or the server restarts. Outside a pane, split, focus, move, swap, resize, zoom,
-  layout, neighbor, edges and process-info default to the focused pane. Tabs: id (from tab list) or name
+  layout, neighbor, edges, process-info and attach default to the focused pane. Tabs: id (from tab list) or name
 
 pane split, agent spawn, tab create and workspace create print the new pane's id; with --json, the whole pane and its
   workspaceId and tabId. --env NAME=value (once per variable; not MODISA_*) is set in the new pane and saved with the
