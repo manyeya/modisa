@@ -25,6 +25,8 @@ const attach = (args: string[], cols = 100, rows = 30, env = sb.env) => {
   return s;
 };
 const exited = (s: Screen) => Promise.race([s.proc.exited, Bun.sleep(10000).then(() => "still running")]);
+// A PTY can deliver what the CLI printed just after the process is reported gone (Linux does), so wait for it.
+const said = (s: Screen, text: string) => s.until(text, (t) => t.includes(text));
 const until = async (what: string, ok: () => boolean | Promise<boolean>, ms = 10000) => {
   for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(100)) if (await ok()) return;
   throw new Error(`timed out waiting for ${what}`);
@@ -76,7 +78,7 @@ test("a takeover gets this terminal's size and typing, and no one else's; detach
   expect([t.vt.mode("alt_screen_save"), t.vt.mode("normal_mouse"), t.vt.mode("bracketed_paste"), t.vt.mode("cursor_visible")]).toEqual([true, true, true, false]);
   t.write("\x02d");
   expect(await exited(t)).toBe(0);
-  expect(t.text()).toContain(`[detached from ${id}]`);
+  await said(t, `[detached from ${id}]`);
   expect(t.text()).not.toContain("typed-42"); // that was the alternate screen
   for (const mode of ["alt_screen_save", "normal_mouse", "sgr_mouse", "bracketed_paste", "focus_event"] as const) expect(t.vt.mode(mode), mode).toBe(false);
   expect(t.vt.mode("cursor_visible")).toBe(true);
@@ -93,7 +95,7 @@ test("a program switching screens is redrawn on this terminal's alternate screen
   expect(t.vt.mode("alt_screen_save")).toBe(true); // this terminal never left its alternate screen
   t.write("\x02d");
   expect(await exited(t)).toBe(0);
-  expect(t.text()).toContain(`[detached from ${id}]`);
+  await said(t, `[detached from ${id}]`);
   expect(t.text()).not.toContain("shell-2"); // its own screen is as it was
 }, 30000);
 
@@ -127,7 +129,7 @@ test("observing types nothing and resizes nothing; q, or Ctrl-C, stops it", asyn
   expect((await info(id)).takeover).toBeUndefined();
   o.write("q");
   expect(await exited(o)).toBe(0);
-  expect(o.text()).toContain(`[stopped watching ${id}]`);
+  await said(o, `[stopped watching ${id}]`);
 
   // in a terminal smaller than the pane, it says what's cut off
   const small = attach(["--observe", id], 50, 10);
@@ -142,7 +144,7 @@ test("one takeover at a time; your own pane, two at once and no terminal are ref
   await sized(id, 80, 24, true);
   const second = attach([id], 80, 24);
   expect(await exited(second)).toBe(1);
-  expect(second.text()).toContain("already taken over");
+  await said(second, "already taken over");
 
   const conn = await connectUnix(sock());
   await expect(conn.request("pane.attach", { target: id, cols: 80, rows: 24 })).rejects.toMatchObject({ code: "ui_busy" });
@@ -175,7 +177,7 @@ test("a signal or the pane closing ends it too, with the terminal and the pane p
   await sized(id, 80, 24, true);
   await cli("pane", "close", id);
   expect(await exited(c)).toBe(0);
-  expect(c.text()).toContain(`[${id} closed]`);
+  await said(c, `[${id} closed]`);
 }, 30000);
 
 test("the pane's exit status comes through when its process exits, and the connection is told why", async () => {
@@ -185,7 +187,7 @@ test("the pane's exit status comes through when its process exits, and the conne
   await sized(job, 80, 24, true);
   j.write("5\r");
   expect(await exited(j)).toBe(5);
-  expect(j.text()).toContain(`[${job} exited 5]`);
+  await said(j, `[${job} exited 5]`);
   expect((await info(job)).takeover).toBeUndefined();
 
   // a shell pane closes itself when it exits: still its code
