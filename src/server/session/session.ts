@@ -344,7 +344,7 @@ export class Session {
     const p = this.panes.get(id);
     if (!p) return;
     p.info.name = name.replace(/^@/, "") || undefined;
-    if (p.info.name) p.info.title = p.info.name;
+    p.refreshTitle(); // a name cleared gives the title back to what else names it
     this.hooks.changed();
   }
 

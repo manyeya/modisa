@@ -29,6 +29,7 @@ export type Config = {
   agents: Record<string, { launch?: string; resume?: string }>;
   plugin: { run: string }[];
   plugin_keys: Record<string, string>; // "<plugin>.<action or pane>" → key ("" turns it off); outranks plugin.json
+  keys: Record<string, string | string[]>; // action → its key(s) after the prefix, in place of modisa's ("" for none): see keys.ts
   remote_command: string;
 };
 
@@ -50,6 +51,7 @@ export const DEFAULTS: Config = {
   agents: {},
   plugin: [],
   plugin_keys: {},
+  keys: {},
   remote_command: "modisa",
 };
 
@@ -126,17 +128,32 @@ run_foreign = "ask"
 # [plugin_keys]
 # "attention-log.log" = "A"
 
+# modisa's own keys (after the prefix): "<action>" = "K", or a list of keys, or "" for none. An action set here
+# loses its default keys; the keyboard guide (prefix ?) names every action. x (close pane), d (detach) and escape
+# can't be given away. modisa config check finds mistakes; modisa config reset-keys puts the defaults back.
+# [keys]
+# zoom = "f"
+# split-right = ["v", "|"]
+
 # How --remote starts modisa on the far side of ssh. Set an absolute path when it isn't on the
 # PATH of a non-interactive ssh shell (~/.local/bin often isn't).
 # remote_command = "modisa"
 `;
 
-export async function loadConfig(): Promise<Config> {
+// A TOML parse error's message, and where it is: Bun puts the line and column (both from 1) in its `position`.
+export function tomlError(e: unknown): { message: string; line?: number; column?: number } {
+  const err = e as { message?: string; position?: { line?: number; column?: number } } | undefined;
+  const at = err?.position?.line ? { line: err.position.line, column: err.position.column } : {};
+  return { message: err?.message ?? String(e), ...at };
+}
+
+// config.toml merged over the defaults; when it can't be read, the defaults and why.
+export async function readConfig(): Promise<{ cfg: Config; error?: string }> {
   const file = Bun.file(CONFIG_PATH);
-  if (!(await file.exists())) return structuredClone(DEFAULTS);
+  if (!(await file.exists())) return { cfg: structuredClone(DEFAULTS) };
   try {
     const user = Bun.TOML.parse(await file.text()) as any;
-    return {
+    return { cfg: {
       ...DEFAULTS,
       ...user,
       sidebar: { ...DEFAULTS.sidebar, ...user.sidebar },
@@ -155,11 +172,18 @@ export async function loadConfig(): Promise<Config> {
       agents: { ...user.agents },
       plugin: user.plugin ?? [],
       plugin_keys: { ...user.plugin_keys },
-    };
+      keys: { ...user.keys },
+    } };
   } catch (e) {
-    console.error(`modisa: bad config ${CONFIG_PATH}: ${e}`);
-    return structuredClone(DEFAULTS);
+    const { message, line } = tomlError(e);
+    return { cfg: structuredClone(DEFAULTS), error: `${line ? `line ${line}: ` : ""}${message}` };
   }
+}
+
+export async function loadConfig(): Promise<Config> {
+  const { cfg, error } = await readConfig();
+  if (error) console.error(`modisa: bad config ${CONFIG_PATH}: ${error}`);
+  return cfg;
 }
 
 export async function ensureConfigFile() {
@@ -190,23 +214,36 @@ function valueEnd(lines: string[], at: number, text: string): { stop: number; co
   }
 }
 
+const header = (l: string) => /^\s*\[/.test(l);
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const assignment = (key: string) => {
+  const k = escapeRe(key);
+  return new RegExp(`^(\\s*(?:${k}|"${k}"|'${k}')\\s*=\\s*)(.*)$`);
+};
+
+// Where [table] (null: the top of the file) and its `key` are in config.toml's lines: the table's first line and the
+// line past its last (start -1: no such table), and the line `key` is set on (-1: it isn't).
+export function findKey(lines: string[], table: string | null, key?: string): { start: number; end: number; at: number } {
+  let start = 0;
+  if (table) {
+    start = lines.findIndex((l) => l.replace(/#.*/, "").trim() === `[${table}]`) + 1;
+    if (!start) return { start: -1, end: -1, at: -1 };
+  }
+  let end = lines.findIndex((l, i) => i >= start && header(l));
+  if (end < 0) end = lines.length;
+  const set = key === undefined ? undefined : assignment(key);
+  const at = set ? lines.findIndex((l, i) => i >= start && i < end && set.test(l)) : -1;
+  return { start, end, at };
+}
+
 // Set one key — at the root (table null) or inside [table] — keeping comments and every other setting.
 // A missing key goes at the end of its table; a missing table is added at the end of the file.
 export function withValue(source: string, table: string | null, key: string, value: Value): string {
   const lines = source.split("\n");
-  const header = (l: string) => /^\s*\[/.test(l);
-  let start = 0;
-  if (table) {
-    start = lines.findIndex((l) => l.replace(/#.*/, "").trim() === `[${table}]`) + 1;
-    if (!start) return `${source.trimEnd()}\n\n[${table}]\n${key} = ${literal(value)}\n`;
-  }
-  let end = lines.findIndex((l, i) => i >= start && header(l));
-  if (end < 0) end = lines.length;
-  const assignment = new RegExp(`^(\\s*(?:${key}|"${key}"|'${key}')\\s*=\\s*)(.*)$`);
-  let at = -1;
-  for (let i = start; i < end && at < 0; i++) if (assignment.test(lines[i]!)) at = i;
+  const { start, end, at } = findKey(lines, table, key);
+  if (start < 0) return `${source.trimEnd()}\n\n[${table}]\n${key} = ${literal(value)}\n`;
   if (at >= 0) {
-    const [, lead, rest] = assignment.exec(lines[at]!)!;
+    const [, lead, rest] = assignment(key).exec(lines[at]!)!;
     const { stop, comment } = valueEnd(lines, at, rest!);
     lines.splice(at, stop - at + 1, lead + literal(value) + comment);
   } else {
@@ -221,6 +258,52 @@ export function withValue(source: string, table: string | null, key: string, val
     throw new Error(`couldn't update ${table ? table + "." : ""}${key} in config.toml safely; edit it by hand`);
   }
   return result;
+}
+
+// Take [table] out: its header and every setting in it, keeping the comments around and in it, and everything else.
+export function withoutTable(source: string, table: string): string {
+  const lines = source.split("\n");
+  for (let t = findKey(lines, table); t.start > 0; t = findKey(lines, table)) {
+    const kept: string[] = [];
+    for (let i = t.start; i < t.end; i++) {
+      const l = lines[i]!;
+      if (!l.trim() || /^\s*#/.test(l)) kept.push(l);
+      else i = valueEnd(lines, i, l.slice(l.indexOf("=") + 1)).stop; // a setting, however many lines its value takes
+    }
+    // no blank line left doubled where the header was
+    while (kept.length && !kept[0]!.trim() && (t.start === 1 || !lines[t.start - 2]!.trim())) kept.shift();
+    lines.splice(t.start - 1, t.end - t.start + 1, ...kept);
+  }
+  const result = lines.join("\n");
+  let check: Record<string, any> | undefined;
+  try { check = Bun.TOML.parse(result) as Record<string, any>; } catch {}
+  if (!check || table in check) throw new Error(`couldn't take [${table}] out of config.toml safely; edit it by hand`);
+  return result;
+}
+
+// modisa's own keys back (`config reset-keys`): [keys] and [plugin_keys] out and the prefix C-b again, each change
+// said. Throws when the file doesn't parse: nothing in it can be edited safely then.
+export function withDefaultKeys(source: string): { result: string; changes: string[] } {
+  let user: Record<string, any>;
+  try {
+    user = Bun.TOML.parse(source) as Record<string, any>;
+  } catch (e) {
+    const { message, line } = tomlError(e);
+    throw new Error(`config.toml doesn't parse (${line ? `line ${line}: ` : ""}${message}); fix that first`);
+  }
+  let result = source;
+  const changes: string[] = [];
+  for (const table of ["keys", "plugin_keys"]) {
+    if (!(table in user)) continue;
+    result = withoutTable(result, table);
+    const n = Object.keys(user[table] ?? {}).length;
+    changes.push(`[${table}] removed (${n} ${n === 1 ? "setting" : "settings"})`);
+  }
+  if (user.prefix !== undefined && user.prefix !== DEFAULTS.prefix) {
+    result = withValue(result, null, "prefix", DEFAULTS.prefix);
+    changes.push(`prefix ${JSON.stringify(user.prefix)} → ${JSON.stringify(DEFAULTS.prefix)}`);
+  }
+  return { result, changes };
 }
 
 export function withTheme(source: string, name: string): string {

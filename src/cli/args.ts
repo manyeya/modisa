@@ -1,7 +1,7 @@
 // Command-line argument parsing: positionals, --flags (valued, boolean or repeated), and -s <session>.
 export type Args = { _: string[]; flags: Record<string, string | boolean>; lists: Record<string, string[]> };
 
-const BOOLEAN = new Set(["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes", "screen", "new-tab", "new-workspace", "on", "off", "toggle"]);
+const BOOLEAN = new Set(["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes", "screen", "new-tab", "new-workspace", "on", "off", "toggle", "system", "sound"]);
 // Flags given once per value, which all count: --env A=1 --env B=2. They're in `lists`, not `flags`.
 const REPEATABLE = new Set(["env"]);
 // Flags that take a value in one command though they're switches elsewhere: `agent spawn --tab` opens a tab, while

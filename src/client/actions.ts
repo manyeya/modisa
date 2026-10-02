@@ -6,7 +6,7 @@ import { ensureConfigFile } from "../config/config";
 import { checkForUpdate, updateCommand } from "../cli/update";
 import { VERSION } from "../core/version";
 import type { Action, App, Option } from "./context";
-import { bindings } from "./input/bindings";
+import type { ActionId } from "../config/keys";
 import { jump } from "./input/copy-mode";
 import { confirm } from "./modals/confirm";
 import { contextMenu } from "./modals/context-menu";
@@ -21,7 +21,7 @@ import { tabLabel } from "./chrome/tabs";
 import { deleteSpace, renameSpace, spaceMenu } from "./spaces";
 import { pluginKey, pluginKeys, pluginUi, runPluginAction } from "./plugin-ui";
 
-export function createActions(app: App): Record<string, Action> {
+export function createActions(app: App): Record<ActionId, Action> {
   const { r } = app;
   const agentList = async () => (await app.conn.request<{ id: string; name: string }[]>("adapters")).map((a) => ({ name: a.name, description: a.id, value: a.id }));
 
@@ -36,7 +36,7 @@ export function createActions(app: App): Record<string, Action> {
     app.call("spawnAgent", { harness, dir, name: name?.trim() || undefined });
   };
 
-  const actions: Record<string, Action> = {
+  const actions: Record<ActionId, Action> = {
     "theme-picker": { label: "Change theme", run: () => openSettings(app, "theme") },
     help: {
       label: "Keyboard guide",
@@ -48,9 +48,10 @@ export function createActions(app: App): Record<string, Action> {
           key: k.key || "–",
           value: k.state === "active" ? `plugin-key:${k.key}` : "",
         }));
-        const action = await pick(app, "Keyboard", [...Object.entries(bindings).map(([key, action]) => ({ name: actions[action]?.label ?? action, description: "", key, value: action })), ...plugins], `prefix ${app.cfg.prefix}`);
+        // each with its action's id: what [keys] in config.toml rebinds
+        const action = await pick(app, "Keyboard", [...Object.entries(app.bindings).map(([key, action]) => ({ name: actions[action].label, description: action, key, value: action })), ...plugins], `prefix ${app.cfg.prefix}`);
         if (action?.startsWith("plugin-key:")) pluginKey(app, action.slice("plugin-key:".length));
-        else if (action && action !== "help") actions[action]?.run();
+        else if (action && action !== "help") actions[action as ActionId]?.run();
       },
     },
     "pane-menu": { label: "Pane context menu", run: () => contextMenu(app, app.tab().focused, Math.min(r.width - 34, app.area().x + 3), app.area().y + 1) },
@@ -158,7 +159,7 @@ export function createActions(app: App): Record<string, Action> {
           { name: "Kill session", description: "close every pane and stop the server", value: "kill" },
         ];
         const v = await pick(app, "Commands", [
-          ...Object.entries(actions).filter(([k]) => k !== "palette" && !k.startsWith("agent-")).map(([k, a]) => ({ name: a.label, description: "", key: Object.entries(bindings).find(([, b]) => b === k)?.[0] ?? "", value: k })),
+          ...Object.entries(actions).filter(([k]) => k !== "palette" && !k.startsWith("agent-")).map(([k, a]) => ({ name: a.label, description: "", key: app.keyFor(k as ActionId) ?? "", value: k })),
           ...extra,
         ]);
         if (!v) return;
@@ -170,7 +171,7 @@ export function createActions(app: App): Record<string, Action> {
           return runPluginAction(app, { plugin: plugin!, run: run! }, action!, {}, instance ? { pane: focused, instance } : undefined);
         }
         if (v === "kill") return app.conn.request("kill");
-        actions[v]?.run();
+        actions[v as ActionId]?.run();
       },
     },
     settings: { label: "Settings", run: () => openSettings(app) },
@@ -212,7 +213,7 @@ export function createActions(app: App): Record<string, Action> {
     "rename-workspace": { label: "Rename space", run: () => renameSpace(app, app.view!.active) },
     "delete-workspace": { label: "Delete space", run: () => deleteSpace(app, app.view!.active) },
     detach: { label: "Detach", run: () => quit(app, "detached") },
-    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`agent-${n}`, { label: `Jump to agent ${n}`, run: () => { const p = app.sortedAgents()[n - 1]; if (p) app.call("focusPane", { pane: p.id }); } }])),
+    ...(Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`agent-${n}`, { label: `Jump to agent ${n}`, run: () => { const p = app.sortedAgents()[n - 1]; if (p) app.call("focusPane", { pane: p.id }); } }])) as Record<Extract<ActionId, `agent-${number}`>, Action>),
   };
 
   // UI events do not await actions. Own their promises so a disconnect during an

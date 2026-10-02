@@ -4,7 +4,8 @@ import type { Config } from "../config/config";
 import type { Adapter } from "../config/adapters";
 import type { Conn } from "../protocol/conn";
 import { b64, fail } from "../protocol/conn";
-import { PLUGIN_UI, type PluginUiView } from "../protocol/types";
+import { PLUGIN_UI, type PluginUiView, type Tone } from "../protocol/types";
+import { cleanText } from "../core/text";
 import { Session, type SpawnOpts } from "./session/session";
 import type { PtyPane, ReadFormat, ReadSource } from "./session/pane";
 import { Detector } from "./agents/detect";
@@ -15,6 +16,13 @@ import { quote } from "./persist/template";
 // plugin: set once a plugin's connection has said plugin.hello; it then acts as that plugin, never as a pane
 export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean; plugin?: string; ui?: number }; // ui: the plugin UI version it attached with
 export const understandsPlugins = (c: Client) => (c.ui ?? 0) >= PLUGIN_UI;
+
+// A toast for the TUI, from a plugin (ui.toast) or anyone else (notify): `from` titles it, `source` is who's counted
+// (a plugin's run, a pane, the user), `plugin` says which shared budget it comes out of. system and sound ask each
+// client for those too, which it gives only where its user has them on.
+export type Toast = { from: string; source: string; plugin: boolean; text: string; tone: Tone; system?: boolean; sound?: boolean };
+// at most 3 every 10s from one source, and 6 from the session's plugins together, or from all the rest together
+const TOASTS = { perSource: 3, perBucket: 6, windowMs: 10_000, text: 120 };
 
 export type ServerContext = {
   session: string;
@@ -46,6 +54,7 @@ export type ServerContext = {
   agentOpts(harness: string, prompt?: string, name?: string, createdBy?: string): SpawnOpts;
   snapshot(p: PtyPane, lines?: number, source?: ReadSource, format?: ReadFormat): PtyPane["info"] & { screen: string; recentOutput: string; content: string; source: ReadSource; format: ReadFormat };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
+  toast(t: Toast): number; // shown by every attached client that draws plugin toasts, how many; rate_limited past the limits
   paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups)
   paneClosing(id: string, focused: boolean): void; // a pane is being closed; focused: it had the focus on screen
 };
@@ -63,6 +72,24 @@ export function createContext(session: string, version: string, cfg: Config, ada
   ctx.emit = (type, data = {}) => {
     const ev = { type, at: Date.now(), seq: ++ctx.seq, epoch: ctx.epoch, ...data };
     for (const c of ctx.clients) if (c.events && (type !== "pane.output" || c.output)) c.conn.notify("event", ev);
+  };
+
+  // Not stored: a client attached later never sees it. Both limits are checked before either is spent.
+  const sent = new Map<string, number[]>(); // a source or a bucket → when its toasts in the window went
+  ctx.toast = (t) => {
+    const now = Date.now();
+    for (const [k, at] of sent) {
+      const recent = at.filter((x) => now - x < TOASTS.windowMs);
+      recent.length ? sent.set(k, recent) : sent.delete(k);
+    }
+    const bucket = t.plugin ? " plugins" : " others"; // no source starts with a space
+    const within = `at most ${TOASTS.perSource} every ${TOASTS.windowMs / 1000}s`;
+    if ((sent.get(t.source)?.length ?? 0) >= TOASTS.perSource) throw fail("rate_limited", `too many toasts from ${t.from}: ${within}`);
+    if ((sent.get(bucket)?.length ?? 0) >= TOASTS.perBucket) throw fail("rate_limited", `too many toasts from the session's ${t.plugin ? "plugins" : "panes and scripts"}: at most ${TOASTS.perBucket} every ${TOASTS.windowMs / 1000}s`);
+    for (const k of [t.source, bucket]) sent.set(k, [...(sent.get(k) ?? []), now]);
+    const to = ctx.attached().filter(understandsPlugins); // an older client can't draw one
+    ctx.broadcast("plugin.toast", { plugin: t.from, text: cleanText(t.text, TOASTS.text), tone: t.tone, system: !!t.system, ...(t.sound && { sound: true }) }, to);
+    return to.length;
   };
 
   // State changes: coalesce client updates into one view per tick, debounce saves by a second.

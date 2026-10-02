@@ -59,7 +59,7 @@ switch (cmd) {
     await (await import("./integrations/hook")).runHook(rest[0], rest[1]);
     break;
   case "config":
-    await configCommand(rest[0]);
+    process.exitCode = await configCommand(rest[0], a.flags);
     break;
   case "plugin": { // new, sdk, schema, check, dev, link and unlink need no server; the rest go through it
     const local = await import("./cli/plugin");

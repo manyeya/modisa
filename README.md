@@ -64,6 +64,8 @@ Prefix is `Ctrl+B`, then:
 | `Ctrl+B` | send a literal `Ctrl+B` |
 | `d` | detach (panes keep running) |
 
+Rebind any of them under `[keys]` in the config: `zoom = "f"`, `split-right = ["v", "|"]`, or `""` for none, with actions named as the keyboard guide (`?`) names them. An action set there has only the keys given; `x`, `d` and Escape can't be given away. `modisa config reset-keys` puts modisa's keys and the `C-b` prefix back.
+
 Mouse: click a pane to focus it, drag the border between two panes to resize them (the pointer turns into a move cursor over a border), drag the sidebar's edge to widen or narrow it, click a tab to switch, and scroll for scrollback. Right-click a pane or tab for split, zoom, rename, copy visible output, search, theme, sidebar, and close actions. Every menu, picker and dialog has a search field and works with the mouse: the pointer selects, a click chooses, the wheel scrolls, and a click outside closes. `[mouse] hover = false` (or the settings page) stops the pointer selecting rows just by resting on them. Clipboard copying uses OSC 52 where supported by your terminal.
 
 Spaces are named groups of tabs and panes. The status row shows where the active space's focused pane's git repository stands: its name, the branch, ↑ commits to push, ↓ to pull (as of your last fetch) and ● files changed (`[git]` turns each part off). Agents show their logo in their brand colour and the task they're on: the logos are a small font modisa installs the first time it starts, for Ghostty, kitty and VS Code (restart the terminal once; `modisa logos` shows where they stand, `modisa logos uninstall` takes them out). `Ctrl+B w` (or a click on the space's name at the top left) lists the spaces; right-click one to rename or delete it — deleting asks first and closes its panes. The last space can't be deleted. A new space starts in the current space's working directory; creating one does not create a directory. Use the shell's `cd` command to change a pane's working directory.
@@ -204,10 +206,14 @@ modisa pane move tests --new-tab               # the same process, in a tab of i
 modisa pane swap tests @reviewer               # trade places, even across tabs
 modisa pane split --ratio 0.3 --env PORT=4000 "bun dev"   # 30% of the room, PORT set in it
 modisa pane read tests --format ansi           # with its colours
+modisa notify "tests failed" --body "3 in src/auth" --tone blocked
+modisa snapshot                                # the whole layout as JSON, read without attaching
 modisa events --follow
 ```
 
 `pane move` also puts a pane beside another (`--target`), into a tab (`--tab`) or in a new space (`--new-workspace`), closes a tab or space it leaves empty, and leaves your view where it is unless you add `--focus`. `pane resize`, `pane zoom` and `pane focus --direction` do what their keys do, for any pane. Creating commands print the new pane's id, or with `--json` the whole pane and its `workspaceId` and `tabId`; they take `--env NAME=value` once per variable (saved with the session, so a restart keeps it; never `MODISA_*`), and `--cwd` takes `~` and relative paths.
+
+`notify` puts a toast in every attached TUI, titled with the sending pane; `--system` and `--sound` only take effect where that client's `[notify]` has them on. Each pane may send 3 every 10 seconds and all senders 6 (past that it exits 1, `rate_limited`); with no TUI attached it says so and exits 0. `snapshot` prints every space's tabs (split trees, focus, zoom) and every pane as JSON without attaching or resizing anything, and `tab list` lists the tabs. `report --title "…"` names a pane over its program's terminal title (an `@name` still wins) until `--title ""`.
 
 `pane read` prints the last `--lines` lines as the pane wraps them: `--source recent-unwrapped` joins soft-wrapped lines, `--source visible` is just the screen, and `--format ansi` keeps colours. `pane layout`, `pane neighbor --direction d` and `pane edges` say where a pane sits in its tab, and `pane process-info` gives its pid, the job in its foreground and its shell's directory.
 
@@ -243,7 +249,9 @@ A `[[plugin]]` `run` line in config.toml still starts a program with no manifest
 
 ## Config
 
-`Ctrl+B s` opens the settings page; `modisa config edit` (or "Edit config.toml" in the command palette) opens `~/.config/modisa/config.toml` itself; changes apply live. It covers the prefix key, theme, select on hover, sidebar, status row, git, pane borders, which notifications fire (toast, system, sound, bell), messaging limits, permissions, per-agent launch commands, `remote_command` for `--remote`, `[plugin_keys]`, and `[[plugin]]` programs.
+`Ctrl+B s` opens the settings page; `modisa config edit` (or "Edit config.toml" in the command palette) opens `~/.config/modisa/config.toml` itself; changes apply live (a change that doesn't parse is left out, with a toast). It covers the prefix key, `[keys]`, theme, select on hover, sidebar, status row, git, pane borders, which notifications fire (toast, system, sound, bell), messaging limits, permissions, per-agent launch commands, `remote_command` for `--remote`, `[plugin_keys]`, and `[[plugin]]` programs.
+
+`modisa config check` reports what's wrong without a session: a file that doesn't parse (with its line and column), or a value modisa can't use, is an error (exit 1); a setting it doesn't know is a warning. `--json` gives the same as data. `modisa config reset-keys` takes out `[keys]` and `[plugin_keys]` and resets the prefix, keeping your comments and the old file as `config.toml.bak`.
 
 ## Build
 
@@ -278,7 +286,7 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 - `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart)
 - `src/core/` — paths and the split-tree layout math
 - `src/protocol/` — shared types, the Zod JSON-RPC schema, connections and transports
-- `src/config/` — config file, themes, and the agents modisa knows (`agents/`: process names, launch/resume, screen manifests)
+- `src/config/` — config file and its check, prefix keys (`keys.ts`), themes, and the agents modisa knows (`agents/`: process names, launch/resume, screen manifests)
 - `src/server/` — the session server
   - `server.ts` startup/shutdown, `context.ts` shared state
   - `rpc/` — dispatch, TUI methods, public API
@@ -291,7 +299,7 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
   - `chrome/` — tabs, sidebar, status bar, buttons
   - `modals/` — prompt, pick, menu, confirm, permission, context menu, the settings page
   - `sound/` — cuelume's sound recipes, rendered to WAV and played through OpenTUI's audio engine
-  - `input/` — prefix bindings, keyboard handler, copy mode
+  - `input/` — key names, keyboard handler, copy mode
 - `src/platform/` — controlling-terminal exec (`bun:ffi`) and the embedded libghostty libraries
 - `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `modisa hook`
 - `src/skills/` — the modisa skill (`modisa/SKILL.md`), installed by the integrations

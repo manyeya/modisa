@@ -116,6 +116,7 @@ test("replies match the published result schemas, and errors the error schema", 
   await check("agent.spawn", { harness: "true", env: { CHECKED: "1" } });
   await check("tab.create", { command: "true" });
   await check("workspace.create", { name: "checked", command: "true" });
+  await check("notify", { title: "checked", body: "a result check", tone: "done" });
   conn.close();
 
   for (const [request, code] of [

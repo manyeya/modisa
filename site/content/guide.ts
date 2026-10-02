@@ -82,7 +82,7 @@ curl -fsSL https://manyeya.github.io/modisa/install.sh | sh -s -- --uninstall`) 
         [`${kbd("o")} / ${kbd("1")}–${kbd("9")}`, "pane picker / jump to agent"], [kbd("e"), "pane context menu"], [kbd("a"), "launch an agent"],
         [`${kbd(":")} / ${kbd("?")}`, "command palette / keyboard guide"], [kbd("["), "copy mode"], [kbd("/"), "search"],
         [kbd("m"), "pause / resume agent messaging"], [kbd("Ctrl+B"), "send a literal Ctrl+B"], [kbd("d"), "detach (panes keep running)"],
-      ]) },
+      ]) + p(`Any of them can move: ${c("prefix")} and ${c("[keys]")} in config.toml (<a href="../config/#keys">Configuration</a>), named as the keyboard guide names them. ${c("x")}, ${c("d")} and Escape stay put. ${c("modisa config reset-keys")} brings back modisa's own.`) },
       { id: "mouse", title: "Mouse", html: ul([
         "Click a pane to focus it; scroll for its scrollback.",
         "Drag the border between two panes to resize them — the pointer turns into a move cursor over a border.",

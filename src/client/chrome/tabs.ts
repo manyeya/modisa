@@ -7,6 +7,7 @@ import { contextMenu } from "../modals/context-menu";
 import { menu } from "../modals/menu";
 import { button } from "./button";
 import type { TabView } from "../../protocol/types";
+import type { ActionId } from "../../config/keys";
 
 // A tab's name: the one it was given, else its focused pane's @name or title
 export function tabLabel(app: App, t: TabView) {
@@ -64,5 +65,5 @@ async function tabMenu(app: App, index: number, x: number, y: number) {
     { name: "Close tab", key: "x", action: "close-tab", danger: true },
   ], x, y);
   if (action === "pane") contextMenu(app, t.focused, x, y);
-  else if (action) app.actions[action]?.run();
+  else if (action) app.actions[action as ActionId]?.run();
 }

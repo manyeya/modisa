@@ -1,5 +1,6 @@
 // Right-click on a pane or tab: the pane's actions.
 import type { App } from "../context";
+import type { ActionId } from "../../config/keys";
 import { menu } from "./menu";
 import { pluginUi, runPluginAction } from "../plugin-ui";
 
@@ -38,6 +39,6 @@ export function contextMenu(app: App, pane: string, x: number, y: number) {
       if (output) { app.r.copyToClipboardOSC52(output); app.toast("Visible output copied", app.th.focus); }
       return;
     }
-    await app.actions[action]?.run();
+    await app.actions[action as ActionId]?.run();
   }).catch((e) => app.toast(String(e), app.th.blocked));
 }

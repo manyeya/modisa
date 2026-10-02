@@ -61,3 +61,18 @@ test("config changes apply live", async () => {
   await Bun.write(`${sb.root}/config/config.toml`, `theme = "gruvbox"\n`);
   await ui.until("reload toast", (s) => s.includes("config reloaded"), 6000);
 }, 10000);
+
+test("[keys] rebinds a key live: the new one runs the action, the old one doesn't, and the guide says so", async () => {
+  await ui.until("the last reload's toast gone", (s) => !s.includes("config reloaded"), 12000);
+  await Bun.write(`${sb.root}/config/config.toml`, `theme = "gruvbox"\n\n[keys]\nhelp = "g"\n`);
+  await ui.until("reload toast", (s) => s.includes("config reloaded"), 6000);
+  ui.write("\x02?");
+  await Bun.sleep(600);
+  expect(ui.text()).not.toContain("prefix C-b"); // the guide's header: ? opens nothing now
+  ui.write("\x02g");
+  await ui.until("the keyboard guide, from g", (s) => s.includes("prefix C-b"));
+  ui.write("keyboard");
+  await ui.until("its row, with its action and new key", (s) => /Keyboard guide\s+help\s+g\s/.test(s));
+  ui.write("\x1b");
+  await ui.until("the guide closed", (s) => !s.includes("prefix C-b"));
+}, 30000);

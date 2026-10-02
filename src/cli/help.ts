@@ -37,6 +37,8 @@ agents
   modisa send <target> <message…>          message another agent (delivered when it's idle)
   modisa inbox | messages [--follow] | pause
   modisa report [pane] [--state s] [--source id] [--agent id] [--seq n] [--session-id id] [--release]   (integrations)
+  modisa report [pane] --title text         what the pane is called (over its program's terminal title, under an @name)
+                                              until --title ""; not saved
 
 plugins (examples/plugins/README.md)
   modisa plugin new <name> [--dir d]        scaffold one: TypeScript, modisa's client library, a guide, a test
@@ -58,8 +60,15 @@ plugins (examples/plugins/README.md)
 workspace
   modisa workspace create [name] [--cwd dir] [--command cmd] [--env K=V]… | workspace list
   modisa workspace rename <space> <name> | workspace close <space>   (space: id or name)
-  modisa tab create [name] [--command cmd] [--cwd dir] [--pane-name n] [--workspace w] [--env K=V]…
+  modisa tab create [name] [--command cmd] [--cwd dir] [--pane-name n] [--workspace w] [--env K=V]… | tab list [--json]
   modisa events [--follow] [--output]
+  modisa snapshot                           JSON: every space's tabs (split trees, focus, zoom), every pane, the area they're
+                                              drawn in. Read only: attaches nothing, resizes nothing
+  modisa notify <title> [--body text] [--tone t] [--system] [--sound]   a toast in every attached TUI, titled with your
+                                              pane (else "notify"); --system and --sound only where that client's [notify]
+                                              has them on. 3 every 10s per sender, 6 across senders (then exit 1,
+                                              rate_limited); no client attached: says so, exits 0. tone: fg, dim, accent,
+                                              warn, working, blocked, done, idle
 
 setup
   modisa update                            install the newest release (then modisa restart); names brew or mise's command when they installed it
@@ -68,11 +77,14 @@ setup
   modisa integration status | install|uninstall <agent|all>   (hooks + the modisa skill)
   modisa logos [status|install|uninstall]  agents' logos in the sidebar: a font, and your terminals told about it
   modisa config [path|edit]
+  modisa config check [--json]             config.toml's mistakes (errors exit 1) and settings modisa ignores (warnings)
+  modisa config reset-keys                 modisa's own keys back: [keys] and [plugin_keys] out, prefix C-b; the old
+                                              file is kept as config.toml.bak
   modisa debug detect [target]
 
 targets: pane id (p3), @name or name; p3:1a2b3c4d (from a message's reply hint) reaches only that pane: it survives a
   rename, but fails once the pane closes or the server restarts. Outside a pane, split, focus, move, swap, resize, zoom,
-  layout, neighbor, edges and process-info default to the focused pane. Tabs: id or name
+  layout, neighbor, edges and process-info default to the focused pane. Tabs: id (from tab list) or name
 
 pane split, agent spawn, tab create and workspace create print the new pane's id; with --json, the whole pane and its
   workspaceId and tabId. --env NAME=value (once per variable; not MODISA_*) is set in the new pane and saved with the

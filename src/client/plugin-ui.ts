@@ -6,7 +6,6 @@ import type { PluginUiView, Span, Tone } from "../protocol/types";
 import { linkMatches } from "../protocol/links";
 import { bindPluginKeys } from "../config/keys";
 import type { App } from "./context";
-import { systemNotification } from "./notify";
 import { menu } from "./modals/menu";
 import { agentMark, fit } from "./design";
 import { render } from "./render";
@@ -60,7 +59,7 @@ export async function runPluginAction(app: App, from: { plugin: string; run: str
 
 // Plugins' keys as this client's own config binds them: the session's server sends what plugin.json declares, and
 // [plugin_keys] here, not on the server, decides which key runs what, so each attached client can differ.
-export const pluginKeys = (app: App) => bindPluginKeys(pluginUi(app).flatMap((p) => p.keys.map((k) => ({ plugin: p.plugin, ...k }))), app.cfg.plugin_keys);
+export const pluginKeys = (app: App) => bindPluginKeys(pluginUi(app).flatMap((p) => p.keys.map((k) => ({ plugin: p.plugin, ...k }))), app.cfg.plugin_keys, app.bindings);
 
 // Prefix + a plugin's key: its action, or its pane, for the pane focused now (not when the action finishes).
 export function pluginKey(app: App, key: string) {
@@ -160,10 +159,4 @@ function showPopup(app: App, opened: { pane: string; title: string; width?: numb
     },
   };
   render(app);
-}
-
-// A plugin's toast. A system notification too only if it asked and the user has system notifications on for something.
-export function pluginToast(app: App, d: { plugin: string; text: string; tone: Tone; system?: boolean }) {
-  app.toast(d.text, toneColor(app, d.tone), undefined, d.plugin);
-  if (d.system && Object.values(app.cfg.notify).some((kinds) => kinds.includes("system"))) systemNotification(app, `${d.plugin}: ${d.text}`);
 }

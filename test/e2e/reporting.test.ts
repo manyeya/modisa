@@ -70,3 +70,18 @@ test("agents' hooks report through `modisa hook`: sessions for most, state for l
   const p = Bun.spawn(["bun", `${import.meta.dir}/../../src/main.ts`, "hook", "kimi", "blocked"], { env: sb.env, stdin: new TextEncoder().encode("{}"), stdout: "pipe" });
   expect([await new Response(p.stdout).text(), await p.exited]).toEqual(["", 0]);
 }, 30000);
+
+test("a reported title names a pane over its program's own, under its @name, until it's cleared", async () => {
+  const id = (await cli("pane", "split", "printf '\\033]2;from-osc\\007'; sleep 120")).trim();
+  const title = async () => JSON.parse(await cli("pane", "list", "--json")).find((p: any) => p.id === id).title;
+  for (let i = 0; i < 50 && (await title()) !== "from-osc"; i++) await Bun.sleep(100);
+  expect(await title()).toBe("from-osc");
+  await cli("report", id, "--title", "Reviewing auth");
+  expect(await title()).toBe("Reviewing auth");
+  await cli("pane", "rename", id, "rev");
+  expect(await title()).toBe("rev");
+  await cli("pane", "rename", id, ""); // a name cleared: the title goes back to what else names it
+  expect(await title()).toBe("Reviewing auth");
+  await cli("report", id, "--title", "");
+  expect(await title()).toBe("from-osc");
+}, 20000);

@@ -14,7 +14,7 @@
 // toasts, which modisa draws itself. Nothing restarts a plugin; plugin.start does, when asked.
 import { DIR } from "../core/paths";
 import { CONFIG_DIR } from "../config/config";
-import { bindPluginKeys } from "../config/keys";
+import { bindPluginKeys, bindings } from "../config/keys";
 import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
@@ -68,12 +68,11 @@ export class OwnedGroup {
 
 // ---------- what a run shows in the TUI ----------
 // Limits keep a plugin from crowding out modisa's own chrome or flooding clients with redraws.
-const LIMIT = { statusSegments: 4, statusText: 32, sidebarTitle: 30, sidebarRows: 40, rowText: 60, badgeText: 12, badges: 50, menuItems: 8, menuTitle: 40, toastText: 120 };
+const LIMIT = { statusSegments: 4, statusText: 32, sidebarTitle: 30, sidebarRows: 40, rowText: 60, badgeText: 12, badges: 50, menuItems: 8, menuTitle: 40 };
 const UPDATES = { burst: 30, perSecond: 10 }; // ui.* calls per run
-const TOASTS = { burst: 3, windowMs: 10_000 };
 // and across all the session's plugins together, so many plugins, each within its own limits, can't do it either:
-// first come, first served
-const SESSION = { statusSegments: 12, badgesPerPane: 4, sidebarSections: 6, menuItems: 24, toasts: 6, burst: 60, perSecond: 30 };
+// first come, first served (toasts' limits are ctx.toast's)
+const SESSION = { statusSegments: 12, badgesPerPane: 4, sidebarSections: 6, menuItems: 24, burst: 60, perSecond: 30 };
 
 type UiState = {
   status: Map<string, PluginUiView["status"][number]>;
@@ -82,9 +81,8 @@ type UiState = {
   menu: PluginUiView["menu"];
   tokens: number;
   refilled: number;
-  toasts: number[];
 };
-const emptyUi = (): UiState => ({ status: new Map(), badges: new Map(), menu: [], tokens: UPDATES.burst, refilled: Date.now(), toasts: [] });
+const emptyUi = (): UiState => ({ status: new Map(), badges: new Map(), menu: [], tokens: UPDATES.burst, refilled: Date.now() });
 
 // Text a plugin sends is shown in the TUI, cleaned and cut to cells (core/text.ts, shared with `plugin search`)
 export { cleanText };
@@ -277,11 +275,12 @@ export function createPluginHost(ctx: ServerContext) {
     for (const p of live) p.run!.group.signal("SIGKILL");
   };
 
-  // Keys for this session's running plugins as the SERVER's config binds them: what `plugin list` reports. Clients get
-  // plugin.json's keys in the view and bind them with their own config (bindPluginKeys), so these aren't theirs.
+  // Keys for this session's running plugins as the SERVER's config binds them ([plugin_keys], and the prefix keys its
+  // [keys] makes): what `plugin list` reports. Clients get plugin.json's keys in the view and bind them with their own
+  // config (bindPluginKeys), so these aren't theirs.
   const declaredKeys = (pl: Plugin) => (pl.manifest?.keys ?? []).map(({ key, action, pane, description }) => ({ key, ...(action && { action }), ...(pane && { pane }), description }));
   const keyTable = (): (PluginKey & { plugin: string })[] =>
-    bindPluginKeys([...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).flatMap((pl) => declaredKeys(pl).map((k) => ({ plugin: pl.name, ...k }))), ctx.cfg.plugin_keys);
+    bindPluginKeys([...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).flatMap((pl) => declaredKeys(pl).map((k) => ({ plugin: pl.name, ...k }))), ctx.cfg.plugin_keys, bindings(ctx.cfg));
   const keysOf = (name: string) => keyTable().filter((k) => k.plugin === name).map(({ plugin: _plugin, ...k }) => k);
 
   const view = ({ run, argv: _argv, manifest: _manifest, client, stopping: _stopping, starting: _starting, ui: _ui, ...p }: Plugin): PluginStatus => ({
@@ -336,9 +335,9 @@ export function createPluginHost(ctx: ServerContext) {
     }
   };
 
-  // the other running plugins, and the session's shared update and toast budgets
+  // the other running plugins, and the session's shared update budget
   const others = (pl: Plugin) => [...plugins.values()].filter((x) => x !== pl && x.run && !x.run.revoked);
-  const sessionUi = { tokens: SESSION.burst, refilled: Date.now(), toasts: [] as number[] };
+  const sessionUi = { tokens: SESSION.burst, refilled: Date.now() };
 
   // A ui.* call: from the plugin's bound connection, within its rate, naming only actions it offered.
   const uiCall = (c: Client, action?: string) => {
@@ -488,18 +487,11 @@ export function createPluginHost(ctx: ServerContext) {
       pl.ui.menu = p.items.slice(0, LIMIT.menuItems).map((item: any) => ({ id: item.id, title: cleanText(item.title, LIMIT.menuTitle), action: item.action }));
       return changed(pl);
     },
-    // not stored: every attached client shows it as a toast (and a system notification, if asked and the user has
-    // those on), at most a few per plugin in a window
+    // every attached client shows it (and a system notification, if asked and the user has those on); counted per
+    // run, so a restarted plugin starts with a fresh budget
     "ui.toast": (p, c) => {
       const pl = uiCall(c);
-      const now = Date.now();
-      pl.ui.toasts = pl.ui.toasts.filter((at) => now - at < TOASTS.windowMs);
-      if (pl.ui.toasts.length >= TOASTS.burst) throw fail("rate_limited", `too many toasts from ${pl.name}: at most ${TOASTS.burst} every ${TOASTS.windowMs / 1000}s`);
-      sessionUi.toasts = sessionUi.toasts.filter((at) => now - at < TOASTS.windowMs);
-      if (sessionUi.toasts.length >= SESSION.toasts) throw fail("rate_limited", `too many toasts from the session's plugins: at most ${SESSION.toasts} every ${TOASTS.windowMs / 1000}s`);
-      pl.ui.toasts.push(now);
-      sessionUi.toasts.push(now);
-      ctx.broadcast("plugin.toast", { plugin: pl.name, text: cleanText(p.text, LIMIT.toastText), tone: p.tone, system: !!p.system }, ctx.attached().filter(understandsPlugins));
+      ctx.toast({ from: pl.name, source: `plugin:${pl.name}:${pl.run!.id}`, plugin: true, text: p.text, tone: p.tone, system: p.system });
       return true;
     },
     "ui.state": (p) => uiOf(need(p.plugin)),
@@ -544,7 +536,8 @@ export function createPluginHost(ctx: ServerContext) {
           popups.set(pane.id, { plugin: pl.name, client: c });
           break;
       }
-      pane!.info.title = def.title;
+      pane!.defaultTitle = def.title;
+      pane!.refreshTitle();
       ctx.changed();
       return { pane: pane!.id, instance: pane!.info.instance, placement: def.placement, title: def.title, ...(def.width !== undefined && { width: def.width }), ...(def.height !== undefined && { height: def.height }) };
     },

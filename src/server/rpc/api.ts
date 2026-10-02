@@ -1,6 +1,7 @@
 // The public API (CLI, plugins, integrations). Params are validated against protocol/schema before they get
 // here. `caller` is the pane id of the agent calling, if any.
 import { codeVersion, cwd } from "../../core/paths";
+import { cleanText } from "../../core/text";
 import { SIDE, type Dir } from "../../core/layout";
 import type { AgentState } from "../../protocol/types";
 import type { ServerContext } from "../context";
@@ -169,6 +170,10 @@ export function apiMethods(ctx: ServerContext): Handlers {
         if (agent) pane.info.session = { agent, id: p.session, source };
         ctx.changed(); // saved, so a restart resumes this exact session
       }
+      if (p.title !== undefined) {
+        pane.reportedTitle = cleanText(p.title, 200);
+        if (pane.refreshTitle()) ctx.changed();
+      }
       // state needs a named source: hooks from older modisa versions sent none and are ignored
       if (p.state && p.source) detector.report(pane, { source: p.source, agent: p.agent, state: p.state, seq: p.seq });
       ctx.tick();
@@ -179,6 +184,16 @@ export function apiMethods(ctx: ServerContext): Handlers {
       // read before waiting on the process table: the pane can close meanwhile, and its screen with it
       const seen = { pane: pane.id, agent: pane.info.agent, session: pane.info.session, detection: detector.last.get(pane.id), authority: detector.authority.get(pane.id), title: pane.oscTitle, progress: pane.oscProgress, screen: pane.screen() };
       return { ...seen, process: await processOf(pane) };
+    },
+
+    // A toast, titled with the pane that sent it (its @name, else its id), else "notify"; a plugin's connection is the
+    // plugin, within its budget. How many clients it reached: none attached is 0, not a failure.
+    notify: (p, c) => {
+      const pane = p.caller ? s.panes.get(p.caller) : undefined;
+      const from = c.plugin ?? (pane ? (pane.info.name ? `@${pane.info.name}` : pane.id) : "notify");
+      const source = c.plugin ? `plugin:${c.plugin}` : pane ? `pane:${pane.id}` : "user";
+      const text = (p.body ? `${p.title}: ${p.body}` : p.title).replace(/\s*\n\s*/g, " "); // one line
+      return { clients: ctx.toast({ from, source, plugin: !!c.plugin, text, tone: p.tone, system: p.system, sound: p.sound }) };
     },
 
     // ---------- messaging ----------

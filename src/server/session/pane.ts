@@ -32,6 +32,8 @@ export class PtyPane {
   proc: Bun.Subprocess;
   lastOutput = 0;
   oscTitle = ""; // the terminal title the program last set (OSC 0/2), e.g. an agent's spinner
+  reportedTitle = ""; // one reported for it (modisa report --title): over the program's own, under a name. Not saved
+  defaultTitle: string; // what it runs: its title when nothing else names it
   oscProgress = ""; // its last OSC 9;4 progress report, e.g. "4;3" busy, "4;0" cleared
   disposed = false; // its libghostty screen is freed; async work that held on to it must skip it
   closedWhileRunning = false; // closed before its process exited, so the exit that follows was caused by the close
@@ -44,11 +46,12 @@ export class PtyPane {
   ) {
     const shell = Bun.env.SHELL || "/bin/sh";
     const cols = Math.max(opts.cols, 2), rows = Math.max(opts.rows, 1);
+    this.defaultTitle = opts.command ? opts.command.split(" ")[0]! : shell.split("/").pop()!;
     this.info = {
       id: opts.id,
       instance: crypto.randomUUID().slice(0, 8),
       name: opts.name,
-      title: opts.name ?? (opts.command ? opts.command.split(" ")[0]! : shell.split("/").pop()!),
+      title: opts.name ?? this.defaultTitle,
       cwd: opts.cwd,
       command: opts.command,
       harness: opts.harness,
@@ -68,10 +71,7 @@ export class PtyPane {
         // read on request (list, a snapshot): not pushed to clients, which a spinning title would do many times a second
         if (t) this.info.terminalTitle = t;
         else delete this.info.terminalTitle;
-        if (!this.info.name && t) {
-          this.info.title = t;
-          queueMicrotask(() => this.hooks.title(this));
-        }
+        if (this.refreshTitle()) queueMicrotask(() => this.hooks.title(this));
       },
     });
     this.pty = new Bun.Terminal({
@@ -114,6 +114,15 @@ export class PtyPane {
 
   get id() {
     return this.info.id;
+  }
+
+  // Its title from what names it, first that's set: its @name, a reported title, its program's terminal title, what it
+  // runs. Whether that changed it.
+  refreshTitle() {
+    const title = this.info.name || this.reportedTitle || this.oscTitle || this.defaultTitle;
+    if (title === this.info.title) return false;
+    this.info.title = title;
+    return true;
   }
 
   write(data: string | Uint8Array) {

@@ -173,6 +173,7 @@ export const results = {
   wait: z.union([z.strictObject({ exitCode: z.number().int() }), z.strictObject({ state }), z.strictObject({ match: z.string() })]),
   send: z.strictObject({ id: z.number(), queued: z.literal(true), delivered: z.literal(false), recipientState: state.optional() }),
   "plugin.list": z.array(pluginStatus),
+  notify: z.strictObject({ clients: z.number().int().nonnegative() }), // the TUI clients it reached: 0 when none is attached
   "plugin.hello": z.strictObject({ name: z.string(), protocol: z.number().int(), session: z.string(), epoch: z.string() }),
 };
 // A failed request's `error`: code is JSON-RPC's (-32601 unknown method, -32602 invalid params, -32000 the request
@@ -238,6 +239,14 @@ export const cliResults = {
   }),
   // the pane on each side of it in its tab; null: that side is the tab's edge
   "pane edges": z.strictObject({ pane: z.string(), left: z.string().nullable(), right: z.string().nullable(), up: z.string().nullable(), down: z.string().nullable() }),
+  // every space's tabs, from a session.info snapshot: active is the tab its space shows, current the one on screen
+  "tab list": z.array(z.strictObject({ id: z.string(), name: z.string().optional(), workspaceId: z.string(), workspace: z.string(), panes: z.array(z.string()), focused: z.string(), zoomed: z.boolean(), active: z.boolean(), current: z.boolean() })),
+  // config.toml checked where the command runs, no session needed. A problem's key is the setting's dotted path (none:
+  // the file doesn't parse); line and column count from 1. ok: no errors (warnings are settings modisa ignores).
+  "config check": z.strictObject({
+    file: z.string(), exists: z.boolean(), ok: z.boolean(),
+    problems: z.array(z.strictObject({ level: z.enum(["error", "warning"]), key: z.string().optional(), message: z.string(), line: z.number().int().positive().optional(), column: z.number().int().positive().optional() })),
+  }),
 };
 
 export const api = {
@@ -306,10 +315,15 @@ export const api = {
   "ui.popup.close": z.object({ caller }),
   // from integrations: lifecycle state (authoritative for the pane until released or the agent exits),
   // the agent's own session id (for exact resume), or both
+  // title: what the pane is called while it has no name, over the terminal title its program sets ("" stops); not saved
   report: z.object({
     caller, pane: z.string().optional(), source: z.string().min(1).optional(), agent: z.string().optional(),
-    state: state.optional(), seq: z.number().optional(), session: z.string().min(1).optional(), release: z.boolean().optional(),
+    state: state.optional(), seq: z.number().optional(), session: z.string().min(1).optional(), release: z.boolean().optional(), title: z.string().optional(),
   }),
+  // A toast in every attached TUI, titled with who sent it (the calling pane, else "notify"); system and sound ask for
+  // those too, which each client gives only where its user has them on for some event. Rate-limited: 3 every 10s from
+  // one sender, 6 from all of them together.
+  notify: z.object({ caller, title: z.string().min(1), body: z.string().optional(), tone: tone.default("fg"), system: z.boolean().optional(), sound: z.boolean().optional() }),
   send: z.object({ caller, to: target, body: z.string().min(1) }),
   inbox: z.object({ caller }),
   messages: z.object({ caller }),

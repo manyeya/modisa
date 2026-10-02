@@ -3,8 +3,7 @@ import { codeVersion } from "../core/paths";
 import { unb64 } from "../protocol/conn";
 import { PLUGIN_UI } from "../protocol/types";
 import type { App, ServerView } from "./context";
-import { notify } from "./notify";
-import { pluginToast } from "./plugin-ui";
+import { notify, sentToast } from "./notify";
 import { permission } from "./modals/permission";
 import { render } from "./render";
 
@@ -39,7 +38,7 @@ async function attach(app: App, spawn: boolean) {
         notify(app, d.state, d.text);
         break;
       case "plugin.toast":
-        pluginToast(app, d);
+        sentToast(app, d);
         break;
       case "prompt":
         permission(app, d.id, d.text);
@@ -85,7 +84,8 @@ async function attach(app: App, spawn: boolean) {
   for (const { pane, data } of await conn.request<{ pane: string; data: string }[]>("replay")) app.panes.get(pane)?.term.write(unb64(data));
   for (const id of res.prompts) permission(app, id, "(pending permission request)");
   ready = true;
-  if (res.version !== (await codeVersion())) app.toast(`this client and the session's server run different modisa builds · detach and reattach, or ${app.cfg.prefix.replace("C-", "^").toUpperCase()} : → Restart server`, app.th.warn, 12000);
+  const palette = app.keyFor("palette");
+  if (res.version !== (await codeVersion())) app.toast(`this client and the session's server run different modisa builds · detach and reattach, or ${palette ? `${app.cfg.prefix.replace("C-", "^").toUpperCase()} ${palette}` : "the command palette"} → Restart server`, app.th.warn, 12000);
 }
 
 let connecting = false;

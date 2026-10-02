@@ -224,8 +224,29 @@ export async function runCli(a: Args): Promise<number> {
         break;
       case "report":
       case `report ${verb}`:
-        await call("report", { pane: verb, state: str(f.state), source: str(f.source), agent: str(f.agent), seq: num(f.seq), session: str(f["session-id"]), release: f.release === true || undefined });
+        await call("report", { pane: verb, state: str(f.state), source: str(f.source), agent: str(f.agent), seq: num(f.seq), session: str(f["session-id"]), release: f.release === true || undefined, title: str(f.title) });
         break;
+      case "notify":
+        throw fail("usage", "notify needs a title: modisa notify <title> [--body text]");
+      case `notify ${verb}`: {
+        const r = await call("notify", { title: [verb, ...rest].join(" "), body: str(f.body), tone: str(f.tone), system: f.system === true || undefined, sound: f.sound === true || undefined });
+        if (json) print(r, true);
+        if (!r.clients) console.error("no client attached"); // nobody to show it to, which isn't a failure
+        break;
+      }
+      // what clients draw, read without attaching: always JSON
+      case "snapshot":
+        print(await snapshot(), true);
+        break;
+      case "tab list": {
+        const snap = await snapshot();
+        const tabs = snap.workspaces.flatMap((w: any, wi: number) =>
+          w.tabs.map((t: any, ti: number) => ({ id: t.id, ...(t.name && { name: t.name }), workspaceId: w.id, workspace: w.name, panes: panes(t.tree), focused: t.focused, zoomed: t.zoomed, active: ti === w.active, current: wi === snap.active && ti === w.active })),
+        );
+        if (json) print(tabs, true);
+        else table(tabs.map((t: any) => ({ ...t, name: t.name ?? "", panes: t.panes.join(","), zoomed: t.zoomed ? "yes" : "", current: t.current ? "*" : "" })), ["id", "name", "workspace", "panes", "focused", "zoomed", "current"]);
+        break;
+      }
       case "plugin list": {
         const ps = await call<any[]>("plugin.list");
         if (json) print(ps, true);

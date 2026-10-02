@@ -4,7 +4,7 @@ import type { App } from "../context";
 import { render } from "../render";
 import { endResize } from "../panes/resize";
 import { pointer } from "../panes/pointer";
-import { bindings, keyName } from "./bindings";
+import { keyName } from "./bindings";
 import { copyKey } from "./copy-mode";
 import { pluginKey } from "../plugin-ui";
 
@@ -33,8 +33,11 @@ export function installKeyboard(app: App) {
       k.preventDefault();
       app.prefixArmed = false;
       if (isPrefix) app.focusedPane()?.term.handleKeyPress(k); // prefix twice sends it through
-      else if (bindings[keyName(k)]) app.actions[bindings[keyName(k)]!]?.run();
-      else pluginKey(app, keyName(k)); // modisa's keys first; a plugin never gets one of them
+      else {
+        const action = app.bindings[keyName(k)];
+        if (action) app.actions[action].run();
+        else pluginKey(app, keyName(k)); // modisa's keys first; a plugin never gets one of them
+      }
       render(app);
     } else if (isPrefix) {
       k.preventDefault();

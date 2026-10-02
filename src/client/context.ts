@@ -5,6 +5,7 @@ import { panes as treePanes, type Rect } from "../core/layout";
 import type { Conn } from "../protocol/conn";
 import type { AgentState, View } from "../protocol/types";
 import { parsePrefix, type Config, type IndicatorStyle } from "../config/config";
+import { bindings, type ActionId, type Bindings } from "../config/keys";
 import { theme, type Theme } from "../config/themes";
 import { cellEms, chrome, fit } from "./design";
 import type { ClientPane } from "./panes/pane";
@@ -33,9 +34,10 @@ export class App {
   view: ServerView | undefined;
   th: Theme;
   prefix: { ctrl: boolean; name: string };
+  bindings: Bindings; // the prefix keys, as this client's config sets them
   readonly panes = new Map<string, ClientPane>();
   readonly ui: { tabBar: BoxRenderable; side: BoxRenderable; telemetry: BoxRenderable; toasts: { box: BoxRenderable; text: TextRenderable }[] };
-  actions: Record<string, Action> = {};
+  actions = {} as Record<ActionId, Action>;
 
   // UI state
   sidebar: boolean;
@@ -68,6 +70,7 @@ export class App {
   constructor(readonly r: CliRenderer, readonly opts: ClientOptions, public cfg: Config, readonly debug: (line: string) => void) {
     this.th = theme(cfg);
     this.prefix = parsePrefix(cfg.prefix);
+    this.bindings = bindings(cfg);
     this.sidebar = cfg.sidebar.visible;
     this.ui = {
       tabBar: new BoxRenderable(r, { position: "absolute", left: 0, top: 0, width: "100%", height: 1, flexDirection: "row", zIndex: 5 }),
@@ -109,6 +112,10 @@ export class App {
   }
   focusedPane() {
     return this.view ? this.panes.get(this.tab().focused) : undefined;
+  }
+  // the key that runs an action after the prefix, if one does
+  keyFor(action: ActionId) {
+    return Object.entries(this.bindings).find(([, a]) => a === action)?.[0];
   }
   icon(state: AgentState) {
     return (INDICATORS[this.cfg.indicators.style] ?? INDICATORS.symbols)[state];
@@ -160,6 +167,7 @@ export class App {
     this.cfg = cfg;
     this.th = theme(cfg);
     this.prefix = parsePrefix(cfg.prefix);
+    this.bindings = bindings(cfg);
     this.paintBackground();
   }
 

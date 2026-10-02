@@ -49,6 +49,8 @@ modisa help
 | `modisa send <target> <message…>` | message another agent pane |
 | `modisa inbox` | messages other agents sent you that you haven't read |
 | `modisa tab create` / `modisa workspace create` | a new tab, or a new workspace rooted at a directory |
+| `modisa snapshot` | the whole session as JSON: every workspace's tabs with their split trees, focus and zoom, and every pane. Reading it changes nothing |
+| `modisa notify <title> [--body text]` | tell the human something: a toast in their TUI, titled with your pane. `--tone done\|warn\|blocked…`; `--system` and `--sound` only if their settings allow |
 
 Targets are a pane id (`p3`), an `@name`, or a name.
 
@@ -103,6 +105,10 @@ modisa inbox
 
 **Spawned agents are peers, not subprocesses.** `modisa agent spawn` starts a real agent in a real
 pane with its own context. Give it a `--prompt` that stands alone — it can't see this conversation.
+
+**Notify sparingly.** `modisa notify` interrupts the human: use it when something needs them or a long job they're
+waiting on finished, not for progress. It's rate-limited (3 every 10 seconds per pane; past that it exits 1 with
+`rate_limited`), and with nobody attached it prints `no client attached` and still exits 0.
 
 **Someone is watching.** A human is looking at this session. Closing a pane you didn't create
 prompts them, so ask before you do it. Reading (`pane read`, `pane list`, `wait`) and messaging

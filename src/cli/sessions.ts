@@ -1,7 +1,7 @@
 // Session commands: attach (locally or over ssh), the ssh proxy, ls, restart, kill, config.
 import { DIR, cwd, socketPath } from "../core/paths";
 import { connectStdio, connectUnix, ensureServer, runningPid } from "../protocol/transport";
-import { loadConfig, ensureConfigFile, CONFIG_PATH } from "../config/config";
+import { loadConfig, ensureConfigFile, withDefaultKeys, CONFIG_PATH } from "../config/config";
 
 export async function attach(name: string, dir = cwd(), remote?: string) {
   const { runClient } = await import("../client/app");
@@ -93,8 +93,53 @@ export async function killSession(name: string) {
   console.log(`killed ${name}`);
 }
 
-// `modisa config [path|edit]`
-export async function configCommand(sub?: string) {
-  if (sub === "edit") await Bun.spawn([Bun.env.EDITOR || "vi", await ensureConfigFile()], { stdio: ["inherit", "inherit", "inherit"] }).exited;
-  else console.log(sub === "path" ? CONFIG_PATH : await Bun.file(await ensureConfigFile()).text());
+// `modisa config [path|edit|check|reset-keys]`: on this machine's config.toml, no session needed. The exit status.
+export async function configCommand(sub: string | undefined, flags: Record<string, string | boolean> = {}): Promise<number> {
+  const file = Bun.file(CONFIG_PATH);
+  switch (sub) {
+    case "edit":
+      await Bun.spawn([Bun.env.EDITOR || "vi", await ensureConfigFile()], { stdio: ["inherit", "inherit", "inherit"] }).exited;
+      return 0;
+    case "path":
+      console.log(CONFIG_PATH);
+      return 0;
+    case undefined:
+      console.log(await Bun.file(await ensureConfigFile()).text());
+      return 0;
+    case "check": {
+      const { checkConfig } = await import("../config/check");
+      const exists = await file.exists();
+      const problems = exists ? checkConfig(await file.text()) : [];
+      const ok = !problems.some((p) => p.level === "error");
+      if (flags.json) console.log(JSON.stringify({ file: CONFIG_PATH, exists, ok, problems }, null, 2));
+      else if (!exists) console.log(`no ${CONFIG_PATH}: modisa uses its defaults`);
+      else {
+        for (const p of problems) console.log(`${CONFIG_PATH}${p.line ? `:${p.line}${p.column ? `:${p.column}` : ""}` : ""}: ${p.level}: ${p.key ? `${p.key}: ` : ""}${p.message}`);
+        const errors = problems.filter((p) => p.level === "error").length, warnings = problems.length - errors;
+        const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+        console.log(problems.length ? [errors && plural(errors, "error"), warnings && plural(warnings, "warning")].filter(Boolean).join(", ") : `${CONFIG_PATH}: no problems`);
+      }
+      return ok ? 0 : 1;
+    }
+    // modisa's own keys back, after a copy of the file as it was
+    case "reset-keys": {
+      if (!(await file.exists())) return console.log("no config.toml: the keys are modisa's already"), 0;
+      const source = await file.text();
+      let reset;
+      try {
+        reset = withDefaultKeys(source);
+      } catch (e) {
+        console.error(`modisa: ${(e as Error).message}`);
+        return 1;
+      }
+      if (!reset.changes.length) return console.log("the keys are modisa's already: nothing changed"), 0;
+      await Bun.write(`${CONFIG_PATH}.bak`, source);
+      await Bun.write(CONFIG_PATH, reset.result);
+      console.log([...reset.changes, `the file as it was: ${CONFIG_PATH}.bak`].join("\n"));
+      return 0;
+    }
+    default:
+      console.error(`modisa: no config command ${sub}: path, edit, check [--json] or reset-keys`);
+      return 2;
+  }
 }

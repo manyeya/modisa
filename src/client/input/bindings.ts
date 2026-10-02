@@ -1,8 +1,6 @@
 import type { KeyEvent } from "@opentui/core";
 
-// Prefix bindings → action names (the table lives in config/keys.ts, where the server checks plugin keys against it).
-export { BUILTIN_BINDINGS as bindings } from "../../config/keys";
-
+// A key as prefix bindings name it (the bindings are app.bindings, from config/keys.ts and this client's [keys]).
 export function keyName(key: KeyEvent): string {
   const name = key.name === "minus" ? "-" : key.name;
   if (name.length === 1 && /[a-z]/.test(name)) return key.shift ? name.toUpperCase() : name;
