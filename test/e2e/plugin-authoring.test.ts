@@ -1,7 +1,7 @@
 // Writing a plugin: `plugin new` scaffolds one that `plugin check` passes; check's failures say what to fix (a bad
 // manifest, a plugin that never connects, one that keeps running after its session dies, a failing test); the
-// attention-log example passes check with its own behavioural tests; and every copy of the client library matches
-// the maintained one.
+// attention-log and worktrees examples pass check with their own behavioural tests; and every copy of the client
+// library matches the maintained one.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { sandbox } from "../support/harness";
 
@@ -109,6 +109,13 @@ test("the attention-log example passes plugin check, including its own behaviour
   const check = await modisa("plugin", "check", `${REPO}/examples/plugins/attention-log`);
   expect(check.code, check.out).toBe(0);
   expect(check.stdout).toContain("✓ its tests");
+}, 120000);
+
+test("the worktrees example passes plugin check, including its own behavioural tests, and its SDK copy matches", async () => {
+  const check = await modisa("plugin", "check", `${REPO}/examples/plugins/worktrees`);
+  expect(check.code, check.out).toBe(0);
+  expect(check.stdout).toContain("✓ its tests");
+  expect(await Bun.file(`${REPO}/examples/plugins/worktrees/modisa-plugin.ts`).text()).toBe(await Bun.file(`${REPO}/src/plugins/modisa-plugin.ts`).text());
 }, 120000);
 
 test("every copy of the client library is the maintained one", async () => {

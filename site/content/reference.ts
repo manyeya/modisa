@@ -199,7 +199,7 @@ modisa events --follow | while read -r line; do
   echo "$line" | grep -q '"type":"agent.state".*"to":"blocked"' && say "an agent needs you"
 done`) },
       { id: "example", title: "A worked example", html: p(
-        `<a href="https://github.com/manyeya/modisa/tree/main/examples/plugins/attention-log">examples/plugins/attention-log</a> is a complete plugin built with ${c("plugin new")}: it logs agents that newly become blocked, shows who's blocked in the status row, the sidebar and on their panes, and opens the log in a popup. <a href="https://github.com/manyeya/modisa/tree/main/examples/plugins">examples/plugins/</a> is the full guide to the protocol underneath.`,
+        `<a href="https://github.com/manyeya/modisa/tree/main/examples/plugins/attention-log">examples/plugins/attention-log</a> is a complete plugin built with ${c("plugin new")}: it logs agents that newly become blocked, shows who's blocked in the status row, the sidebar and on their panes, and opens the log in a popup. <a href="https://github.com/manyeya/modisa/tree/main/examples/plugins/worktrees">examples/plugins/worktrees</a> gives each branch a git worktree and its own space (${c("modisa plugin run worktrees create '{\"branch\":\"feat-x\"}'")}). <a href="https://github.com/manyeya/modisa/tree/main/examples/plugins">examples/plugins/</a> is the full guide to the protocol underneath.`,
       ) },
     ],
   },

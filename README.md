@@ -257,7 +257,7 @@ modisa plugin unlink <name>
 
 **Finding plugins**: the [plugin directory](https://manyeya.github.io/modisa/plugins/) lists every public repository with the `modisa-tui-plugin` topic, searchable and sortable, refreshed daily; `modisa plugin search` asks GitHub the same question from the terminal. [radar](https://github.com/manyeya/modisa-radar) is one: every agent at a glance in the sidebar, grouped by repository.
 
-A `[[plugin]]` `run` line in config.toml still starts a program with no manifest. **[`examples/plugins/`](examples/plugins/) is the full guide** to the protocol underneath: the events, the methods, the error codes, and the rules that will bite you. [`attention-log/`](examples/plugins/attention-log/) is a complete plugin built with `plugin new`.
+A `[[plugin]]` `run` line in config.toml still starts a program with no manifest. **[`examples/plugins/`](examples/plugins/) is the full guide** to the protocol underneath: the events, the methods, the error codes, and the rules that will bite you. [`attention-log/`](examples/plugins/attention-log/) is a complete plugin built with `plugin new`. [`worktrees/`](examples/plugins/README.md#worktrees) is another, and a useful one: a space per git worktree (`create`, `open`, `list`, `remove`); `modisa plugin link examples/plugins/worktrees` turns it on.
 
 ## Config
 
@@ -316,7 +316,7 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 - `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `modisa hook`
 - `src/skills/` — the modisa skill (`modisa/SKILL.md`), installed by the integrations
 - `src/plugins/` — the plugin authoring kit: `modisa-plugin.ts` (the client library plugins vendor) and the `modisa plugin new` templates
-- `examples/plugins/` — how to write a plugin, the attention log (built from `modisa plugin new`, checked by `test/e2e/plugin-authoring.test.ts`) and an older hand-written one
+- `examples/plugins/` — how to write a plugin, the attention log and the worktrees plugin (a space per git worktree; both built from `modisa plugin new`, checked by `test/e2e/plugin-authoring.test.ts`, linked with `modisa plugin link examples/plugins/<name>`), and an older hand-written one
 - `site/` — the docs site: `build.ts` (a dependency-free static generator), `content/` (the landing page and docs), `assets/` (CSS, JS, icons)
 - `.github/` — CI, the release workflow and its scripts; `install.sh` is the installer
 

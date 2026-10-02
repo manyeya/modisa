@@ -1,0 +1,12 @@
+{
+  "name": "worktrees",
+  "protocol": 1,
+  "run": [
+    "bun",
+    "plugin.ts"
+  ],
+  "description": "a space per git worktree: create one with its branch, open it, list them, remove one with its space",
+  "actions": [
+    { "id": "list", "title": "List worktrees", "description": "the repository's worktrees, and the space each one has" }
+  ]
+}

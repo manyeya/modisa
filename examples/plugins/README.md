@@ -11,6 +11,7 @@ modisa plugin install <git-url>  # someone else's: --ref and --subdir pick a ver
 ```
 
 `attention-log/` is a complete one made that way: when an agent newly becomes blocked, it appends a line to a log.
+[`worktrees/`](#worktrees) is another: a space per git worktree, built only from the methods on this page.
 The rest of this page is the protocol underneath, for plugins that don't use the client library.
 
 The client library (`modisa plugin sdk`) is TypeScript, but nothing requires it: a plugin is a program modisa
@@ -348,3 +349,34 @@ you. The line appears in the session log:
    1. red
   Enter to confirm · Esc to cancel
 ```
+
+### worktrees
+
+A space per git worktree. Modisa itself knows nothing about worktrees; this plugin does it all with
+`session.info {snapshot}`, `debug.detect`, `workspace.create` / `.close`, `pane.focus` and `ui.toast`.
+
+```sh
+modisa plugin check examples/plugins/worktrees   # its tests run against a git repository they make in a temp directory
+modisa plugin link examples/plugins/worktrees
+modisa plugin run worktrees create '{"branch":"feat-x"}'   # a worktree on a new branch feat-x, and a space in it
+modisa plugin run worktrees create '{"branch":"fix-y","base":"origin/main","command":"claude"}'
+modisa plugin run worktrees open '{"branch":"feat-x"}'     # its space, focused; a new one if it has none
+modisa plugin run worktrees list                           # [{ path, branch, head, space? }]
+modisa plugin run worktrees remove '{"branch":"feat-x"}'   # its space closed, then git worktree remove
+```
+
+- **Which repository.** `repo` in the params; else, for an action taken on a pane (`list` from the command palette),
+  the directory that pane's shell is in now; else the active space's directory. `modisa plugin run` doesn't say which
+  pane ran it, so from a shell elsewhere, say where you are:
+  `modisa plugin run worktrees create "{\"branch\":\"feat-x\",\"repo\":\"$PWD\"}"`.
+- **`create {branch, base?, path?, repo?, command?}`** runs `git worktree add`, with `-b` when the branch doesn't exist
+  yet (from `base`, else HEAD; for a branch that's only on a remote, give `"base":"origin/<branch>"`). The worktree
+  goes in `<repo>-worktrees/<branch>` next to the repository (`/` in a branch becomes `-`), unless `path` says
+  otherwise. The new space is named for the branch, starts in the worktree, and runs `command` if one is given. It
+  returns `{ path, branch, workspaceId }`.
+- **`open {branch | path}`** focuses the space whose directory is the worktree's (compared as real paths), or opens one.
+- **`remove {branch | path, force?}`** refuses, before closing anything, while an agent in the worktree's space is
+  `working` or `blocked`, when that space is the session's only one, and when the worktree has uncommitted changes or
+  is locked; `force` overrides all but the only-space rule. A worktree with no space is just removed; the branch stays.
+- Each git command has its stderr in the error and is stopped after 30s. Only `list` is in the command palette: the
+  palette passes no params, and the others need a branch or a path.
