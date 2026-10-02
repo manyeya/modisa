@@ -108,11 +108,20 @@ test("replies match the published result schemas, and errors the error schema", 
   await check("pane.resize", { target: "@job", dir: "left" });
   await check("pane.zoom", { target: "@job", mode: "off" });
   await check("pane.move", { target: "@job", newTab: true });
+  await check("pane.read", { target: "@fake", source: "visible", format: "ansi" });
+  await check("pane.read", { target: "@fake", source: "recent-unwrapped" });
+  await check("session.info");
+  await check("session.info", { snapshot: true });
+  await check("pane.split", { target: "@job", ratio: 0.3, env: { CHECKED: "1" }, command: "true" });
+  await check("agent.spawn", { harness: "true", env: { CHECKED: "1" } });
+  await check("tab.create", { command: "true" });
+  await check("workspace.create", { name: "checked", command: "true" });
   conn.close();
 
   for (const [request, code] of [
     [{ method: "pane.read", params: { target: "nope" } }, "no_such_pane"],
     [{ method: "pane.read", params: { lines: -1 } }, "invalid_params"],
+    [{ method: "pane.split", params: { env: { MODISA_PANE_ID: "p9" } } }, "invalid_params"],
     [{ method: "no.such.method", params: {} }, "unknown_method"],
   ] as const) {
     const reply = await raw({ jsonrpc: "2.0", id: 7, ...request });

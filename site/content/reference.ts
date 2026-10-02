@@ -91,6 +91,7 @@ modisa events --follow`) },
       { id: "commands", title: "Commands", html: table(["Command", "Does"], [
         [c("pane list | split | run | read | keys | close | rename | focus"), "Panes. Keys are text or names: Enter, C-c, M-x, Up, Escape…"],
         [c("pane move | swap | resize | zoom | focus --direction"), "Rearrange panes: move one, process and all, beside another, into a tab, or to a new tab or space; swap two, in a tab or across tabs; resize, zoom, or focus the pane on one side."],
+        [c("pane layout | neighbor | edges | process-info"), "Where a pane is: every box in its tab, the pane on one side or on each; and what runs in it: its pid, the job in its foreground, and its shell's directory."],
         [c("agent spawn <harness> | agent list"), "Start and list agents."],
         [c("wait <target> --exited | --state s | --match re"), "Block until a process exits, an agent reaches a state, or output matches."],
         [c("send | inbox | messages | pause"), "Agent messaging."],
@@ -98,11 +99,13 @@ modisa events --follow`) },
         [c("tab create"), "A new tab, optionally running a command."],
         [c("events [--follow] [--output]"), "The session's event stream."],
         [c("report"), "State and session reports from integrations."],
-        [c("debug detect <target>"), "What detection sees for a pane."],
+        [c("debug detect [target]"), "What detection sees for a pane."],
       ]) + p(`Targets are a pane id (${c("p3")}), ${c("@name")} or a name. ${c("modisa help")} lists everything.`) + code("sh", `modisa pane move tests --new-tab                                    # the same process, in a tab of its own
 modisa pane move tests --target @reviewer --split down --ratio 0.3  # below it, with 30% of the room
 modisa pane swap tests @reviewer                                    # trade places, even across tabs
-modisa pane zoom @reviewer --on`) + p(`Moving a pane closes a tab or space it leaves empty, and the view stays where it is unless ${c("--focus")}. ${c("pane split")}, ${c("agent spawn")}, ${c("tab create")} and ${c("workspace create")} print the new pane's id, or with ${c("--json")} the whole pane.`) + p(`Exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 ${c("wait")} timed out, and ${c("wait --exited")} exits with the pane's code, so a child's own 1, 2, 3 or 124 can't be told from modisa's by status alone: with ${c("--json")}, the child's result is on stdout and modisa's error on stderr. With ${c("--json")}, a failure prints ${c('{"error":{"code","message"}}')} to stderr, with a stable code such as ${c("no_such_pane")}, ${c("pane_gone")} or ${c("timeout")}. Under the hood it's JSON-RPC 2.0 over the session's unix socket.`) },
+modisa pane zoom @reviewer --on
+modisa pane read tests --format ansi | less -R                      # with its colours
+modisa pane split --ratio 0.3 --env PORT=4000 "bun dev"             # 30% of the room, PORT set in it`) + p(`Moving a pane closes a tab or space it leaves empty, and the view stays where it is unless ${c("--focus")}. ${c("pane split")}, ${c("agent spawn")}, ${c("tab create")} and ${c("workspace create")} print the new pane's id, or with ${c("--json")} the whole pane and where it is (${c("workspaceId")}, ${c("tabId")}).`) + p(`${c("pane read")} prints the last ${c("--lines")} lines as the pane wraps them; ${c("--source recent-unwrapped")} joins the lines it soft-wrapped, ${c("--source visible")} (or ${c("--screen")}) is just the screen, and ${c("--format ansi")} keeps colours and styles. A full-screen app (vim, less, an agent's own UI) has only its screen.`) + p(`The creating commands take ${c("--env NAME=value")}, once per variable (never ${c("MODISA_*")}). It's saved with the session, in a database only you can read, so a restart keeps it. A ${c("--cwd")} of ${c("~")} or a relative path is taken from where you run ${c("modisa")}.`) + p(`Exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 ${c("wait")} timed out, and ${c("wait --exited")} exits with the pane's code, so a child's own 1, 2, 3 or 124 can't be told from modisa's by status alone: with ${c("--json")}, the child's result is on stdout and modisa's error on stderr. With ${c("--json")}, a failure prints ${c('{"error":{"code","message"}}')} to stderr, with a stable code such as ${c("no_such_pane")}, ${c("pane_gone")} or ${c("timeout")}. Under the hood it's JSON-RPC 2.0 over the session's unix socket.`) },
     ],
   },
   {

@@ -1,6 +1,6 @@
 // Session model: workspaces → tabs → split trees of panes. Owns layout and PTY sizes.
 import { split, remove, rects, displayRects, neighbor, resize, panes, leaf, dividerAt, dragTo, type Node, type Rect, type Dir } from "../../core/layout";
-import type { GitView, View } from "../../protocol/types";
+import { findPane, type GitView, type View } from "../../protocol/types";
 import { PtyPane } from "./pane";
 import { cwd as here } from "../../core/paths";
 
@@ -50,17 +50,11 @@ export class Session {
     for (const ws of this.workspaces) for (const tab of ws.tabs) if (panes(tab.tree).includes(id)) return { ws, tab };
   }
 
-  // "p3", "@coder", "coder", "@p3" (ids still work once a pane is named), "p3:1a2b3c4d" (only that instance of p3)
+  // A target: see findPane.
   resolve(target?: string, fallback?: string): PtyPane | undefined {
     const t = target ?? fallback;
-    if (!t) return;
-    const inst = /^(p\d+):(\w+)$/.exec(t);
-    if (inst) {
-      const p = this.panes.get(inst[1]!);
-      return p?.info.instance === inst[2] ? p : undefined;
-    }
-    const name = t.replace(/^@/, "");
-    return this.panes.get(t) ?? [...this.panes.values()].find((p) => p.info.name === name) ?? this.panes.get(name);
+    const info = t ? findPane([...this.panes.values()].map((p) => p.info), t) : undefined;
+    return info && this.panes.get(info.id);
   }
 
   // Where a pane sits in the layout; a popup has no place.
@@ -155,12 +149,13 @@ export class Session {
     return tab;
   }
 
-  split(dir: "row" | "col", o: SpawnOpts = {}, targetId = this.focusedId, focus = true): PtyPane | undefined {
+  // share: the new pane's part of the target's room
+  split(dir: "row" | "col", o: SpawnOpts = {}, targetId = this.focusedId, focus = true, share = 0.5): PtyPane | undefined {
     const loc = targetId && this.locate(targetId);
     if (!loc) return;
     const cwd = o.cwd ?? this.panes.get(targetId!)?.info.cwd ?? loc.ws.cwd;
     const p = this.spawn({ ...o, cwd }, cwd);
-    loc.tab.tree = split(loc.tab.tree, targetId!, dir, p.id);
+    loc.tab.tree = split(loc.tab.tree, targetId!, dir, p.id, 1 - share);
     loc.tab.zoomed = false;
     if (focus) loc.tab.focused = p.id;
     this.layout();

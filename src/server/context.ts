@@ -6,7 +6,7 @@ import type { Conn } from "../protocol/conn";
 import { b64, fail } from "../protocol/conn";
 import { PLUGIN_UI, type PluginUiView } from "../protocol/types";
 import { Session, type SpawnOpts } from "./session/session";
-import type { PtyPane } from "./session/pane";
+import type { PtyPane, ReadFormat, ReadSource } from "./session/pane";
 import { Detector } from "./agents/detect";
 import { Mailbox } from "./agents/mailbox";
 import { save } from "./persist/store";
@@ -44,7 +44,7 @@ export type ServerContext = {
   subject(target: string | undefined, caller?: string): PtyPane; // need, but no target means the calling pane, else the focused one
   movable(id: string): boolean; // whether a pane may leave its place (plugins.ts: not an overlay, which belongs over its origin)
   agentOpts(harness: string, prompt?: string, name?: string, createdBy?: string): SpawnOpts;
-  snapshot(p: PtyPane, lines?: number): PtyPane["info"] & { screen: string; recentOutput: string };
+  snapshot(p: PtyPane, lines?: number, source?: ReadSource, format?: ReadFormat): PtyPane["info"] & { screen: string; recentOutput: string; content: string; source: ReadSource; format: ReadFormat };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
   paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups)
   paneClosing(id: string, focused: boolean): void; // a pane is being closed; focused: it had the focus on screen
@@ -113,9 +113,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
     const command = a?.launch ? [a.launch, prompt && quote(prompt)].filter(Boolean).join(" ") : harness;
     return { command, harness: a?.id ?? "generic", name, createdBy };
   };
-  ctx.snapshot = (p, lines = 50) => {
-    const all = p.text().split("\n");
-    return { ...p.info, screen: p.screen(), recentOutput: all.slice(-lines).join("\n") };
-  };
+  // screen and recentOutput are what pane.read returned before it took a source and format: kept for older readers
+  ctx.snapshot = (p, lines = 50, source = "recent", format = "text") => ({ ...p.info, screen: p.read("visible", "text", lines), recentOutput: p.read("recent", "text", lines), content: p.read(source, format, lines), source, format });
   return ctx;
 }

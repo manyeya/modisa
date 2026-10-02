@@ -1,7 +1,9 @@
 // `modisa <noun> <verb>` — the socket API as shell commands, so any agent can drive panes with zero integration.
 import { connectExisting } from "../protocol/transport";
 import { ConnectionClosedError, errorCode, fail, type Conn } from "../protocol/conn";
-import type { ErrorCode } from "../protocol/types";
+import { findPane, type ErrorCode } from "../protocol/types";
+import { absPath } from "../core/paths";
+import { SIDE, displayRects, neighbor, panes, rects, type Dir } from "../core/layout";
 import { str, num, type Args } from "./args";
 import { HELP } from "./help";
 
@@ -27,6 +29,19 @@ function table(rows: Record<string, unknown>[], cols: string[]) {
   for (const r of cells) console.log(r.map((c, i) => c.padEnd(w[i]!)).join("  ").trimEnd());
 }
 
+const DIRS: Dir[] = ["left", "right", "up", "down"];
+
+// Where a pane is, from a session.info snapshot: the server would take the same pane (named, else the calling pane,
+// else the focused one) and refuse the same way.
+function placeIn(snap: any, target: string | undefined, caller: string | undefined) {
+  const ws = snap.workspaces[snap.active];
+  const t = target ?? (caller && snap.panes.some((p: any) => p.id === caller) ? caller : ws?.tabs[ws.active]?.focused);
+  const pane = t ? findPane<any>(snap.panes, t) : undefined;
+  if (!pane) throw /^p\d+:\w+$/.test(t ?? "") ? fail("pane_gone", `${t!.split(":")[0]} has gone: that pane was closed or restarted since its message was sent`) : fail("no_such_pane", `no such pane: ${t ?? "(none)"}`);
+  for (const w of snap.workspaces) for (const tab of w.tabs) if (panes(tab.tree).includes(pane.id)) return { pane, ws: w, tab, rs: rects(tab.tree, snap.area) };
+  throw new Error(`${pane.id} is a popup: it has no place in a tab`);
+}
+
 export async function runCli(a: Args): Promise<number> {
   const [noun, verb, ...rest] = a._;
   const f = a.flags;
@@ -42,6 +57,23 @@ export async function runCli(a: Args): Promise<number> {
   }
   const call = <T = any>(method: string, params: any = {}) => conn.request<T>(method, { caller, ...params });
   const target = (t?: string) => t ?? str(f.target);
+  const cwdOpt = () => (typeof f.cwd === "string" ? absPath(f.cwd) : undefined); // --cwd: ~ and relative paths are from here
+  // --env NAME=value, once per variable (the server checks the names)
+  const env = () =>
+    a.lists.env &&
+    Object.fromEntries(
+      a.lists.env.map((kv) => {
+        const eq = kv.indexOf("=");
+        if (eq < 1) throw fail("usage", `--env takes NAME=value, not "${kv}"`);
+        return [kv.slice(0, eq), kv.slice(eq + 1)];
+      }),
+    );
+  // what session.info { snapshot } describes: a server from before it sends counts
+  const snapshot = async () => {
+    const snap = await call("session.info", { snapshot: true });
+    if (!Array.isArray(snap.workspaces)) throw fail("error", "server too old: modisa restart");
+    return snap;
+  };
 
   try {
     switch (`${noun} ${verb ?? ""}`.trim()) {
@@ -53,7 +85,7 @@ export async function runCli(a: Args): Promise<number> {
         break;
       }
       case "pane split": {
-        const p = await call("pane.split", { target: target(), dir: f.down ? "down" : "right", name: str(f.name), cwd: str(f.cwd), command: rest.join(" ") || str(f.command), focus: !!f.focus });
+        const p = await call("pane.split", { target: target(), dir: f.down ? "down" : "right", ratio: num(f.ratio), name: str(f.name), cwd: cwdOpt(), command: rest.join(" ") || str(f.command), focus: !!f.focus, env: env() });
         json ? print(p, true) : console.log(p.id);
         break;
       }
@@ -61,9 +93,17 @@ export async function runCli(a: Args): Promise<number> {
         await call("pane.run", { target: rest[0], command: rest.slice(1).join(" ") });
         break;
       case "pane read": {
-        const snap = await call("pane.read", { target: target(rest[0]), lines: num(f.lines) ?? 50 });
+        if (f.screen && f.source !== undefined && f.source !== "visible") throw fail("usage", "--screen is --source visible: use one of them");
+        const source = f.screen ? "visible" : str(f.source);
+        const snap = await call("pane.read", { target: target(rest[0]), lines: num(f.lines) ?? 50, source, format: str(f.format) });
         if (json) print(snap, true);
-        else console.log(f.screen ? snap.screen : snap.recentOutput);
+        else if (snap.content !== undefined) console.log(snap.content);
+        else {
+          // a server from before source and format: it sends the plain screen and recent lines, and nothing else
+          const old = f.format !== undefined && f.format !== "text" ? undefined : source === "visible" ? snap.screen : source === undefined || source === "recent" ? snap.recentOutput : undefined;
+          if (old === undefined) throw fail("error", "server too old: modisa restart");
+          console.log(old);
+        }
         break;
       }
       case "pane keys":
@@ -96,6 +136,42 @@ export async function runCli(a: Args): Promise<number> {
         json ? print(r, true) : console.log(r.changed ? "changed" : "unchanged");
         break;
       }
+      // worked out here from a snapshot, with the layout math the server and the TUI use
+      case "pane layout": {
+        const snap = await snapshot();
+        const { pane, ws, tab, rs } = placeIn(snap, rest[0], caller);
+        const shown = displayRects(tab.tree, snap.area, tab.focused, tab.zoomed);
+        const name = (id: string) => snap.panes.find((p: any) => p.id === id)?.name;
+        const r = { pane: pane.id, workspaceId: ws.id, tabId: tab.id, area: snap.area, focused: tab.focused, zoomed: tab.zoomed, panes: [...rs].map(([id, box]) => ({ id, name: name(id), ...box, shown: shown.has(id) })) };
+        if (json) print(r, true);
+        else table(r.panes.map((p) => ({ ...p, name: p.name ? "@" + p.name : "", shown: p.shown ? "yes" : "no", focused: p.id === tab.focused ? "*" : "" })), ["id", "name", "x", "y", "w", "h", "shown", "focused"]);
+        break;
+      }
+      case "pane neighbor": {
+        const d = str(f.direction) as Dir | undefined;
+        if (!d || !DIRS.includes(d)) throw fail("usage", "pane neighbor needs --direction left|right|up|down");
+        const snap = await snapshot();
+        const { pane, rs } = placeIn(snap, rest[0], caller);
+        const n = neighbor(rs, pane.id, d);
+        if (!n) throw fail("no_such_pane", `no pane ${SIDE[d]} ${pane.id}`);
+        json ? print(snap.panes.find((p: any) => p.id === n), true) : console.log(n);
+        break;
+      }
+      case "pane edges": {
+        const snap = await snapshot();
+        const { pane, rs } = placeIn(snap, rest[0], caller);
+        const sides = Object.fromEntries(DIRS.map((d) => [d, neighbor(rs, pane.id, d) ?? null])) as Record<Dir, string | null>; // null: the tab's edge
+        json ? print({ pane: pane.id, ...sides }, true) : table(DIRS.map((d) => ({ side: d, pane: sides[d] ?? "(edge)" })), ["side", "pane"]);
+        break;
+      }
+      case "pane process-info": {
+        const d = await call("debug.detect", { target: rest[0] });
+        if (!d.process) throw fail("error", "server too old: modisa restart");
+        const r = { pane: d.pane, ...d.process };
+        if (json) print(r, true);
+        else console.log([`pid ${r.pid}`, r.foreground && `foreground ${r.foreground.pid} ${r.foreground.args}`, r.cwd && `cwd ${r.cwd}`].filter(Boolean).join("\n"));
+        break;
+      }
       case "pane zoom": {
         const modes = (["on", "off", "toggle"] as const).filter((m) => f[m]);
         if (modes.length > 1) throw fail("usage", "use one of --on, --off and --toggle");
@@ -104,7 +180,7 @@ export async function runCli(a: Args): Promise<number> {
         break;
       }
       case "agent spawn": {
-        const p = await call("agent.spawn", { harness: rest[0], name: str(f.name), prompt: str(f.prompt), dir: f.down ? "down" : "right", tab: !!f.tab, target: target(), focus: !!f.focus });
+        const p = await call("agent.spawn", { harness: rest[0], name: str(f.name), prompt: str(f.prompt), dir: f.down ? "down" : "right", tab: !!f.tab, target: target(), focus: !!f.focus, env: env() });
         json ? print(p, true) : console.log(p.id);
         break;
       }
@@ -196,7 +272,7 @@ export async function runCli(a: Args): Promise<number> {
         break;
       }
       case "workspace create": {
-        const p = await call("workspace.create", { name: rest[0], cwd: str(f.cwd) });
+        const p = await call("workspace.create", { name: rest[0], cwd: cwdOpt(), command: str(f.command), env: env() });
         json ? print(p, true) : console.log(p.id);
         break;
       }
@@ -212,7 +288,7 @@ export async function runCli(a: Args): Promise<number> {
         break;
       }
       case "tab create": {
-        const p = await call("tab.create", { name: rest[0], command: str(f.command), workspace: str(f.workspace) });
+        const p = await call("tab.create", { name: rest[0], command: str(f.command), workspace: str(f.workspace), cwd: cwdOpt(), paneName: str(f["pane-name"]), env: env() });
         json ? print(p, true) : console.log(p.id);
         break;
       }

@@ -8,9 +8,13 @@ sessions
 
 panes (from inside a pane, targets default to the calling pane)
   modisa pane list [--json]
-  modisa pane split [--right|--down] [--name n] [--cwd d] [--target p] [command…]
+  modisa pane split [--right|--down] [--ratio 0.5] [--name n] [--cwd d] [--env K=V]… [--target p] [command…]
+                                            --ratio: the new pane's share of the room (0.1 to 0.9)
   modisa pane run <target> <command…>
-  modisa pane read [target] [--lines 50] [--json]
+  modisa pane read [target] [--source recent|visible|recent-unwrapped] [--format text|ansi] [--lines 50] [--json]
+                                            recent: the last --lines lines as the pane wraps them; recent-unwrapped:
+                                              with soft wraps joined; visible (or --screen): the screen. ansi keeps
+                                              colours and styles. A full-screen app (vim, less) has only its screen
   modisa pane keys <target> <key…>          keys: text, Enter, C-c, M-x, Up, Escape…
   modisa pane close [target] | rename [target] <name>
   modisa pane focus [target] [--direction left|right|up|down]   with a direction: the pane on that side of it
@@ -21,9 +25,13 @@ panes (from inside a pane, targets default to the calling pane)
   modisa pane swap [target] <other> | swap [target] --direction d   trade places, in a tab or across tabs
   modisa pane resize [target] --direction d [--amount 2]   move the border on that side (prints changed or unchanged)
   modisa pane zoom [target] [--on|--off|--toggle]   show it alone in its tab (toggle by default)
+  modisa pane layout [target]               its tab: each pane's box (x, y, w, h in cells) and whether it's shown
+  modisa pane neighbor [target] --direction d   the pane on that side of it
+  modisa pane edges [target]                the pane on each side of it, or (edge)
+  modisa pane process-info [target]         its pid, the job in the foreground of its terminal, and its shell's cwd
 
 agents
-  modisa agent spawn <harness> [--name n] [--prompt text] [--down] [--tab]
+  modisa agent spawn <harness> [--name n] [--prompt text] [--down] [--tab] [--env K=V]…
   modisa agent list [--json]
   modisa wait <target> [--exited | --state idle|working|blocked|done | --match regex] [--timeout s]
   modisa send <target> <message…>          message another agent (delivered when it's idle)
@@ -48,9 +56,9 @@ plugins (examples/plugins/README.md)
                                               unknown: running it again can repeat its effects
 
 workspace
-  modisa workspace create [name] [--cwd dir] | workspace list
+  modisa workspace create [name] [--cwd dir] [--command cmd] [--env K=V]… | workspace list
   modisa workspace rename <space> <name> | workspace close <space>   (space: id or name)
-  modisa tab create [name] [--command cmd]
+  modisa tab create [name] [--command cmd] [--cwd dir] [--pane-name n] [--workspace w] [--env K=V]…
   modisa events [--follow] [--output]
 
 setup
@@ -60,13 +68,16 @@ setup
   modisa integration status | install|uninstall <agent|all>   (hooks + the modisa skill)
   modisa logos [status|install|uninstall]  agents' logos in the sidebar: a font, and your terminals told about it
   modisa config [path|edit]
-  modisa debug detect <target>
+  modisa debug detect [target]
 
 targets: pane id (p3), @name or name; p3:1a2b3c4d (from a message's reply hint) reaches only that pane: it survives a
-  rename, but fails once the pane closes or the server restarts. Outside a pane, split, focus, move, swap, resize and
-  zoom default to the focused pane. Tabs: id or name
+  rename, but fails once the pane closes or the server restarts. Outside a pane, split, focus, move, swap, resize, zoom,
+  layout, neighbor, edges and process-info default to the focused pane. Tabs: id or name
 
-pane split, agent spawn, tab create and workspace create print the new pane's id; with --json, the whole pane
+pane split, agent spawn, tab create and workspace create print the new pane's id; with --json, the whole pane and its
+  workspaceId and tabId. --env NAME=value (once per variable; not MODISA_*) is set in the new pane and saved with the
+  session, so a restart keeps it: it's on disk, in ~/.local/state/modisa/modisa.db (readable only by you). A --cwd of
+  ~ or a relative path (new included) is from where you run modisa
 
 exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 wait timed out; wait --exited exits with the pane's code
   (so a child's own 1/2/3/124 looks the same: with --json its result is on stdout, modisa's error on stderr)

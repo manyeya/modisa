@@ -192,8 +192,8 @@ event.
 
 `protocol.describe` returns the protocol version and JSON Schemas generated from the schemas the
 server uses: every request (`requests`), the results of the supported ones (`results`: `list`,
-`events.subscribe`, `pane.read`, `agent.list`, `wait`, `send`, `plugin.list`, `plugin.hello`, `ui.state`,
-`plugin.pane.open`), every
+`session.info`, `events.subscribe`, `pane.read`, `pane.split`, `agent.spawn`, `tab.create`, `workspace.create`,
+`agent.list`, `wait`, `send`, `plugin.list`, `plugin.hello`, `ui.state`, `plugin.pane.open`, …), every
 event (`events`), the envelope, and the error reply (`error`). The e2e suite checks real replies and
 events against them.
 
@@ -245,17 +245,18 @@ it's for panes.
 |---|---|---|
 | `list` | — | every pane: id, name, title, cwd, agent harness + state, exit status |
 | `agent.list` | — | just the agent panes |
-| `session.info` | — | the session |
-| `pane.read` | `target`, `lines` | the pane's info plus `screen` (visible) and `recentOutput` (scrollback tail) |
-| `pane.split` | `target`, `dir`, `name`, `cwd`, `command`, `focus` | the new pane |
+| `session.info` | `snapshot` | the session; with `snapshot`, every space's tabs and split trees and every pane, as the TUI draws them (read only: nothing attaches) |
+| `pane.read` | `target`, `lines`, `source`, `format` | the pane's info plus `content` (`source`: `recent`, `recent-unwrapped` or `visible`; `format`: `text` or `ansi`), `screen` (visible) and `recentOutput` (scrollback tail) |
+| `pane.split` | `target`, `dir`, `ratio`, `name`, `cwd`, `command`, `focus`, `env` | the new pane |
 | `pane.run` | `target`, `command` | types a command and presses Enter |
 | `pane.keys` | `target`, `keys[]` | text, or names: `Enter` `Escape` `Tab` `C-c` `M-x` `Up` |
 | `pane.close` / `pane.focus` / `pane.rename` | `target`(, `name`) | |
-| `agent.spawn` | `harness`, `name`, `prompt`, `dir`, `tab` | starts an agent in a new pane |
+| `agent.spawn` | `harness`, `name`, `prompt`, `dir`, `tab`, `env` | starts an agent in a new pane |
 | `wait` | `target`, `exited` \| `state` \| `match`, `timeout` | blocks server-side |
 | `send` | `to`, `body` | queues a message; the target **must be an agent pane** |
 | `inbox` / `messages` | — | |
 | `tab.create`, `workspace.create` / `.list` / `.rename` / `.close` | | |
+| `debug.detect` | `target` | what detection sees, and `process`: the pane's `pid`, its `foreground` job and its shell's `cwd` |
 | `events.subscribe` | `output` | start the event stream |
 | `report` | `pane`, `source`, `agent`, `state`, `seq`, `session`, `release` | drive a pane's state yourself |
 | `plugin.hello` | `token`, `actions[]` | binds this connection to your plugin's run |
@@ -263,7 +264,9 @@ it's for panes.
 | `plugin.invoke` | `plugin`, `action`, `params` | calls another plugin's action, as `modisa plugin run` does |
 | `protocol.describe` | — | the protocol version and JSON Schemas for everything here |
 
-`target` is a pane id (`p3`), an `@name`, or a bare name.
+`target` is a pane id (`p3`), an `@name`, or a bare name. `pane.split`, `agent.spawn`, `tab.create` and
+`workspace.create` return the new pane with its `workspaceId` and `tabId`, and take `env`: variables for it
+(`{"NAME": "value"}`, no `MODISA_*`), saved with the session so a restart keeps them.
 
 ## The TUI
 

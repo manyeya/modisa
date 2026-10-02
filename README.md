@@ -91,7 +91,7 @@ modisa kill api
 modisa --remote ssh://devbox   # thin client here, server there (needs modisa on the remote PATH)
 ```
 
-Layouts, pane names, working directories and agents are saved in `~/.local/state/modisa/modisa.db`. After a reboot, attaching restores the session: shells come back in their directories, agents are relaunched into the exact conversation their integration reported (`claude --resume <id>`, `codex resume <id>`, …) or else their latest one (`claude --continue`, …), and plain commands are typed back in but not run.
+Layouts, pane names, working directories, agents and panes' `--env` variables are saved in `~/.local/state/modisa/modisa.db`, which only you can read. After a reboot, attaching restores the session: shells come back in their directories, agents are relaunched into the exact conversation their integration reported (`claude --resume <id>`, `codex resume <id>`, …) or else their latest one (`claude --continue`, …), and plain commands are typed back in but not run.
 
 ### Remote sessions over SSH
 
@@ -202,10 +202,14 @@ modisa send @reviewer "fixed, please re-check"  # typed into the agent once it's
 modisa inbox
 modisa pane move tests --new-tab               # the same process, in a tab of its own
 modisa pane swap tests @reviewer               # trade places, even across tabs
+modisa pane split --ratio 0.3 --env PORT=4000 "bun dev"   # 30% of the room, PORT set in it
+modisa pane read tests --format ansi           # with its colours
 modisa events --follow
 ```
 
-`pane move` also puts a pane beside another (`--target`), into a tab (`--tab`) or in a new space (`--new-workspace`), closes a tab or space it leaves empty, and leaves your view where it is unless you add `--focus`. `pane resize`, `pane zoom` and `pane focus --direction` do what their keys do, for any pane. Creating commands print the new pane's id, or with `--json` the whole pane.
+`pane move` also puts a pane beside another (`--target`), into a tab (`--tab`) or in a new space (`--new-workspace`), closes a tab or space it leaves empty, and leaves your view where it is unless you add `--focus`. `pane resize`, `pane zoom` and `pane focus --direction` do what their keys do, for any pane. Creating commands print the new pane's id, or with `--json` the whole pane and its `workspaceId` and `tabId`; they take `--env NAME=value` once per variable (saved with the session, so a restart keeps it; never `MODISA_*`), and `--cwd` takes `~` and relative paths.
+
+`pane read` prints the last `--lines` lines as the pane wraps them: `--source recent-unwrapped` joins soft-wrapped lines, `--source visible` is just the screen, and `--format ansi` keeps colours. `pane layout`, `pane neighbor --direction d` and `pane edges` say where a pane sits in its tab, and `pane process-info` gives its pid, the job in its foreground and its shell's directory.
 
 `modisa help` lists every command, and the modisa skill teaches them to an agent that has it. Messages carry a hop count and a per-pair rate limit so two agents can't ping-pong forever, and `Ctrl+B m` pauses delivery. When an agent types into or closes a pane it didn't create, you get an allow / always / deny prompt; the policy is set in `[permissions]` in the config.
 

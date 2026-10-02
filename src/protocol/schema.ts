@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { ERROR_CODES, type ErrorCode } from "./types";
 import { LINK, globProblem, regexProblem } from "./links";
+import type { Node } from "../core/layout";
 
 export type Msg = {
   jsonrpc: "2.0";
@@ -66,6 +67,14 @@ const caller = z.string().optional();
 const dir = z.enum(["right", "down"]).default("right");
 const direction = z.enum(["left", "right", "up", "down"]);
 const state = z.enum(["working", "blocked", "done", "idle"]);
+// pane.read: the visible screen, or the scrollback's tail as the pane wraps it or with soft wraps joined; plain text, or
+// with colours and styles (ANSI SGR)
+const readSource = z.enum(["visible", "recent", "recent-unwrapped"]);
+const readFormat = z.enum(["text", "ansi"]);
+// Variables a new pane gets on top of the server's environment. Saved with the session (a restart keeps them), so
+// they're on disk. MODISA_ ones are modisa's: MODISA_PANE_ID is always the pane's own.
+const envKey = z.string().regex(/^[A-Za-z_]\w*$/, "isn't a variable name (letters, digits and _)").refine((k) => !k.startsWith("MODISA_"), "is modisa's: MODISA_ variables can't be set");
+const env = z.record(envKey, z.string(), { error: (i) => (i.code === "invalid_key" ? i.issues[0]?.message : undefined) }).optional();
 
 // The protocol version: bumped when a request, result or event changes incompatibly. Plugins declare the one
 // they speak.
@@ -107,6 +116,17 @@ export const paneInfo = z.strictObject({
   popup: z.boolean().optional(), // a plugin's popup: no place in the layout, shown only by the client that opened it
 });
 const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string().optional(), workspaceId: z.string().optional(), tabId: z.string().optional() }); // where it is: a popup has no place
+const created = paneInfo.extend({ workspaceId: z.string(), tabId: z.string() }); // a new pane, and where it is
+// A tab's split tree: a pane, or two subtrees side by side (row) or stacked (col), `a` with `ratio` of the room.
+const tree: z.ZodType<Node> = z.lazy(() => z.union([z.strictObject({ pane: z.string() }), z.strictObject({ dir: z.enum(["row", "col"]), ratio: z.number(), a: tree, b: tree })]));
+const rect = z.strictObject({ x: z.number().int(), y: z.number().int(), w: z.number().int(), h: z.number().int() });
+// A space as clients draw it: `active` is its tab on screen, and a zoomed tab shows only its focused pane.
+const workspaceView = z.strictObject({
+  id: z.string(), name: z.string(), cwd: z.string(), active: z.number().int(),
+  tabs: z.array(z.strictObject({ id: z.string(), name: z.string().optional(), tree, focused: z.string(), zoomed: z.boolean() })),
+  git: z.strictObject({ repo: z.string(), branch: z.string(), ahead: z.number().int().optional(), behind: z.number().int().optional(), changes: z.number().int() }).optional(),
+});
+const sessionInfo = { session: z.string(), clients: z.number().int(), paused: z.boolean(), version: z.string() };
 const pluginKey = z.strictObject({ key: z.string(), action: z.string().optional(), pane: z.string().optional(), description: z.string(), state: z.enum(["active", "disabled"]), reason: z.string().optional() });
 const pluginStatus = z.strictObject({
   keys: z.array(pluginKey).optional(),
@@ -134,7 +154,18 @@ export const results = {
   "ui.state": pluginUiView,
   "plugin.pane.open": z.strictObject({ pane: z.string(), instance: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]), title: z.string(), width: z.union([z.number(), z.string()]).optional(), height: z.union([z.number(), z.string()]).optional() }),
   "events.subscribe": z.strictObject({ protocol: z.number().int(), epoch: z.string(), seq: z.number().int().nonnegative(), panes: z.array(listedPane).optional() }),
-  "pane.read": paneInfo.extend({ screen: z.string(), recentOutput: z.string() }),
+  // content: what source and format asked for; screen and recentOutput: the visible screen and recent text, as always
+  "pane.read": paneInfo.extend({ screen: z.string(), recentOutput: z.string(), content: z.string(), source: readSource, format: readFormat }),
+  "pane.split": created,
+  "agent.spawn": created,
+  "tab.create": created,
+  "workspace.create": created,
+  // snapshot: what clients draw (every space's tabs with their trees, focus and zoom, in an `area` of cells) and every
+  // pane, where `panes` and `workspaces` are otherwise counts
+  "session.info": z.union([
+    z.strictObject({ ...sessionInfo, panes: z.number().int(), workspaces: z.number().int() }),
+    z.strictObject({ ...sessionInfo, active: z.number().int(), area: rect, workspaces: z.array(workspaceView), panes: z.array(listedPane) }),
+  ]),
   "pane.move": z.strictObject({ ...paneRef, workspaceId: z.string(), tabId: z.string() }), // where it is now
   "pane.resize": z.strictObject({ changed: z.boolean() }), // false: no border on that side, or it's as far as it goes
   "pane.zoom": z.strictObject({ zoomed: z.boolean() }),
@@ -148,7 +179,7 @@ export const results = {
 // failed); data.code is modisa's stable reason
 export const errorReply = z.strictObject({ code: z.number().int(), message: z.string(), data: z.strictObject({ code: z.enum(ERROR_CODES) }).optional() });
 
-// ---------- CLI results: what `modisa plugin … --json` prints (an e2e test checks them) ----------
+// ---------- CLI results: what `modisa … --json` prints where the CLI makes it (an e2e test checks them) ----------
 // Starting a plugin in the one session a command reaches: started (and connected), already running, not started (no
 // session running), failed (it didn't start, or exited), or no-hello (started, but never connected in time).
 export const pluginStart = z.strictObject({
@@ -195,19 +226,32 @@ export const cliResults = {
     unreachable: z.array(z.string()),
     checkout: z.strictObject({ path: z.string(), deleted: z.boolean() }).optional(),
   }),
+  // A pane's process (its shell, or the command it started with), the job in the foreground of its terminal, and
+  // where it is now (its working directory). An exited pane has only the pid it had.
+  "pane process-info": z.strictObject({ pane: z.string(), pid: z.number().int(), foreground: z.strictObject({ pid: z.number().int(), args: z.string() }).optional(), cwd: z.string().optional() }),
+  // The tab a pane is in, from a session.info snapshot: each pane's box in cells, borders included (where the split
+  // tree puts it), and whether it's shown when the tab is (a zoomed tab, or one too small for its panes, shows only
+  // its focused pane).
+  "pane layout": z.strictObject({
+    pane: z.string(), workspaceId: z.string(), tabId: z.string(), area: rect, focused: z.string(), zoomed: z.boolean(),
+    panes: z.array(z.strictObject({ id: z.string(), name: z.string().optional(), ...rect.shape, shown: z.boolean() })),
+  }),
+  // the pane on each side of it in its tab; null: that side is the tab's edge
+  "pane edges": z.strictObject({ pane: z.string(), left: z.string().nullable(), right: z.string().nullable(), up: z.string().nullable(), down: z.string().nullable() }),
 };
 
 export const api = {
   list: z.object({ caller }),
-  "session.info": z.object({ caller }),
+  "session.info": z.object({ caller, snapshot: z.boolean().optional() }), // snapshot: read only, attaches nothing
   "workspace.list": z.object({ caller }),
-  "workspace.create": z.object({ caller, name: z.string().optional(), cwd: z.string().optional(), command: z.string().optional() }),
+  "workspace.create": z.object({ caller, name: z.string().optional(), cwd: z.string().optional(), command: z.string().optional(), env }),
   "workspace.rename": z.object({ caller, workspace: z.string().min(1), name: z.string().trim().min(1) }),
   "workspace.close": z.object({ caller, workspace: z.string().min(1) }),
-  "tab.create": z.object({ caller, name: z.string().optional(), workspace: z.string().optional(), command: z.string().optional(), paneName: z.string().optional(), cwd: z.string().optional() }),
-  "pane.split": z.object({ caller, target: target.optional(), dir, name: z.string().optional(), cwd: z.string().optional(), command: z.string().optional(), focus: z.boolean().optional() }),
+  "tab.create": z.object({ caller, name: z.string().optional(), workspace: z.string().optional(), command: z.string().optional(), paneName: z.string().optional(), cwd: z.string().optional(), env }),
+  // ratio: the new pane's share of the room
+  "pane.split": z.object({ caller, target: target.optional(), dir, ratio: z.number().min(0.1).max(0.9).default(0.5), name: z.string().optional(), cwd: z.string().optional(), command: z.string().optional(), focus: z.boolean().optional(), env }),
   "pane.run": z.object({ caller, target, command: z.string() }),
-  "pane.read": z.object({ caller, target: target.optional(), lines: z.number().int().positive().max(10_000).default(50) }),
+  "pane.read": z.object({ caller, target: target.optional(), lines: z.number().int().positive().max(10_000).default(50), source: readSource.default("recent"), format: readFormat.default("text") }),
   "pane.keys": z.object({ caller, target, keys: z.array(z.string()).min(1) }),
   "pane.close": z.object({ caller, target: target.optional() }),
   "pane.rename": z.object({ caller, target: target.optional(), name: z.string() }),
@@ -223,7 +267,7 @@ export const api = {
   "pane.swap": z.object({ caller, target: target.optional(), with: target.optional(), dir: direction.optional() }).refine((p) => (p.with === undefined) !== (p.dir === undefined), "exactly one of with or dir"),
   "pane.resize": z.object({ caller, target: target.optional(), dir: direction, amount: z.number().int().positive().max(1000).default(2) }), // amount: cells
   "pane.zoom": z.object({ caller, target: target.optional(), mode: z.enum(["on", "off", "toggle"]).default("toggle") }),
-  "agent.spawn": z.object({ caller, harness: z.string(), name: z.string().optional(), prompt: z.string().optional(), target: target.optional(), dir, tab: z.boolean().optional(), focus: z.boolean().optional() }),
+  "agent.spawn": z.object({ caller, harness: z.string(), name: z.string().optional(), prompt: z.string().optional(), target: target.optional(), dir, tab: z.boolean().optional(), focus: z.boolean().optional(), env }),
   "agent.list": z.object({ caller }),
   wait: z.object({ caller, target, exited: z.boolean().optional(), state: state.optional(), match: z.string().optional(), timeout: z.number().positive().optional() }),
   // snapshot: also return every pane as of the moment the subscription starts (see envelope)
@@ -270,7 +314,7 @@ export const api = {
   inbox: z.object({ caller }),
   messages: z.object({ caller }),
   "messaging.pause": z.object({ caller, paused: z.boolean().optional() }),
-  "debug.detect": z.object({ caller, target }),
+  "debug.detect": z.object({ caller, target: target.optional() }), // also the pane's process: see cliResults "pane process-info"
   integrations: z.object({ caller }),
   integration: z.object({ caller, id: z.string().min(1), install: z.boolean() }),
   kill: z.object({ caller }),

@@ -33,14 +33,16 @@ modisa help
 | | |
 |---|---|
 | `modisa pane list` | every pane: id, `@name`, title, agent harness and state, cwd, exit status |
-| `modisa pane split [command…]` | open a pane next to one. With a command it runs that; without, a shell |
+| `modisa pane split [command…]` | open a pane next to one. With a command it runs that; without, a shell. `--ratio 0.3` gives it 30% of the room |
 | `modisa pane run <target> <command…>` | type a command into a pane and press Enter. **Shells, not agents** |
-| `modisa pane read [target] [--lines n]` | a pane's visible screen plus the last `n` lines of scrollback, as plain text |
+| `modisa pane read [target] [--lines n]` | the last `n` lines (50 by default) of a pane's output, scrollback included, as plain text. `--source visible` is just the screen, `--source recent-unwrapped` joins lines the pane wrapped, `--format ansi` keeps colours |
 | `modisa pane keys <target> <key…>` | send keys: text, or names like `Enter`, `Escape`, `Tab`, `C-c`, `M-x`, `Up`. **Shells, not agents** |
 | `modisa pane close [target]` | close a pane and kill what runs in it |
 | `modisa pane move [target] …` | move a pane, process and all: beside another (`--target p`), into a tab (`--tab t`), or alone in a new tab or workspace (`--new-tab`, `--new-workspace`) |
 | `modisa pane swap [target] <other>` | two panes trade places, in one tab or across tabs |
 | `modisa pane resize\|zoom\|focus [target]` | move a border (`--direction d [--amount n]`), show one pane alone in its tab (`--on`, `--off`), or focus the pane on one side (`--direction d`) |
+| `modisa pane layout\|edges\|neighbor [target]` | where a pane sits: every box in its tab, the pane on each side, or the one on a side (`--direction d`) |
+| `modisa pane process-info [target]` | its pid, the job in its foreground, and the directory its shell is in now |
 | `modisa agent spawn <harness> [--prompt text]` | start another coding agent (claude, codex, pi, opencode, gemini…) in a new pane |
 | `modisa agent list` | agent panes and their current state |
 | `modisa wait <target> …` | block until a pane exits, reaches a state, or its output matches a regex |
@@ -57,6 +59,10 @@ Targets are a pane id (`p3`), an `@name`, or a name.
 
 **Name the panes you make.** `--name tests` once, then `tests` everywhere after. Pane ids shift as
 panes come and go; names don't.
+
+**`--env` is saved.** `pane split`, `tab create`, `workspace create` and `agent spawn` take
+`--env NAME=value`, once per variable (`MODISA_*` names are refused). The session saves it to disk, in a
+file only the user can read, so a restart keeps it: think twice before passing a secret that way.
 
 **Wait, don't poll.** `modisa wait` blocks server-side until the thing actually happens:
 

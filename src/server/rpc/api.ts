@@ -6,6 +6,8 @@ import type { AgentState } from "../../protocol/types";
 import type { ServerContext } from "../context";
 import type { MoveTo } from "../session/session";
 import { cwds } from "../persist/store";
+import { foreground, processTable } from "../agents/detect";
+import type { PtyPane } from "../session/pane";
 import { integrationStatus, setIntegration } from "../../integrations";
 import { keyBytes } from "../keys";
 import type { Handlers } from "./dispatch";
@@ -32,28 +34,48 @@ export function apiMethods(ctx: ServerContext): Handlers {
     return id;
   };
   const noNeighbor = (id: string, dir: Dir) => fail("no_such_pane", `no pane ${SIDE[dir]} ${id}`);
+  // a pane just made, and where it is
+  const created = (pane: PtyPane) => {
+    const { ws, tab } = s.placeOf(pane.id);
+    return { ...pane.info, workspaceId: ws.id, tabId: tab.id };
+  };
+  // Its process, the job in the foreground of its terminal, and where the shell is now (it may have cd'd since it
+  // started); an exited pane has only the pid it had.
+  const processOf = async (pane: PtyPane) => {
+    const pid = pane.proc.pid;
+    if (pane.info.status !== "running") return { pid };
+    const [procs, dirs] = await Promise.all([processTable(), cwds([pid])]);
+    const fg = foreground(procs, pid);
+    return { pid, ...(fg && { foreground: { pid: fg.pid, args: fg.args } }), ...(dirs.has(pid) && { cwd: dirs.get(pid) }) };
+  };
   return {
     // ---------- session & workspaces ----------
     list,
-    "session.info": async () => ({ session: ctx.session, clients: ctx.attached().length, panes: s.panes.size, workspaces: s.workspaces.length, paused: mail.paused, version: await codeVersion() }),
+    "session.info": async (p) => {
+      const info = { session: ctx.session, clients: ctx.attached().length, paused: mail.paused, version: await codeVersion() };
+      if (!p.snapshot) return { ...info, panes: s.panes.size, workspaces: s.workspaces.length };
+      // what clients draw, read without attaching: no area is set, no event is sent, nothing changes. A copy, so a
+      // change before the reply is written can't reach it
+      return { ...info, ...structuredClone({ active: s.active, area: s.area, workspaces: s.view().workspaces, panes: list() }) };
+    },
     "workspace.list": () => s.workspaces.map((w, i) => ({ id: w.id, name: w.name, cwd: w.cwd, tabs: w.tabs.length, active: i === s.active })),
     "workspace.rename": (p) => (s.renameWorkspace(p.name, s.findWorkspace(p.workspace)), true),
     "workspace.close": (p) => (s.closeWorkspace(s.findWorkspace(p.workspace)), true),
-    "workspace.create": (p) => s.newWorkspace(p.name, p.cwd ?? cwd(), { command: p.command, createdBy: p.caller }).info,
+    "workspace.create": (p) => created(s.newWorkspace(p.name, p.cwd ?? cwd(), { command: p.command, createdBy: p.caller, env: p.env })),
     "tab.create": (p) => {
       if (p.workspace) {
         const i = s.workspaces.findIndex((w) => w.name === p.workspace || w.id === p.workspace);
         if (i < 0) throw new Error(`no such workspace: ${p.workspace}`);
         s.selectWorkspace(i);
       }
-      return s.newTab(p.name, { command: p.command, name: p.paneName, cwd: p.cwd, createdBy: p.caller }).info;
+      return created(s.newTab(p.name, { command: p.command, name: p.paneName, cwd: p.cwd, createdBy: p.caller, env: p.env }));
     },
 
     // ---------- panes ----------
     "pane.split": (p) => {
-      const pane = s.split(p.dir === "down" ? "col" : "row", { command: p.command, name: p.name, cwd: p.cwd, createdBy: p.caller }, ctx.subject(p.target, p.caller).id, p.focus ?? false);
+      const pane = s.split(p.dir === "down" ? "col" : "row", { command: p.command, name: p.name, cwd: p.cwd, createdBy: p.caller, env: p.env }, ctx.subject(p.target, p.caller).id, p.focus ?? false, p.ratio);
       if (!pane) throw new Error("nothing to split");
-      return pane.info;
+      return created(pane);
     },
     "pane.run": async (p) => {
       const pane = ctx.need(p.target);
@@ -61,7 +83,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
       pane.write(p.command + "\r");
       return true;
     },
-    "pane.read": (p) => ctx.snapshot(ctx.need(p.target, p.caller), p.lines ?? 50),
+    "pane.read": (p) => ctx.snapshot(ctx.need(p.target, p.caller), p.lines, p.source, p.format),
     "pane.keys": async (p) => {
       const pane = ctx.need(p.target);
       await ctx.permit(p.caller, "keys", pane, p.keys.join(" "));
@@ -132,10 +154,10 @@ export function apiMethods(ctx: ServerContext): Handlers {
 
     // ---------- agents ----------
     "agent.spawn": (p) => {
-      const o = ctx.agentOpts(p.harness, p.prompt, p.name, p.caller);
+      const o = { ...ctx.agentOpts(p.harness, p.prompt, p.name, p.caller), env: p.env };
       const pane = p.tab ? s.newTab(p.name, o) : s.split(p.dir === "down" ? "col" : "row", o, ctx.subject(p.target, p.caller).id, p.focus ?? false);
       if (!pane) throw new Error("nothing to split");
-      return pane.info;
+      return created(pane);
     },
     "agent.list": () => [...s.panes.values()].filter((p) => p.info.agent).map((p) => ({ id: p.id, name: p.info.name, title: p.info.title, ...p.info.agent, workspace: s.locate(p.id)?.ws.name })),
     report: (p) => {
@@ -152,9 +174,11 @@ export function apiMethods(ctx: ServerContext): Handlers {
       ctx.tick();
       return true;
     },
-    "debug.detect": (p) => {
-      const pane = ctx.need(p.target);
-      return { pane: pane.id, agent: pane.info.agent, session: pane.info.session, detection: detector.last.get(pane.id), authority: detector.authority.get(pane.id), title: pane.oscTitle, progress: pane.oscProgress, screen: pane.screen() };
+    "debug.detect": async (p) => {
+      const pane = ctx.subject(p.target, p.caller);
+      // read before waiting on the process table: the pane can close meanwhile, and its screen with it
+      const seen = { pane: pane.id, agent: pane.info.agent, session: pane.info.session, detection: detector.last.get(pane.id), authority: detector.authority.get(pane.id), title: pane.oscTitle, progress: pane.oscProgress, screen: pane.screen() };
+      return { ...seen, process: await processOf(pane) };
     },
 
     // ---------- messaging ----------

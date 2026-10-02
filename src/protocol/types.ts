@@ -57,6 +57,15 @@ export type PaneInfo = {
   popup?: boolean; // a plugin's popup: no place in the layout, shown only by the client that opened it
 };
 
+// The pane a target names: "p3", "@coder", "coder", "@p3" (ids still work once a pane is named), "p3:1a2b3c4d" (only that
+// instance of p3). The server resolves targets with it, and so does the CLI where it works from a snapshot.
+export function findPane<T extends { id: string; instance: string; name?: string }>(panes: T[], target: string): T | undefined {
+  const inst = /^(p\d+):(\w+)$/.exec(target);
+  if (inst) return panes.find((p) => p.id === inst[1] && p.instance === inst[2]);
+  const name = target.replace(/^@/, "");
+  return panes.find((p) => p.id === target) ?? panes.find((p) => p.name === name) ?? panes.find((p) => p.id === name);
+}
+
 export type TabView = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
 // A space's repository, where its focused pane is: ahead/behind are only there when the branch has an upstream.
 export type GitView = { repo: string; branch: string; ahead?: number; behind?: number; changes: number };

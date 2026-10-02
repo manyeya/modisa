@@ -1,10 +1,12 @@
 // Survive server restarts: each session's layout and pane metadata, saved in bun:sqlite.
 import { Database } from "bun:sqlite";
+import { chmod } from "node:fs/promises"; // no Bun equivalent
 import { DIR } from "../../core/paths";
 import type { Node } from "../../core/layout";
 import type { Session } from "../session/session";
 
-type SavedPane = { name?: string; cwd: string; command?: string; harness?: string; agent?: string; session?: { agent: string; id: string }; createdBy: string };
+// env: what it was started with (pane split --env…), so it comes back with it
+type SavedPane = { name?: string; cwd: string; command?: string; harness?: string; agent?: string; session?: { agent: string; id: string }; createdBy: string; env?: Record<string, string> };
 export type Saved = {
   active: number;
   workspaces: { name: string; cwd: string; active: number; tabs: { name?: string; zoomed: boolean; focused: string; tree: Node }[] }[];
@@ -38,9 +40,17 @@ async function store() {
     await Bun.$`mkdir -p ${DIR}`.quiet();
     db = new Database(`${DIR}/modisa.db`, { create: true });
     db.run("CREATE TABLE IF NOT EXISTS sessions (name TEXT PRIMARY KEY, data TEXT NOT NULL, saved_at INTEGER NOT NULL)");
+    await chmod(`${DIR}/modisa.db`, 0o600).catch(() => {}); // it holds panes' --env values: yours alone to read, whichever modisa made it
   }
   return db;
 }
+
+// The variables a pane was given, less modisa's own (a plugin pane's MODISA_PLUGIN_*): those are for the run that
+// started it, and whatever starts a pane sets them afresh.
+const chosen = (env?: Record<string, string>) => {
+  const kept = Object.entries(env ?? {}).filter(([k]) => !k.startsWith("MODISA_"));
+  return kept.length ? Object.fromEntries(kept) : undefined;
+};
 
 // `alive` is checked after the async cwd lookup so a save racing a shutdown never resurrects a killed session.
 export async function save(s: Session, session: string, alive: () => boolean = () => true) {
@@ -65,6 +75,7 @@ export async function save(s: Session, session: string, alive: () => boolean = (
           agent: p.info.agent?.harness,
           session: p.info.agent && p.info.session?.agent === p.info.agent.harness ? p.info.session : undefined, // only while that agent runs
           createdBy: p.info.createdBy,
+          env: chosen(p.env),
         },
       ]),
     ),

@@ -5,7 +5,7 @@ import { parseArgs } from "./cli/args";
 import { HELP } from "./cli/help";
 import { runCli } from "./cli/commands";
 import { attach, proxy, listSessions, restartSession, killSession, configCommand } from "./cli/sessions";
-import { cwd } from "./core/paths";
+import { absPath, cwd } from "./core/paths";
 
 // Panes start through here so their shell owns the PTY (see platform/ctty.ts). Before arg parsing: argv is the shell's.
 if (Bun.argv[2] === "__pty-exec") execWithTty(Bun.argv.slice(3));
@@ -22,7 +22,7 @@ switch (cmd) {
     await attach(rest[0] ?? session, cwd(), flag("remote"));
     break;
   case "new":
-    await attach(rest[0] ?? session, flag("cwd") ?? cwd(), flag("remote"));
+    await attach(rest[0] ?? session, absPath(flag("cwd") ?? cwd()), flag("remote"));
     break;
   case "server":
     await (await import("./server/server")).runServer(session);

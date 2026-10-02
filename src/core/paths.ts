@@ -1,10 +1,15 @@
 // Where modisa keeps things, and how it re-runs itself.
+import { resolve } from "node:path";
+
 export const HOME = Bun.env.HOME ?? "/tmp";
 export const DIR = Bun.env.MODISA_DIR ?? `${HOME}/.local/state/modisa`;
 export const SRC = `${import.meta.dir}/..`;
 export const MAIN = `${SRC}/main.ts`;
 export const socketPath = (session: string) => `${DIR}/${session}.sock`;
 export const cwd = () => Bun.env.PWD ?? HOME;
+// A directory as the user typed it (~, ~/x, relative), made absolute where they typed it: the server it's sent to
+// has a working directory of its own.
+export const absPath = (p: string) => resolve(Bun.env.PWD ?? process.cwd(), p === "~" ? HOME : p.startsWith("~/") ? HOME + p.slice(1) : p);
 
 // The command that re-runs this program (server spawn, hooks, plugins).
 // Inside a compiled binary Bun.argv[0] is just "bun", so ask the OS where the executable lives.

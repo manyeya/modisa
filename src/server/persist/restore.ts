@@ -12,7 +12,7 @@ export function restore(s: Session, data: Saved, adapters: Adapter[]) {
   const followUps: [string, string, boolean][] = [];
   const opts = (old: string): SpawnOpts => {
     const sp = data.panes[old];
-    return sp ? { cwd: sp.cwd, name: sp.name, createdBy: sp.createdBy } : {};
+    return sp ? { cwd: sp.cwd, name: sp.name, createdBy: sp.createdBy, env: sp.env } : {};
   };
   const after = (old: string, id: string) => {
     ids.set(old, id);
