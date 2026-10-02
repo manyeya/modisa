@@ -38,6 +38,9 @@ modisa help
 | `modisa pane read [target] [--lines n]` | a pane's visible screen plus the last `n` lines of scrollback, as plain text |
 | `modisa pane keys <target> <key…>` | send keys: text, or names like `Enter`, `Escape`, `Tab`, `C-c`, `M-x`, `Up`. **Shells, not agents** |
 | `modisa pane close [target]` | close a pane and kill what runs in it |
+| `modisa pane move [target] …` | move a pane, process and all: beside another (`--target p`), into a tab (`--tab t`), or alone in a new tab or workspace (`--new-tab`, `--new-workspace`) |
+| `modisa pane swap [target] <other>` | two panes trade places, in one tab or across tabs |
+| `modisa pane resize\|zoom\|focus [target]` | move a border (`--direction d [--amount n]`), show one pane alone in its tab (`--on`, `--off`), or focus the pane on one side (`--direction d`) |
 | `modisa agent spawn <harness> [--prompt text]` | start another coding agent (claude, codex, pi, opencode, gemini…) in a new pane |
 | `modisa agent list` | agent panes and their current state |
 | `modisa wait <target> …` | block until a pane exits, reaches a state, or its output matches a regex |
@@ -97,7 +100,9 @@ pane with its own context. Give it a `--prompt` that stands alone — it can't s
 
 **Someone is watching.** A human is looking at this session. Closing a pane you didn't create
 prompts them, so ask before you do it. Reading (`pane read`, `pane list`, `wait`) and messaging
-(`send`, `inbox`) never prompt — prefer those.
+(`send`, `inbox`) never prompt — prefer those. Moving, swapping, resizing and zooming panes don't
+prompt either, but they change the layout the human is looking at: do it when asked. `pane move`
+leaves their view where it is unless you add `--focus`.
 
 **If a `modisa` command says a sandbox is blocking its socket,** your own command sandbox stops you
 reaching the session: `send`, `inbox` and the rest won't work from here. Tell the user, and point

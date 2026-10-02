@@ -64,6 +64,7 @@ export type PluginManifest = z.infer<typeof pluginManifest>;
 const target = z.string().min(1);
 const caller = z.string().optional();
 const dir = z.enum(["right", "down"]).default("right");
+const direction = z.enum(["left", "right", "up", "down"]);
 const state = z.enum(["working", "blocked", "done", "idle"]);
 
 // The protocol version: bumped when a request, result or event changes incompatibly. Plugins declare the one
@@ -105,7 +106,7 @@ export const paneInfo = z.strictObject({
   cols: z.number().int(), rows: z.number().int(),
   popup: z.boolean().optional(), // a plugin's popup: no place in the layout, shown only by the client that opened it
 });
-const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string().optional() });
+const listedPane = paneInfo.extend({ focused: z.boolean(), workspace: z.string().optional(), workspaceId: z.string().optional(), tabId: z.string().optional() }); // where it is: a popup has no place
 const pluginKey = z.strictObject({ key: z.string(), action: z.string().optional(), pane: z.string().optional(), description: z.string(), state: z.enum(["active", "disabled"]), reason: z.string().optional() });
 const pluginStatus = z.strictObject({
   keys: z.array(pluginKey).optional(),
@@ -134,6 +135,9 @@ export const results = {
   "plugin.pane.open": z.strictObject({ pane: z.string(), instance: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]), title: z.string(), width: z.union([z.number(), z.string()]).optional(), height: z.union([z.number(), z.string()]).optional() }),
   "events.subscribe": z.strictObject({ protocol: z.number().int(), epoch: z.string(), seq: z.number().int().nonnegative(), panes: z.array(listedPane).optional() }),
   "pane.read": paneInfo.extend({ screen: z.string(), recentOutput: z.string() }),
+  "pane.move": z.strictObject({ ...paneRef, workspaceId: z.string(), tabId: z.string() }), // where it is now
+  "pane.resize": z.strictObject({ changed: z.boolean() }), // false: no border on that side, or it's as far as it goes
+  "pane.zoom": z.strictObject({ zoomed: z.boolean() }),
   "agent.list": z.array(z.strictObject({ id: z.string(), name: z.string().optional(), title: z.string(), harness: z.string(), state, source: z.enum(["hook", "screen"]), workspace: z.string().optional() })),
   wait: z.union([z.strictObject({ exitCode: z.number().int() }), z.strictObject({ state }), z.strictObject({ match: z.string() })]),
   send: z.strictObject({ id: z.number(), queued: z.literal(true), delivered: z.literal(false), recipientState: state.optional() }),
@@ -207,7 +211,18 @@ export const api = {
   "pane.keys": z.object({ caller, target, keys: z.array(z.string()).min(1) }),
   "pane.close": z.object({ caller, target: target.optional() }),
   "pane.rename": z.object({ caller, target: target.optional(), name: z.string() }),
-  "pane.focus": z.object({ caller, target }),
+  // dir: focus the pane on that side of the target instead
+  "pane.focus": z.object({ caller, target: target.optional(), dir: direction.optional() }),
+  // Exactly one destination: beside a pane (`beside`, else the focused pane of `tab`; `dir` side, `ratio` its share),
+  // alone in a new tab (`newTab`, in `workspace` or its own space) or in a new space (`newWorkspace`, at the pane's
+  // cwd). `name` names the new tab or space; `focus` moves the view to it.
+  "pane.move": z
+    .object({ caller, target: target.optional(), tab: z.string().min(1).optional(), beside: target.optional(), newTab: z.boolean().optional(), workspace: z.string().min(1).optional(), newWorkspace: z.boolean().optional(), name: z.string().optional(), dir, ratio: z.number().min(0.1).max(0.9).default(0.5), focus: z.boolean().optional() })
+    .refine((p) => [p.tab !== undefined || p.beside !== undefined, !!p.newTab, !!p.newWorkspace].filter(Boolean).length === 1, "exactly one destination: tab and/or beside, newTab, or newWorkspace"),
+  // with another pane, or with the target's neighbour on the `dir` side
+  "pane.swap": z.object({ caller, target: target.optional(), with: target.optional(), dir: direction.optional() }).refine((p) => (p.with === undefined) !== (p.dir === undefined), "exactly one of with or dir"),
+  "pane.resize": z.object({ caller, target: target.optional(), dir: direction, amount: z.number().int().positive().max(1000).default(2) }), // amount: cells
+  "pane.zoom": z.object({ caller, target: target.optional(), mode: z.enum(["on", "off", "toggle"]).default("toggle") }),
   "agent.spawn": z.object({ caller, harness: z.string(), name: z.string().optional(), prompt: z.string().optional(), target: target.optional(), dir, tab: z.boolean().optional(), focus: z.boolean().optional() }),
   "agent.list": z.object({ caller }),
   wait: z.object({ caller, target, exited: z.boolean().optional(), state: state.optional(), match: z.string().optional(), timeout: z.number().positive().optional() }),

@@ -7,9 +7,16 @@ const MIN = 3; // smallest pane edge: two border cells + one content cell
 // Below this a pane is too small to use, and the tab shows only its focused pane (see displayRects).
 export const USABLE = { w: 24, h: 6 };
 
-export function split(tree: Node, id: string, dir: "row" | "col", newId: string): Node {
-  if ("pane" in tree) return tree.pane === id ? { dir, ratio: 0.5, a: tree, b: { pane: newId } } : tree;
-  return { ...tree, a: split(tree.a, id, dir, newId), b: split(tree.b, id, dir, newId) };
+// ratio: the share `id` keeps; the new pane gets the rest, right of or below it.
+export function split(tree: Node, id: string, dir: "row" | "col", newId: string, ratio = 0.5): Node {
+  if ("pane" in tree) return tree.pane === id ? { dir, ratio, a: tree, b: { pane: newId } } : tree;
+  return { ...tree, a: split(tree.a, id, dir, newId, ratio), b: split(tree.b, id, dir, newId, ratio) };
+}
+
+// The leaf holding `id`, the node itself: changing its pane in place keeps every ratio, and any drag under way, valid.
+export function leaf(tree: Node, id: string): { pane: string } | undefined {
+  if ("pane" in tree) return tree.pane === id ? tree : undefined;
+  return leaf(tree.a, id) ?? leaf(tree.b, id);
 }
 
 export function remove(tree: Node, id: string): Node | null {
@@ -49,6 +56,9 @@ export function displayRects(tree: Node, area: Rect, focused: string, zoomed = f
   if (zoomed || [...rs.values()].some((r) => r.w < USABLE.w || r.h < USABLE.h)) return new Map([[focused, area]]);
   return rs;
 }
+
+// How a message names the side of a pane: "no pane left of p3".
+export const SIDE: Record<Dir, string> = { left: "left of", right: "right of", up: "above", down: "below" };
 
 // Nearest pane in a direction that shares an edge; ties go to the one closest to our centre.
 export function neighbor(rs: Map<string, Rect>, id: string, dir: Dir): string | undefined {

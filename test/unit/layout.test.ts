@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { split, remove, rects, neighbor, resize, dividerAt, dragTo, panes, displayRects, USABLE, type Node } from "../../src/core/layout";
+import { split, remove, rects, neighbor, resize, dividerAt, dragTo, panes, leaf, displayRects, USABLE, type Node } from "../../src/core/layout";
 
 const area = { x: 0, y: 1, w: 100, h: 40 };
 
@@ -21,6 +21,29 @@ test("rects tile the area exactly", () => {
         cells++;
       }
   expect(cells).toBe(area.w * area.h);
+});
+
+test("split gives the pane split its ratio and the new pane the rest", () => {
+  expect(split({ pane: "a" }, "a", "row", "b")).toEqual({ dir: "row", ratio: 0.5, a: { pane: "a" }, b: { pane: "b" } });
+  const t = split(tree(), "c", "row", "d", 0.75);
+  expect(t).toMatchObject({ ratio: 0.5, b: { ratio: 0.5, b: { dir: "row", ratio: 0.75, a: { pane: "c" }, b: { pane: "d" } } } });
+  const rs = rects(t, area);
+  expect([rs.get("c")!.w, rs.get("d")!.w]).toEqual([38, 12]); // c keeps three quarters of its 50 columns
+  expect(split(tree(), "nope", "col", "d", 0.2)).toEqual(tree()); // no such pane: unchanged
+});
+
+test("leaf is the node itself, so swapping panes in place keeps the shape and ratios", () => {
+  const t = tree();
+  resize(t, area, "a", "right", 10);
+  const before = rects(t, area);
+  const a = leaf(t, "a")!, c = leaf(t, "c")!;
+  expect(a).toEqual({ pane: "a" });
+  expect(leaf(t, "nope")).toBeUndefined();
+  [a.pane, c.pane] = ["c", "a"];
+  expect(panes(t)).toEqual(["c", "b", "a"]);
+  const after = rects(t, area);
+  expect(after.get("c")).toEqual(before.get("a")!);
+  expect(after.get("a")).toEqual(before.get("c")!);
 });
 
 test("remove collapses the parent split", () => {

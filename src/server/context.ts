@@ -41,6 +41,8 @@ export type ServerContext = {
   cancelSave(): void;
   name(id: string): string;
   need(target: string | undefined, caller?: string): PtyPane;
+  subject(target: string | undefined, caller?: string): PtyPane; // need, but no target means the calling pane, else the focused one
+  movable(id: string): boolean; // whether a pane may leave its place (plugins.ts: not an overlay, which belongs over its origin)
   agentOpts(harness: string, prompt?: string, name?: string, createdBy?: string): SpawnOpts;
   snapshot(p: PtyPane, lines?: number): PtyPane["info"] & { screen: string; recentOutput: string };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
@@ -52,6 +54,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
   const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), down: false, prompts: new Map() } as ServerContext;
 
   ctx.pluginUi = () => [];
+  ctx.movable = () => true;
   ctx.paneExited = () => {};
   ctx.paneClosing = () => {};
   ctx.attached = () => [...ctx.clients].filter((c) => c.attached);
@@ -104,6 +107,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
     if (/^p\d+:\w+$/.test(target ?? "")) throw fail("pane_gone", `${target!.split(":")[0]} has gone: that pane was closed or restarted since its message was sent`);
     throw fail("no_such_pane", `no such pane: ${target ?? "(none)"}`);
   };
+  ctx.subject = (target, caller) => ctx.need(target ?? (caller && ctx.s.panes.has(caller) ? caller : ctx.s.focusedId));
   ctx.agentOpts = (harness, prompt, name, createdBy) => {
     const a = ctx.adapters.find((x) => x.id === harness);
     const command = a?.launch ? [a.launch, prompt && quote(prompt)].filter(Boolean).join(" ") : harness;

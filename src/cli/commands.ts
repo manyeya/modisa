@@ -54,7 +54,7 @@ export async function runCli(a: Args): Promise<number> {
       }
       case "pane split": {
         const p = await call("pane.split", { target: target(), dir: f.down ? "down" : "right", name: str(f.name), cwd: str(f.cwd), command: rest.join(" ") || str(f.command), focus: !!f.focus });
-        console.log(p.id);
+        json ? print(p, true) : console.log(p.id);
         break;
       }
       case "pane run":
@@ -76,11 +76,36 @@ export async function runCli(a: Args): Promise<number> {
         await call("pane.rename", rest.length > 1 ? { target: rest[0], name: rest[1] } : { name: rest[0] });
         break;
       case "pane focus":
-        await call("pane.focus", { target: rest[0] });
+        await call("pane.focus", { target: rest[0], dir: str(f.direction) });
         break;
+      case "pane move": {
+        // --target is where it goes: the pane moved is the positional one
+        const r = await call("pane.move", { target: rest[0], tab: str(f.tab), beside: str(f.target), newTab: f["new-tab"] === true || undefined, workspace: str(f.workspace), newWorkspace: f["new-workspace"] === true || undefined, name: str(f.name), dir: str(f.split), ratio: num(f.ratio), focus: !!f.focus });
+        if (json) print(r, true);
+        break;
+      }
+      case "pane swap": {
+        // pane swap [a] (<b> | --direction d): one positional without a direction is b
+        const dir = str(f.direction);
+        const [a, b] = dir || rest.length > 1 ? rest : [undefined, rest[0]];
+        await call("pane.swap", { target: a, with: b, dir });
+        break;
+      }
+      case "pane resize": {
+        const r = await call("pane.resize", { target: rest[0], dir: str(f.direction), amount: num(f.amount) });
+        json ? print(r, true) : console.log(r.changed ? "changed" : "unchanged");
+        break;
+      }
+      case "pane zoom": {
+        const modes = (["on", "off", "toggle"] as const).filter((m) => f[m]);
+        if (modes.length > 1) throw fail("usage", "use one of --on, --off and --toggle");
+        const r = await call("pane.zoom", { target: rest[0], mode: modes[0] });
+        json ? print(r, true) : console.log(r.zoomed ? "zoomed" : "unzoomed");
+        break;
+      }
       case "agent spawn": {
         const p = await call("agent.spawn", { harness: rest[0], name: str(f.name), prompt: str(f.prompt), dir: f.down ? "down" : "right", tab: !!f.tab, target: target(), focus: !!f.focus });
-        console.log(p.id);
+        json ? print(p, true) : console.log(p.id);
         break;
       }
       case "agent list": {
@@ -170,9 +195,11 @@ export async function runCli(a: Args): Promise<number> {
         print(await call("plugin.invoke", { plugin: rest[0], action: rest[1], params }), true);
         break;
       }
-      case "workspace create":
-        console.log((await call("workspace.create", { name: rest[0], cwd: str(f.cwd) })).id);
+      case "workspace create": {
+        const p = await call("workspace.create", { name: rest[0], cwd: str(f.cwd) });
+        json ? print(p, true) : console.log(p.id);
         break;
+      }
       case "workspace rename":
         await call("workspace.rename", { workspace: rest[0], name: rest.slice(1).join(" ") });
         break;
@@ -184,9 +211,11 @@ export async function runCli(a: Args): Promise<number> {
         json ? print(ws, true) : table(ws.map((w) => ({ ...w, active: w.active ? "*" : "" })), ["id", "name", "tabs", "active", "cwd"]);
         break;
       }
-      case "tab create":
-        console.log((await call("tab.create", { name: rest[0], command: str(f.command), workspace: str(f.workspace) })).id);
+      case "tab create": {
+        const p = await call("tab.create", { name: rest[0], command: str(f.command), workspace: str(f.workspace) });
+        json ? print(p, true) : console.log(p.id);
         break;
+      }
       case "events": {
         conn.onMessage = (m) => m.method === "event" && console.log(JSON.stringify(m.params));
         await call("events.subscribe", { output: !!f.output });

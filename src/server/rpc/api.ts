@@ -1,8 +1,11 @@
 // The public API (CLI, plugins, integrations). Params are validated against protocol/schema before they get
 // here. `caller` is the pane id of the agent calling, if any.
 import { codeVersion, cwd } from "../../core/paths";
+import { SIDE, type Dir } from "../../core/layout";
 import type { AgentState } from "../../protocol/types";
 import type { ServerContext } from "../context";
+import type { MoveTo } from "../session/session";
+import { cwds } from "../persist/store";
 import { integrationStatus, setIntegration } from "../../integrations";
 import { keyBytes } from "../keys";
 import type { Handlers } from "./dispatch";
@@ -12,7 +15,23 @@ import { describeProtocol } from "../../protocol/describe";
 
 export function apiMethods(ctx: ServerContext): Handlers {
   const { s, mail, detector } = ctx;
-  const list = () => [...s.panes.values()].map((p) => ({ ...p.info, focused: s.focusedId === p.id, workspace: s.locate(p.id)?.ws.name }));
+  const list = () =>
+    [...s.panes.values()].map((p) => {
+      const at = s.locate(p.id);
+      return { ...p.info, focused: s.focusedId === p.id, workspace: at?.ws.name, workspaceId: at?.ws.id, tabId: at?.tab.id };
+    });
+  // what a layout command acts on: a pane with a place in a tab (not a popup)
+  const placed = (target: string | undefined, caller?: string) => {
+    const pane = ctx.subject(target, caller);
+    s.placeOf(pane.id);
+    return pane;
+  };
+  // and to move it, not a plugin's overlay either
+  const movable = (id: string) => {
+    if (!ctx.movable(id)) throw new Error(`${id} is a plugin's overlay: it stays over the pane it opened on`);
+    return id;
+  };
+  const noNeighbor = (id: string, dir: Dir) => fail("no_such_pane", `no pane ${SIDE[dir]} ${id}`);
   return {
     // ---------- session & workspaces ----------
     list,
@@ -32,8 +51,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
 
     // ---------- panes ----------
     "pane.split": (p) => {
-      const target = p.target ? ctx.need(p.target) : p.caller && s.panes.has(p.caller) ? s.panes.get(p.caller)! : undefined;
-      const pane = s.split(p.dir === "down" ? "col" : "row", { command: p.command, name: p.name, cwd: p.cwd, createdBy: p.caller }, target?.id ?? s.focusedId, p.focus ?? false);
+      const pane = s.split(p.dir === "down" ? "col" : "row", { command: p.command, name: p.name, cwd: p.cwd, createdBy: p.caller }, ctx.subject(p.target, p.caller).id, p.focus ?? false);
       if (!pane) throw new Error("nothing to split");
       return pane.info;
     },
@@ -57,7 +75,40 @@ export function apiMethods(ctx: ServerContext): Handlers {
       return true;
     },
     "pane.rename": (p) => (s.renamePane(ctx.need(p.target, p.caller).id, p.name), true),
-    "pane.focus": (p) => (s.focusPane(ctx.need(p.target).id), true),
+    "pane.focus": (p) => {
+      const pane = ctx.subject(p.target, p.caller);
+      if (!p.dir) s.focusPane(pane.id);
+      else if (!s.focusDir(p.dir, pane.id)) throw noNeighbor(pane.id, p.dir);
+      return true;
+    },
+    // no permission asked: like focus, these rearrange panes and touch nothing running in them
+    "pane.move": async (p) => {
+      const pane = placed(p.target, p.caller);
+      movable(pane.id);
+      // a new space starts where the pane is now: its shell may have cd'd since it started
+      const here = p.newWorkspace && pane.info.status === "running" ? (await cwds([pane.proc.pid])).get(pane.proc.pid) : undefined;
+      if (!s.panes.has(pane.id)) throw fail("pane_gone", `${pane.id} closed before it could be moved`);
+      let to: MoveTo;
+      if (p.newWorkspace) to = { newSpace: { name: p.name, cwd: here ?? pane.info.cwd } };
+      else if (p.newTab) to = { newTab: p.workspace ? s.workspaces[s.findWorkspace(p.workspace)]! : s.placeOf(pane.id).ws, name: p.name };
+      else {
+        const tab = p.tab ? s.findTab(p.tab).tab : undefined;
+        const beside = p.beside ? ctx.need(p.beside).id : tab!.focused;
+        if (tab && s.locate(beside)?.tab !== tab) throw new Error(`${beside} isn't in tab ${p.tab}`);
+        to = { beside, dir: p.dir === "down" ? "col" : "row", share: p.ratio };
+      }
+      const { ws, tab } = s.move(pane.id, to, p.focus);
+      return { pane: pane.id, instance: pane.info.instance, workspaceId: ws.id, tabId: tab.id };
+    },
+    "pane.swap": (p) => {
+      const a = placed(p.target, p.caller);
+      const b = p.with ? ctx.need(p.with).id : s.neighborOf(a.id, p.dir);
+      if (!b) throw noNeighbor(a.id, p.dir);
+      s.swap(movable(a.id), movable(b));
+      return true;
+    },
+    "pane.resize": (p) => ({ changed: s.resizePane(p.dir, p.amount, placed(p.target, p.caller).id) }),
+    "pane.zoom": (p) => ({ zoomed: s.zoom(placed(p.target, p.caller).id, p.mode) }),
     wait: async (p) => {
       const pane = ctx.need(p.target);
       const re = p.match ? new RegExp(p.match, "m") : undefined;
@@ -82,7 +133,7 @@ export function apiMethods(ctx: ServerContext): Handlers {
     // ---------- agents ----------
     "agent.spawn": (p) => {
       const o = ctx.agentOpts(p.harness, p.prompt, p.name, p.caller);
-      const pane = p.tab ? s.newTab(p.name, o) : s.split(p.dir === "down" ? "col" : "row", o, p.target ? ctx.need(p.target).id : p.caller && s.panes.has(p.caller) ? p.caller : s.focusedId, p.focus ?? false);
+      const pane = p.tab ? s.newTab(p.name, o) : s.split(p.dir === "down" ? "col" : "row", o, ctx.subject(p.target, p.caller).id, p.focus ?? false);
       if (!pane) throw new Error("nothing to split");
       return pane.info;
     },

@@ -90,6 +90,7 @@ modisa wait @reviewer --state idle
 modisa events --follow`) },
       { id: "commands", title: "Commands", html: table(["Command", "Does"], [
         [c("pane list | split | run | read | keys | close | rename | focus"), "Panes. Keys are text or names: Enter, C-c, M-x, Up, Escape…"],
+        [c("pane move | swap | resize | zoom | focus --direction"), "Rearrange panes: move one, process and all, beside another, into a tab, or to a new tab or space; swap two, in a tab or across tabs; resize, zoom, or focus the pane on one side."],
         [c("agent spawn <harness> | agent list"), "Start and list agents."],
         [c("wait <target> --exited | --state s | --match re"), "Block until a process exits, an agent reaches a state, or output matches."],
         [c("send | inbox | messages | pause"), "Agent messaging."],
@@ -98,7 +99,10 @@ modisa events --follow`) },
         [c("events [--follow] [--output]"), "The session's event stream."],
         [c("report"), "State and session reports from integrations."],
         [c("debug detect <target>"), "What detection sees for a pane."],
-      ]) + p(`Targets are a pane id (${c("p3")}), ${c("@name")} or a name. ${c("modisa help")} lists everything.`) + p(`Exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 ${c("wait")} timed out, and ${c("wait --exited")} exits with the pane's code, so a child's own 1, 2, 3 or 124 can't be told from modisa's by status alone: with ${c("--json")}, the child's result is on stdout and modisa's error on stderr. With ${c("--json")}, a failure prints ${c('{"error":{"code","message"}}')} to stderr, with a stable code such as ${c("no_such_pane")}, ${c("pane_gone")} or ${c("timeout")}. Under the hood it's JSON-RPC 2.0 over the session's unix socket.`) },
+      ]) + p(`Targets are a pane id (${c("p3")}), ${c("@name")} or a name. ${c("modisa help")} lists everything.`) + code("sh", `modisa pane move tests --new-tab                                    # the same process, in a tab of its own
+modisa pane move tests --target @reviewer --split down --ratio 0.3  # below it, with 30% of the room
+modisa pane swap tests @reviewer                                    # trade places, even across tabs
+modisa pane zoom @reviewer --on`) + p(`Moving a pane closes a tab or space it leaves empty, and the view stays where it is unless ${c("--focus")}. ${c("pane split")}, ${c("agent spawn")}, ${c("tab create")} and ${c("workspace create")} print the new pane's id, or with ${c("--json")} the whole pane.`) + p(`Exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 ${c("wait")} timed out, and ${c("wait --exited")} exits with the pane's code, so a child's own 1, 2, 3 or 124 can't be told from modisa's by status alone: with ${c("--json")}, the child's result is on stdout and modisa's error on stderr. With ${c("--json")}, a failure prints ${c('{"error":{"code","message"}}')} to stderr, with a stable code such as ${c("no_such_pane")}, ${c("pane_gone")} or ${c("timeout")}. Under the hood it's JSON-RPC 2.0 over the session's unix socket.`) },
     ],
   },
   {

@@ -587,5 +587,8 @@ export function createPluginHost(ctx: ServerContext) {
     }
   };
 
-  return { methods, start, stop, disconnected, uiView, paneExited, paneClosing };
+  // an overlay stays over its origin: it isn't moved or swapped away
+  const movable = (id: string) => !overlays.has(id);
+
+  return { methods, start, stop, disconnected, uiView, paneExited, paneClosing, movable };
 }

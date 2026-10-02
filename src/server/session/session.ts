@@ -1,5 +1,5 @@
 // Session model: workspaces → tabs → split trees of panes. Owns layout and PTY sizes.
-import { split, remove, rects, displayRects, neighbor, resize, panes, dividerAt, dragTo, type Node, type Rect, type Dir } from "../../core/layout";
+import { split, remove, rects, displayRects, neighbor, resize, panes, leaf, dividerAt, dragTo, type Node, type Rect, type Dir } from "../../core/layout";
 import type { GitView, View } from "../../protocol/types";
 import { PtyPane } from "./pane";
 import { cwd as here } from "../../core/paths";
@@ -7,6 +7,12 @@ import { cwd as here } from "../../core/paths";
 export type Tab = { id: string; name?: string; tree: Node; focused: string; zoomed: boolean };
 export type Workspace = { id: string; name: string; cwd: string; tabs: Tab[]; active: number; git?: GitView }; // git: see ../git.ts
 export type SpawnOpts = { cwd?: string; command?: string; harness?: string; name?: string; createdBy?: string; ephemeral?: boolean; env?: Record<string, string> };
+// Where a moved pane goes: beside a pane (right of or below it, with `share` of the space), alone in a new tab of a
+// space, or alone in a new space.
+export type MoveTo =
+  | { beside: string; dir: "row" | "col"; share: number }
+  | { newTab: Workspace; name?: string }
+  | { newSpace: { name?: string; cwd: string } };
 
 export class Session {
   workspaces: Workspace[] = [];
@@ -57,6 +63,19 @@ export class Session {
     return this.panes.get(t) ?? [...this.panes.values()].find((p) => p.info.name === name) ?? this.panes.get(name);
   }
 
+  // Where a pane sits in the layout; a popup has no place.
+  placeOf(id: string): { ws: Workspace; tab: Tab } {
+    const loc = this.locate(id);
+    if (!loc) throw new Error(`${id} is a popup: it has no place in a tab`);
+    return loc;
+  }
+
+  // The pane on that side of `id`, in its tab.
+  neighborOf(id: string, dir: Dir): string | undefined {
+    const loc = this.locate(id);
+    return loc && neighbor(rects(loc.tab.tree, this.area), id, dir);
+  }
+
   isVisible(id: string) {
     const loc = this.locate(id);
     return !!loc && loc.ws === this.ws && loc.tab === this.tab && displayRects(loc.tab.tree, this.area, loc.tab.focused, loc.tab.zoomed).has(id);
@@ -100,10 +119,15 @@ export class Session {
     this.hooks.changed();
   }
 
-  newWorkspace(name?: string, cwd = here(), o: SpawnOpts = {}) {
+  private addWorkspace(name: string | undefined, cwd: string): Workspace {
     const ws: Workspace = { id: `w${++this.seq}`, name: name ?? cwd.split("/").pop() ?? "workspace", cwd, tabs: [], active: 0 };
-    const previous = this.active;
     this.workspaces.push(ws);
+    return ws;
+  }
+
+  newWorkspace(name?: string, cwd = here(), o: SpawnOpts = {}) {
+    const previous = this.active;
+    const ws = this.addWorkspace(name, cwd);
     this.active = this.workspaces.length - 1;
     try { return this.newTab(undefined, o, ws); }
     catch (error) {
@@ -115,11 +139,20 @@ export class Session {
 
   newTab(name?: string, o: SpawnOpts = {}, ws = this.ws): PtyPane {
     const p = this.spawn(o, ws.cwd);
-    ws.tabs.push({ id: `t${++this.seq}`, name, tree: { pane: p.id }, focused: p.id, zoomed: false });
-    ws.active = ws.tabs.length - 1;
-    this.active = this.workspaces.indexOf(ws);
+    this.addTab(ws, p.id, name, true);
     this.layout();
     return p;
+  }
+
+  // A tab holding one pane that already exists; select: show it.
+  private addTab(ws: Workspace, paneId: string, name: string | undefined, select: boolean): Tab {
+    const tab: Tab = { id: `t${++this.seq}`, name, tree: { pane: paneId }, focused: paneId, zoomed: false };
+    ws.tabs.push(tab);
+    if (select) {
+      ws.active = ws.tabs.length - 1;
+      this.active = this.workspaces.indexOf(ws);
+    }
+    return tab;
   }
 
   split(dir: "row" | "col", o: SpawnOpts = {}, targetId = this.focusedId, focus = true): PtyPane | undefined {
@@ -138,27 +171,71 @@ export class Session {
     const p = id && this.panes.get(id);
     const loc = id && this.locate(id);
     if (!p || !loc) return;
-    const { ws, tab } = loc;
-    this.hooks.closing?.(id, tab.focused === id && tab === this.tab);
-    const rs = rects(tab.tree, this.area);
-    const next = neighbor(rs, id, "left") ?? neighbor(rs, id, "up") ?? neighbor(rs, id, "right") ?? neighbor(rs, id, "down");
+    this.hooks.closing?.(id, loc.tab.focused === id && loc.tab === this.tab);
     this.panes.delete(id);
     p.dispose();
+    this.unlink(id);
+    if (!this.workspaces.length) return this.hooks.empty();
+    this.layout();
+  }
+
+  // Take a pane out of its tab, which focuses its nearest neighbour; a tab left empty goes, then a space left empty.
+  // The pane itself is untouched: close disposes of it, move puts it somewhere else.
+  private unlink(id: string) {
+    const { ws, tab } = this.locate(id)!;
+    const rs = rects(tab.tree, this.area);
+    const next = neighbor(rs, id, "left") ?? neighbor(rs, id, "up") ?? neighbor(rs, id, "right") ?? neighbor(rs, id, "down");
     const tree = remove(tab.tree, id);
     if (tree) {
       tab.tree = tree;
       if (tab.focused === id) tab.focused = next ?? panes(tree)[0]!;
       tab.zoomed = false;
+      return;
+    }
+    const ti = ws.tabs.indexOf(tab);
+    ws.tabs.splice(ti, 1);
+    if (ws.active >= ti) ws.active = Math.max(0, ws.active - 1);
+    if (ws.tabs.length) return;
+    const wi = this.workspaces.indexOf(ws);
+    this.workspaces.splice(wi, 1);
+    if (this.active >= wi) this.active = Math.max(0, this.active - 1);
+  }
+
+  // Move a pane, process and all. Refused, before anything changes, where it would go nowhere. What it leaves empty
+  // closes, the tab it lands in is unzoomed, and the view stays where it is unless `focus`.
+  move(id: string, to: MoveTo, focus = false): { ws: Workspace; tab: Tab } {
+    const from = this.placeOf(id);
+    const alone = panes(from.tab.tree).length === 1;
+    if ("beside" in to && to.beside === id) throw new Error(`can't move ${id} beside itself`);
+    if ("beside" in to) this.placeOf(to.beside);
+    if ("newTab" in to && alone && to.newTab === from.ws) throw new Error(`${id} is already alone in its tab`);
+    if ("newSpace" in to && alone && from.ws.tabs.length === 1) throw new Error(`${id} is already alone in its space`);
+    this.unlink(id);
+    let dest: { ws: Workspace; tab: Tab };
+    if ("beside" in to) {
+      dest = this.locate(to.beside)!;
+      dest.tab.tree = split(dest.tab.tree, to.beside, to.dir, id, 1 - to.share);
+      dest.tab.zoomed = false;
     } else {
-      const ti = ws.tabs.indexOf(tab);
-      ws.tabs.splice(ti, 1);
-      if (ws.active >= ti) ws.active = Math.max(0, ws.active - 1);
-      if (!ws.tabs.length) {
-        const wi = this.workspaces.indexOf(ws);
-        this.workspaces.splice(wi, 1);
-        if (this.active >= wi) this.active = Math.max(0, this.active - 1);
-        if (!this.workspaces.length) return this.hooks.empty();
-      }
+      const ws = "newTab" in to ? to.newTab : this.addWorkspace(to.newSpace.name, to.newSpace.cwd);
+      dest = { ws, tab: this.addTab(ws, id, "newTab" in to ? to.name : undefined, false) };
+    }
+    if (focus) this.focusPane(id);
+    else this.layout();
+    return dest;
+  }
+
+  // Two panes trade places, in one tab or across tabs; the tree keeps its shape and ratios. Each tab keeps focus on its
+  // pane if it's still there, and otherwise gives it to the pane that took its place.
+  swap(a: string, b: string) {
+    const la = this.placeOf(a), lb = this.placeOf(b);
+    if (a === b) throw new Error(`can't swap ${a} with itself`);
+    const na = leaf(la.tab.tree, a)!, nb = leaf(lb.tab.tree, b)!;
+    na.pane = b;
+    nb.pane = a;
+    if (la.tab !== lb.tab) {
+      if (la.tab.focused === a) la.tab.focused = b;
+      if (lb.tab.focused === b) lb.tab.focused = a;
     }
     this.layout();
   }
@@ -179,18 +256,35 @@ export class Session {
     this.layout();
   }
 
-  focusDir(dir: Dir) {
-    const next = neighbor(rects(this.tab.tree, this.area), this.tab.focused, dir);
+  // Focus the pane on that side of `from`; returns it, or undefined when there's none.
+  focusDir(dir: Dir, from = this.focusedId) {
+    const next = from && this.neighborOf(from, dir);
     if (next) this.focusPane(next);
+    return next;
   }
 
-  zoom() {
-    this.tab.zoomed = !this.tab.zoomed;
+  // A zoomed tab shows only its focused pane, so zooming a pane focuses it in its tab (the view stays where it is).
+  // Returns whether its tab is zoomed now.
+  zoom(id = this.focusedId, mode: "on" | "off" | "toggle" = "toggle") {
+    const tab = id && this.locate(id)?.tab;
+    if (!tab) return false;
+    const on = mode === "toggle" ? !(tab.zoomed && tab.focused === id) : mode === "on";
+    if (on) tab.focused = id!;
+    tab.zoomed = on;
     this.layout();
+    return on;
   }
 
-  resizePane(dir: Dir, cells = 2) {
-    if (resize(this.tab.tree, this.area, this.tab.focused, dir, cells)) this.layout();
+  // Move the divider on the pane's `dir` side; returns whether the pane's size changed (not when there's no divider
+  // there, or it's as far as it goes).
+  resizePane(dir: Dir, cells = 2, id = this.focusedId) {
+    const tab = id && this.locate(id)?.tab;
+    if (!tab) return false;
+    const was = rects(tab.tree, this.area).get(id!)!;
+    if (!resize(tab.tree, this.area, id!, dir, cells)) return false;
+    this.layout();
+    const now = rects(tab.tree, this.area).get(id!)!;
+    return now.w !== was.w || now.h !== was.h;
   }
 
   dragStart(key: unknown, x: number, y: number) {
@@ -243,6 +337,13 @@ export class Session {
     const i = typeof ref === "number" ? ref : this.workspaces.findIndex((w) => w.id === ref || w.name === ref);
     if (i < 0 || i >= this.workspaces.length) throw new Error(`no such space: ${ref}`);
     return i;
+  }
+  // A tab by id, or by name (in the active space first).
+  findTab(ref: string): { ws: Workspace; tab: Tab } {
+    const all = [this.ws, ...this.workspaces.filter((w) => w !== this.ws)].flatMap((ws) => ws.tabs.map((tab) => ({ ws, tab })));
+    const found = all.find((x) => x.tab.id === ref) ?? all.find((x) => x.tab.name === ref);
+    if (!found) throw new Error(`no such tab: ${ref}`);
+    return found;
   }
   renamePane(id: string, name: string) {
     const p = this.panes.get(id);

@@ -12,7 +12,15 @@ panes (from inside a pane, targets default to the calling pane)
   modisa pane run <target> <command…>
   modisa pane read [target] [--lines 50] [--json]
   modisa pane keys <target> <key…>          keys: text, Enter, C-c, M-x, Up, Escape…
-  modisa pane close [target] | rename [target] <name> | focus <target>
+  modisa pane close [target] | rename [target] <name>
+  modisa pane focus [target] [--direction left|right|up|down]   with a direction: the pane on that side of it
+  modisa pane move [target] --tab t [--target p] | --target p | --new-tab [--workspace w] | --new-workspace
+                   [--name n] [--split right|down] [--ratio 0.5] [--focus] [--json]
+                                            beside a pane (else the tab's focused one), or alone in a new tab or space
+                                              (--name names it); emptied tabs and spaces close; --focus follows it
+  modisa pane swap [target] <other> | swap [target] --direction d   trade places, in a tab or across tabs
+  modisa pane resize [target] --direction d [--amount 2]   move the border on that side (prints changed or unchanged)
+  modisa pane zoom [target] [--on|--off|--toggle]   show it alone in its tab (toggle by default)
 
 agents
   modisa agent spawn <harness> [--name n] [--prompt text] [--down] [--tab]
@@ -55,7 +63,10 @@ setup
   modisa debug detect <target>
 
 targets: pane id (p3), @name or name; p3:1a2b3c4d (from a message's reply hint) reaches only that pane: it survives a
-  rename, but fails once the pane closes or the server restarts
+  rename, but fails once the pane closes or the server restarts. Outside a pane, split, focus, move, swap, resize and
+  zoom default to the focused pane. Tabs: id or name
+
+pane split, agent spawn, tab create and workspace create print the new pane's id; with --json, the whole pane
 
 exit status: 0 ok, 1 failed, 2 usage, 3 server unreachable, 124 wait timed out; wait --exited exits with the pane's code
   (so a child's own 1/2/3/124 looks the same: with --json its result is on stdout, modisa's error on stderr)

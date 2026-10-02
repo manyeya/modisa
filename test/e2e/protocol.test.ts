@@ -105,6 +105,9 @@ test("replies match the published result schemas, and errors the error schema", 
   await check("wait", { target: "@fake", state: "idle", timeout: 5 });
   await check("wait", { target: "@job", match: "out" });
   await check("send", { to: "@fake", body: "a result check" });
+  await check("pane.resize", { target: "@job", dir: "left" });
+  await check("pane.zoom", { target: "@job", mode: "off" });
+  await check("pane.move", { target: "@job", newTab: true });
   conn.close();
 
   for (const [request, code] of [

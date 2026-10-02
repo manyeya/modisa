@@ -53,6 +53,7 @@ export async function runServer(session: string) {
   ctx.pluginUi = plugins.uiView;
   ctx.paneExited = plugins.paneExited;
   ctx.paneClosing = plugins.paneClosing;
+  ctx.movable = plugins.movable;
   const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods });
 
   // ---------- socket ----------

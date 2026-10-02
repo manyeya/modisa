@@ -1,5 +1,5 @@
 // The CLI agents use: split a command pane, wait for it, read it, send keys, close it; bad params
-// are rejected by the API schema.
+// are rejected by the API schema; creating commands print an id, or the whole pane with --json.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { Screen, sandbox, borders } from "../support/harness";
 
@@ -33,4 +33,16 @@ test("split a command pane, wait for it, read it, send keys, close it", async ()
 
 test("the API validates params with zod", async () => {
   expect(await cli("wait", "@nope", "--state", "sleepy")).toContain("invalid params");
+});
+
+test("pane read --screen <target> reads that pane", async () => {
+  const id = await cli("pane", "split", "echo on-screen; sleep 30");
+  await cli("wait", id, "--match", "on-screen", "--timeout", "10");
+  expect(await cli("pane", "read", "--screen", id)).toContain("on-screen");
+});
+
+test("creating commands print the new pane's id, or the whole pane with --json", async () => {
+  expect(await cli("pane", "split", "true")).toMatch(/^p\d+$/);
+  for (const args of [["pane", "split", "true"], ["agent", "spawn", "true"], ["tab", "create"], ["workspace", "create", "made"]])
+    expect(JSON.parse(await cli(...args, "--json"))).toMatchObject({ id: expect.stringMatching(/^p\d+$/), instance: expect.any(String), cwd: expect.any(String) });
 });

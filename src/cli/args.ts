@@ -1,7 +1,10 @@
 // Command-line argument parsing: positionals, --flags (valued or boolean), and -s <session>.
 export type Args = { _: string[]; flags: Record<string, string | boolean> };
 
-const BOOLEAN = new Set(["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes"]);
+const BOOLEAN = new Set(["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes", "screen", "new-tab", "new-workspace", "on", "off", "toggle"]);
+// Flags that take a value in one command though they're switches elsewhere: `agent spawn --tab` opens a tab, while
+// `pane move --tab t` names one.
+const VALUED: Record<string, string[]> = { "pane move": ["tab"] };
 
 export function parseArgs(argv: string[]): Args {
   const a: Args = { _: [], flags: {} };
@@ -9,9 +12,12 @@ export function parseArgs(argv: string[]): Args {
     const x = argv[i]!;
     if (x === "--") (a._.push(...argv.slice(i + 1)), (i = argv.length));
     else if (x.startsWith("--")) {
-      const [k, v] = x.slice(2).split("=", 2) as [string, string | undefined];
-      if (v !== undefined) a.flags[k] = v;
-      else if (BOOLEAN.has(k) || i + 1 >= argv.length || argv[i + 1]!.startsWith("--")) a.flags[k] = true;
+      const eq = x.indexOf("="); // the first one: --match=a=b matches a=b
+      const k = eq < 0 ? x.slice(2) : x.slice(2, eq);
+      const boolean = BOOLEAN.has(k) && !VALUED[a._.slice(0, 2).join(" ")]?.includes(k);
+      const bare = i + 1 >= argv.length || argv[i + 1]!.startsWith("--"); // no value follows
+      if (eq >= 0) a.flags[k] = x.slice(eq + 1);
+      else if (boolean || bare) a.flags[k] = true;
       else a.flags[k] = argv[++i]!;
     } else if (x === "-s") a.flags.session = argv[++i]!;
     else a._.push(x);
