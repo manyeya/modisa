@@ -583,5 +583,11 @@ export function createPluginHost(ctx: ServerContext) {
   // an overlay stays over its origin: it isn't moved or swapped away
   const movable = (id: string) => !overlays.has(id);
 
-  return { methods, start, stop, disconnected, uiView, paneExited, paneClosing, movable };
+  // unlinked through the plugin manager: out of this session's list, once nothing of it runs
+  const forget = (name: string) => {
+    const pl = plugins.get(name);
+    if (pl?.source === "linked" && !pl.run?.group.alive() && !pl.starting) plugins.delete(name);
+  };
+
+  return { methods, start, stop, disconnected, uiView, paneExited, paneClosing, movable, forget };
 }

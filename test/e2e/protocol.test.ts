@@ -54,7 +54,7 @@ const matches = (schema: z.ZodType, value: unknown, what: string) => {
 
 beforeAll(async () => {
   await installFakeAgent(sb.root);
-  await startServer(sb, S);
+  await startServer(sb, S, { MODISA_PLUGIN_INDEX: "off" }); // the catalog never reaches GitHub
 }, 20000);
 
 afterAll(async () => {
@@ -117,6 +117,9 @@ test("replies match the published result schemas, and errors the error schema", 
   await check("tab.create", { command: "true" });
   await check("workspace.create", { name: "checked", command: "true" });
   await check("notify", { title: "checked", body: "a result check", tone: "done" });
+  await check("plugin.catalog", { query: "x" }); // the index off: its error, and no marketplaces
+  await check("marketplace.list");
+  await check("marketplace.update");
   await check("pane.attach", { target: "p1", mode: "observe", cols: 80, rows: 24 }); // last: the connection now watches p1
   conn.close();
 
@@ -125,6 +128,9 @@ test("replies match the published result schemas, and errors the error schema", 
     [{ method: "pane.read", params: { lines: -1 } }, "invalid_params"],
     [{ method: "pane.split", params: { env: { MODISA_PANE_ID: "p9" } } }, "invalid_params"],
     [{ method: "no.such.method", params: {} }, "unknown_method"],
+    [{ method: "plugin.unlink", params: { name: "nothing" } }, "no_such_plugin"],
+    [{ method: "plugin.install", params: { source: "file:///x", marketplacePlugin: "a@b" } }, "invalid_params"],
+    [{ method: "plugin.install", params: { source: "file:///x", caller: "p1" } }, "error"], // only the user
   ] as const) {
     const reply = await raw({ jsonrpc: "2.0", id: 7, ...request });
     matches(errorReply, reply.error, `the error for ${request.method}`);

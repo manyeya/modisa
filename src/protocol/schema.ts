@@ -255,6 +255,24 @@ export const results = {
   "plugin.list": z.array(pluginStatus),
   notify: z.strictObject({ clients: z.number().int().nonnegative() }), // the TUI clients it reached: 0 when none is attached
   "plugin.hello": z.strictObject({ name: z.string(), protocol: z.number().int(), session: z.string(), epoch: z.string() }),
+  // the plugin manager, on the server's machine
+  "plugin.install": pluginInstall,
+  "plugin.update": pluginUpdate,
+  "plugin.unlink": pluginUnlink,
+  // source: what install fetches (for a plugin inside a marketplace, its checkout here); from: where the code comes
+  // from, as you'd know it. commit: what the ref is at now (null: an abbreviated commit, only known once fetched)
+  "plugin.resolve": z.strictObject({ name: z.string().optional(), marketplace: z.string().optional(), source: z.string(), from: z.string(), ref: z.string().nullable(), subdir: z.string().nullable(), commit: z.string().nullable() }),
+  "plugin.logs": z.strictObject({ name: z.string(), log: z.string(), text: z.string() }), // text: its last lines, control characters removed
+  // the index's plugins (error: it couldn't be read) and every marketplace's; installed: here already
+  "plugin.catalog": z.strictObject({
+    query: z.string(),
+    index: z.strictObject({ total: z.number().int().nonnegative(), results: z.array(z.strictObject({ ...found, source: z.string(), installed: z.boolean() })), error: z.string().optional() }),
+    marketplaces: z.array(listedPlugin),
+  }),
+  "marketplace.list": marketplaceResults.list,
+  "marketplace.add": marketplaceResults.add,
+  "marketplace.update": marketplaceResults.update,
+  "marketplace.remove": marketplaceResults.remove,
 };
 // What a pane.attach connection is sent, as notifications (not events): the pane's output, base64, from right after the
 // reply's replay (output that switches screens comes as the screen it switched to, redrawn: the terminal showing it
@@ -309,6 +327,11 @@ export const cliResults = {
     problems: z.array(z.strictObject({ level: z.enum(["error", "warning"]), key: z.string().optional(), message: z.string(), line: z.number().int().positive().optional(), column: z.number().int().positive().optional() })),
   }),
 };
+
+// plugin.resolve and plugin.install: a git URL, or a marketplace entry, which has its own ref and subdir
+const installFrom = { caller, source: z.string().min(1).optional(), marketplacePlugin: z.string().min(1).optional(), ref: z.string().min(1).optional(), subdir: z.string().min(1).optional() };
+const oneSource = (p: { source?: string; marketplacePlugin?: string; ref?: string; subdir?: string }) => (p.source === undefined) !== (p.marketplacePlugin === undefined) && !(p.marketplacePlugin && (p.ref || p.subdir));
+const ONE_SOURCE = "exactly one of source (with ref and subdir if needed) or marketplacePlugin (whose entry has its own)";
 
 export const api = {
   list: z.object({ caller }),
@@ -398,6 +421,21 @@ export const api = {
   "debug.detect": z.object({ caller, target: target.optional() }), // also the pane's process: see cliResults "pane process-info"
   integrations: z.object({ caller }),
   integration: z.object({ caller, id: z.string().min(1), install: z.boolean() }),
+  // The plugin manager, acting on the server's machine (a --remote TUI manages the plugins where they run). Only the
+  // user's: refused with a caller (an agent in a pane) or on a plugin's bound connection, since it fetches and runs code.
+  // A plugin is a git URL (`source`, with a ref and a subdir) or a marketplace's entry (`marketplacePlugin`,
+  // name@marketplace, whose entry says where it comes from).
+  "plugin.resolve": z.object(installFrom).refine(oneSource, ONE_SOURCE),
+  // commit: the one the user was shown (plugin.resolve); the install fails, leaving nothing, if the ref has moved since
+  "plugin.install": z.object({ ...installFrom, commit: z.string().regex(/^[0-9a-f]{40}$/, "a full commit id").optional() }).refine(oneSource, ONE_SOURCE),
+  "plugin.update": z.object({ caller, name: z.string().min(1) }),
+  "plugin.unlink": z.object({ caller, name: z.string().min(1) }),
+  "plugin.logs": z.object({ caller, name: z.string().min(1), lines: z.number().int().positive().max(10_000).default(200) }),
+  "plugin.catalog": z.object({ caller, query: z.string().optional() }), // words the index and the marketplaces' plugins match
+  "marketplace.list": z.object({ caller }),
+  "marketplace.add": z.object({ caller, source: z.string().min(1), ref: z.string().min(1).optional() }), // owner/repo (GitHub) or a git URL
+  "marketplace.update": z.object({ caller, name: z.string().min(1).optional() }), // none: every one
+  "marketplace.remove": z.object({ caller, name: z.string().min(1) }),
   kill: z.object({ caller }),
   restart: z.object({ caller }),
 } as const;

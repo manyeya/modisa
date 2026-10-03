@@ -12,6 +12,7 @@ import { installPermissions } from "./permissions";
 import { startMonitor } from "./agents/monitor";
 import { startGit } from "./git";
 import { createPluginHost } from "./plugins";
+import { pluginManager } from "./plugin-manager";
 import { createAttach } from "./attach";
 import { createDispatcher } from "./rpc/dispatch";
 import { clientMethods } from "./rpc/client";
@@ -56,7 +57,7 @@ export async function runServer(session: string) {
   ctx.paneExited = (p) => (plugins.paneExited(p), attach.paneExited(p));
   ctx.paneClosing = (id, focused) => (plugins.paneClosing(id, focused), attach.paneClosing(id));
   ctx.movable = plugins.movable;
-  const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods, ...attach.methods });
+  const dispatch = createDispatcher({ ...clientMethods(ctx), ...apiMethods(ctx), ...plugins.methods, ...pluginManager(ctx, plugins), ...attach.methods });
 
   // ---------- socket ----------
   await Bun.file(sock).delete().catch(() => {});
