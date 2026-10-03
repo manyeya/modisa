@@ -17,8 +17,9 @@ export const writeInstall = (record: InstallRecord) => Bun.write(`${MANAGED_DIR}
 export const withoutCredentials = (url: string) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1");
 
 // Paths checked by where they really are: a checkout's files (plugin.json, a subdir, a marketplace's source) must be
-// inside it, not reached through .. or a symlink out. real() is "" for a path that doesn't exist.
-export const real = async (path: string) => (await Bun.$`realpath ${path}`.quiet().nothrow().text()).trim();
+// inside it, not reached through .. or a symlink out. real() is "" for a path that doesn't exist (GNU realpath
+// resolves a missing last component, BSD's fails, so ask first).
+export const real = async (path: string) => (await Bun.$`test -e ${path} && realpath ${path}`.quiet().nothrow().text()).trim();
 export const inside = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 export const isDir = async (path: string) => (await Bun.$`test -d ${path}`.quiet().nothrow()).exitCode === 0;
 export type Linked = { name: string; dir: string; manifest?: PluginManifest; error?: string };
