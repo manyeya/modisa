@@ -14,6 +14,7 @@ import { fit } from "./design";
 import { list, pick } from "./modals/pick";
 import { prompt } from "./modals/prompt";
 import { openSettings } from "./modals/settings";
+import { openPlugins } from "./modals/plugins";
 import { reload } from "./notify";
 import { quit } from "./connection";
 import { render } from "./render";
@@ -175,6 +176,7 @@ export function createActions(app: App): Record<ActionId, Action> {
       },
     },
     settings: { label: "Settings", run: () => openSettings(app) },
+    plugins: { label: "Plugins…", run: () => openPlugins(app) },
     "edit-config": {
       label: "Edit config.toml",
       run: async () => app.call("newTab", { name: "settings", command: `${Bun.env.EDITOR || "vi"} ${await ensureConfigFile()}`, ephemeral: true }),

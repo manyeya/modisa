@@ -8,7 +8,7 @@ export const ACTION_IDS = [
   "split-right", "split-down", "focus-left", "focus-right", "focus-up", "focus-down",
   "resize-left", "resize-right", "resize-up", "resize-down", "zoom", "close-pane", "close-tab",
   "new-tab", "next-tab", "prev-tab", "workspace-picker", "new-workspace", "new-agent", "toggle-sidebar",
-  "copy-mode", "search", "palette", "settings", "edit-config", "reload-config", "update-modisa", "restart-server",
+  "copy-mode", "search", "palette", "settings", "plugins", "edit-config", "reload-config", "update-modisa", "restart-server",
   "toggle-messaging", "message-log", "send-message", "rename-tab", "rename-pane", "rename-workspace", "delete-workspace",
   "detach", "agent-1", "agent-2", "agent-3", "agent-4", "agent-5", "agent-6", "agent-7", "agent-8", "agent-9",
 ] as const;
@@ -29,7 +29,7 @@ export const DEFAULT_KEYS: Bindings = {
   o: "pane-picker", e: "pane-menu", "?": "help",
   t: "theme-picker",
   "[": "copy-mode", "/": "search", ":": "palette",
-  s: "settings", R: "reload-config",
+  s: "settings", R: "reload-config", P: "plugins",
   m: "toggle-messaging", i: "message-log", M: "send-message",
   ",": "rename-tab", ".": "rename-pane", $: "rename-workspace", "&": "delete-workspace",
   d: "detach",

@@ -4,10 +4,11 @@
 import { saveSetting, type BorderStyle, type IndicatorStyle, type NotifyKind, type Policy } from "../../config/config";
 import { THEMES } from "../../config/themes";
 import { VERSION } from "../../core/version";
-import type { IntegrationStatus, NotifyEvent } from "../../protocol/types";
+import type { IntegrationStatus, NotifyEvent, PluginStatus } from "../../protocol/types";
 import { INDICATORS, type App } from "../context";
 import { setupLogos } from "../logos";
 import { pluginUi } from "../plugin-ui";
+import { openPlugins } from "./plugins";
 import { render } from "../render";
 import { playSound } from "../sound/player";
 import { SOUNDS } from "../sound/recipes";
@@ -277,6 +278,46 @@ function integrations(app: App, repaint: () => void): Section {
   };
 }
 
+// The plugins on the server's machine, where they run: each one's state, and ↵ starts or stops it. The plugin manager
+// (prefix P) finds, installs, updates and removes them.
+function plugins(app: App, repaint: () => void): Section {
+  let list: PluginStatus[] | undefined;
+  let busy = "";
+  const load = () => app.conn.request("plugin.list", {}).then((l: PluginStatus[]) => { list = l; repaint(); }, (e: any) => app.toast(e.message ?? String(e), app.th.blocked));
+  const toggle = async (p: PluginStatus) => {
+    busy = p.name;
+    repaint();
+    try {
+      const s: PluginStatus = await app.conn.request(p.status === "running" ? "plugin.stop" : "plugin.start", { name: p.name });
+      app.toast(`${p.name}: ${s.status}${s.error ? ` (${s.error})` : ""}`, s.status === "failed" ? app.th.blocked : app.th.done);
+    } catch (e: any) { app.toast(e.message ?? String(e), app.th.blocked); }
+    busy = "";
+    await load();
+  };
+  const open = (label: string, view: Parameters<typeof openPlugins>[1], about: string): Row => ({ kind: "action", label, status: "", tone: "dim", hint: "↵ open", about, run: () => void openPlugins(app, view) });
+  return {
+    name: "plugins",
+    enter: () => { void load(); },
+    rows: () => [
+      { kind: "heading", label: "plugin manager" },
+      open("discover", "discover", "Plugins in the index and in your marketplaces; choosing one shows where it comes from before it installs (prefix P)"),
+      open("installed", "installed", "Start, stop, restart, read the log of, update and remove installed plugins"),
+      open("marketplaces", "marketplaces", "Git repositories that list plugins: modisa-marketplace.json at the top"),
+      open("add from URL", "url", "Install a plugin from a git URL, at a branch, tag or commit"),
+      { kind: "heading", label: list ? (list.length ? "installed" : "installed: none yet") : "checking…" },
+      ...(list ?? []).map((p): Row => ({
+        kind: "action", label: p.name,
+        status: busy === p.name ? "working…" : p.status === "running" ? `● running` : p.status === "failed" ? "✕ failed" : `○ ${p.status}`,
+        tone: p.status === "running" ? "ok" : p.status === "failed" ? "warn" : "dim",
+        note: p.install ? `@${p.install.commit.slice(0, 7)}` : p.source === "config" ? "config.toml" : "linked",
+        hint: p.status === "running" ? "↵ stop" : "↵ start",
+        about: p.error ?? (p.install ? `From ${p.install.source}${p.install.ref ? ` (${p.install.ref})` : ""}` : p.dir ? `Linked from ${p.dir}` : "A [[plugin]] run line in config.toml"),
+        run: () => { if (!busy) void toggle(p); },
+      })),
+    ],
+  };
+}
+
 export function sections(app: App, repaint: () => void): Section[] {
-  return [theme(app), general(app), layout(app), git(app), indicators(app), sound(app), alerts(app), agents(app), integrations(app, repaint)];
+  return [theme(app), general(app), layout(app), git(app), indicators(app), sound(app), alerts(app), agents(app), integrations(app, repaint), plugins(app, repaint)];
 }

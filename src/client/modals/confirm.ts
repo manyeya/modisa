@@ -6,9 +6,9 @@ import { blank, button, clear, frame, frameLayouts, header, innerWidth, open, ro
 
 export type Choice<T> = { label: string; key: string; value: T; tone?: "danger" | "primary" };
 
-export function ask<T>(app: App, title: string, body: string, choices: Choice<T>[], start = 0): Promise<T | null> {
+export function ask<T>(app: App, title: string, body: string, choices: Choice<T>[], start = 0, width = 60): Promise<T | null> {
   const lines = body.split("\n");
-  const box = frame(app, lines.length + 6, 60);
+  const box = frame(app, lines.length + 6, width);
   const place = frameLayouts.get(box)!;
   let sel = start;
   let answer: (v: T | null) => void = () => {};

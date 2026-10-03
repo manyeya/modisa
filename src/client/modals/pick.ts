@@ -17,6 +17,7 @@ export type ListOptions = {
   placeholder?: string;
   width?: number;
   rows?: number; // at most this many at a time
+  selected?: number; // the item selected at first (a log: its last line)
   at?: { x: number; y: number }; // a menu: placed here, and each item's key chooses it while nothing's typed
 };
 
@@ -26,7 +27,7 @@ export function list(app: App, o: ListOptions): Promise<string | null> {
   const box = frame(app, height, o.width ?? 72, o.at?.x, o.at?.y);
   let query = "";
   let shown = o.items;
-  let sel = 0;
+  let sel = Math.max(0, Math.min(o.selected ?? 0, o.items.length - 1));
   let first = 0;
   let choose: (v: string | null) => void = () => {};
   const moved = pointerMoved();
