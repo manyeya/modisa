@@ -21,7 +21,7 @@ function print(x: unknown, json: boolean) {
   console.log(JSON.stringify(x, null, 2));
 }
 
-function table(rows: Record<string, unknown>[], cols: string[]) {
+export function table(rows: Record<string, unknown>[], cols: string[]) {
   if (!rows.length) return console.log("(none)");
   const cells = rows.map((r) => cols.map((c) => String(r[c] ?? "")));
   const w = cols.map((c, i) => Math.max(c.length, ...cells.map((r) => r[i]!.length)));

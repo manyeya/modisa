@@ -1,5 +1,6 @@
-// How `modisa plugin install` runs git: which URLs it takes, which transports git may use, and the environment and
-// settings every installer git call gets. No imports, so tests can check the policy without loading the CLI.
+// How `modisa plugin install` (and update, and marketplaces) runs git: which URLs it takes, which transports git may
+// use, and the environment and settings every installer git call gets. No imports, so tests can check the policy
+// without loading the CLI.
 
 // The git transports install uses. Anything else, a remote helper above all (ext::, fd::, <helper>::), could run a
 // program while cloning, before the plugin is checked.
@@ -39,3 +40,54 @@ export function gitEnv(env: Record<string, string | undefined>) {
 // Settings on every installer git call: ext refused outright, and no hooks, fsmonitor or submodules. It isn't a
 // sandbox: ssh and credential helpers still run as the user's own git would run them.
 export const SAFE_GIT = ["-c", "protocol.ext.allow=never", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false"];
+
+// Every installer git call (plugins and marketplaces): argv values only (never a shell), with the environment and
+// settings above. Async, so a slow clone in the server never holds up its other requests.
+export async function git(args: string[], cwd?: string) {
+  const p = Bun.spawn(["git", ...SAFE_GIT, ...args], { cwd, env: gitEnv(Bun.env), stdout: "pipe", stderr: "pipe" });
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  return { code: await p.exited, out: out.trim(), err: err.trim() };
+}
+
+// A fresh clone at `cwd` moved to `ref` (a tag, a branch or a commit), detached; no ref: the default branch it cloned.
+export async function checkoutRef(cwd: string, ref: string | null, source: string): Promise<{ commit?: string; reason?: string }> {
+  if (!ref) return { commit: (await git(["rev-parse", "HEAD"], cwd)).out };
+  if (ref.startsWith("-")) return { reason: `not a ref: ${ref}` };
+  const resolve = async (name: string) => (await git(["rev-parse", "--verify", "--quiet", `${name}^{commit}`], cwd)).out;
+  const resolved = (await resolve(ref)) || (await resolve(`origin/${ref}`));
+  if (!resolved) return { reason: `no branch, tag or commit ${ref} in ${source}` };
+  const switched = await git(["checkout", "--quiet", "--detach", resolved], cwd);
+  if (switched.code !== 0) return { reason: switched.err || `couldn't check out ${ref}` };
+  return { commit: resolved };
+}
+
+// The commit `ref` is at now in `source` (no ref: the source's HEAD), fetched into the checkout at `cwd`: a branch's
+// latest, a tag (moved or not), or a commit. The URL is given, never read from the checkout's own config.
+export async function fetchLatest(cwd: string, source: string, ref: string | null): Promise<{ commit?: string; reason?: string }> {
+  const problem = sourceProblem(source);
+  if (problem) return { reason: problem };
+  const fetched = ref
+    ? await git(["fetch", "--quiet", "--force", "--tags", "--", source, "+refs/heads/*:refs/remotes/origin/*"], cwd)
+    : await git(["fetch", "--quiet", "--", source, "HEAD"], cwd);
+  if (fetched.code !== 0) return { reason: fetched.err || "git fetch failed" };
+  for (const name of ref ? [`refs/remotes/origin/${ref}`, `refs/tags/${ref}`, ref] : ["FETCH_HEAD"]) {
+    const commit = (await git(["rev-parse", "--verify", "--quiet", `${name}^{commit}`], cwd)).out;
+    if (commit) return { commit };
+  }
+  return { reason: `no branch, tag or commit ${ref} in ${source}` };
+}
+
+// The commit `ref` (no ref: HEAD) is at in `source` now, read with ls-remote: nothing is fetched or written. null:
+// an abbreviated commit, which only a fetch can tell.
+export async function remoteCommit(source: string, ref: string | null): Promise<{ commit?: string | null; reason?: string }> {
+  const problem = sourceProblem(source);
+  if (problem) return { reason: problem };
+  if (ref && /^[0-9a-f]{40}$/.test(ref)) return { commit: ref };
+  const names = ref ? [`refs/tags/${ref}^{}`, `refs/tags/${ref}`, `refs/heads/${ref}`] : ["HEAD"];
+  const listed = await git(["ls-remote", "--", source, ...names]);
+  if (listed.code !== 0) return { reason: listed.err || "git ls-remote failed" };
+  const refs = new Map(listed.out.split("\n").map((l) => l.split("\t")).map(([sha, name]) => [name, sha]));
+  const commit = names.map((n) => refs.get(n)).find(Boolean);
+  if (commit) return { commit };
+  return ref && /^[0-9a-f]{4,39}$/.test(ref) ? { commit: null } : { reason: `no branch or tag ${ref ?? "HEAD"} in ${source}` };
+}

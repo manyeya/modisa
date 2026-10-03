@@ -8,12 +8,19 @@ export const PLUGINS_DIR = `${CONFIG_DIR}/plugins`;
 export const MANAGED_DIR = `${DIR}/plugins-src`;
 
 // Written by `plugin install` next to (not inside) the checkout. It's the only thing that makes a checkout modisa's
-// to delete: a manifest or a path can't claim that.
-export type InstallRecord = { name: string; source: string; ref: string | null; commit: string; checkout: string; dir: string; subdir: string | null; installedAt: string };
+// to delete: a manifest or a path can't claim that. marketplace: installed as <name>@<marketplace>.
+export type InstallRecord = { name: string; source: string; ref: string | null; commit: string; checkout: string; dir: string; subdir: string | null; installedAt: string; updatedAt?: string; marketplace?: string };
 export const readInstall = (name: string): Promise<InstallRecord | undefined> => Bun.file(`${MANAGED_DIR}/${name}/install.json`).json().catch(() => undefined);
+export const writeInstall = (record: InstallRecord) => Bun.write(`${MANAGED_DIR}/${record.name}/install.json`, JSON.stringify(record, null, 2) + "\n");
 
 // user:password@ or token@ in a URL is never recorded or shown
 export const withoutCredentials = (url: string) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1");
+
+// Paths checked by where they really are: a checkout's files (plugin.json, a subdir, a marketplace's source) must be
+// inside it, not reached through .. or a symlink out. real() is "" for a path that doesn't exist.
+export const real = async (path: string) => (await Bun.$`realpath ${path}`.quiet().nothrow().text()).trim();
+export const inside = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+export const isDir = async (path: string) => (await Bun.$`test -d ${path}`.quiet().nothrow()).exitCode === 0;
 export type Linked = { name: string; dir: string; manifest?: PluginManifest; error?: string };
 
 // plugin.json, validated; an error that says what to fix otherwise
@@ -43,4 +50,10 @@ export async function linkedPlugins(): Promise<Linked[]> {
       return { name, dir, manifest, error };
     }),
   );
+}
+
+// The install record of each linked plugin `plugin install` fetched (the link is the one it made)
+export async function installs(): Promise<InstallRecord[]> {
+  const records = await Promise.all((await linkedPlugins()).map((l) => readInstall(l.name).then((r) => (r?.dir === l.dir ? r : undefined))));
+  return records.filter((r): r is InstallRecord => !!r);
 }

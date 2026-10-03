@@ -137,7 +137,7 @@ const pluginStatus = z.strictObject({
   name: z.string(), source: z.enum(["linked", "config"]), dir: z.string().optional(), status: z.enum(["starting", "running", "exited", "failed", "stopped"]),
   pid: z.number().int().optional(), exitCode: z.number().int().optional(), signal: z.string().optional(), error: z.string().optional(), log: z.string(),
   connected: z.boolean(), actions: z.array(z.string()), group: z.enum(["running", "gone"]).optional(), invocations: z.number().int().optional(),
-  install: z.strictObject({ source: z.string(), ref: z.string().nullable(), commit: z.string() }).optional(),
+  install: z.strictObject({ source: z.string(), ref: z.string().nullable(), commit: z.string(), marketplace: z.string().optional() }).optional(),
 });
 const tone = z.enum(["fg", "dim", "accent", "warn", "working", "blocked", "done", "idle"]);
 const span = z.union([z.strictObject({ text: z.string(), tone: tone.optional(), bold: z.boolean().optional() }), z.strictObject({ icon: z.string() })]);
@@ -153,6 +153,79 @@ export const pluginUiView = z.strictObject({
   panes: z.array(z.strictObject({ id: z.string(), title: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]) })),
   links: z.array(z.strictObject({ pattern: z.string().optional(), regex: z.string().optional(), action: z.string() })),
 });
+// ---------- managing plugins: what the CLI prints (cliResults) and the server answers (results) ----------
+// Starting a plugin in the one session a command reaches: started (and connected), already running, not started (no
+// session running), failed (it didn't start, or exited), or no-hello (started, but never connected in time).
+export const pluginStart = z.strictObject({
+  session: z.string(),
+  state: z.enum(["started", "already-running", "not-started", "failed", "no-hello"]),
+  reason: z.string().optional(),
+  pid: z.number().int().optional(),
+  log: z.string().optional(),
+  disabledKeys: z.array(z.string()).optional(), // "<key>: <why>"
+});
+// installed: the checkout, record and link are in place (then `start` says whether it started). Not installed:
+// `stage` and `reason` say where it failed, and nothing was left behind.
+export const pluginInstall = z.strictObject({
+  installed: z.boolean(),
+  alreadyInstalled: z.boolean().optional(),
+  name: z.string().optional(),
+  source: z.string(), // without credentials
+  ref: z.string().nullable(), // as requested; null: the default branch
+  commit: z.string().optional(), // what the ref resolved to
+  checkout: z.string().optional(),
+  dir: z.string().optional(), // the plugin's directory (the checkout, or --subdir inside it)
+  start: pluginStart.optional(),
+  hints: z.array(z.string()).optional(),
+  stage: z.enum(["source", "git", "clone", "ref", "subdir", "manifest", "collision", "marketplace"]).optional(),
+  reason: z.string().optional(),
+  marketplace: z.string().optional(), // installed as <name>@<marketplace>
+});
+// managed: installed with `plugin install` (stopped in every reachable session; its checkout deleted only if none
+// still runs it). Otherwise a directory you linked: stopped in the session reached, and never deleted.
+export const pluginUnlink = z.strictObject({
+  name: z.string(),
+  unlinked: z.literal(true),
+  managed: z.boolean(),
+  stoppedIn: z.array(z.string()),
+  stillUsing: z.array(z.string()),
+  unreachable: z.array(z.string()),
+  checkout: z.strictObject({ path: z.string(), deleted: z.boolean() }).optional(),
+});
+// An installed plugin moved to what its ref (none: its source's HEAD) is at now, its directory and plugin.json checked
+// again, then restarted in each running session that ran it (`restarted`). Not updated: upToDate, or `stage` and
+// `reason` say why, and it's as it was. A plugin you linked is never updated (stage linked).
+export const pluginUpdate = z.strictObject({
+  name: z.string(),
+  updated: z.boolean(),
+  upToDate: z.boolean().optional(),
+  source: z.string().optional(),
+  ref: z.string().nullable().optional(),
+  from: z.string().optional(), // the commit it was at
+  commit: z.string().optional(), // the commit it's at now
+  marketplace: z.string().optional(),
+  restarted: z.array(pluginStart),
+  hints: z.array(z.string()).optional(),
+  stage: z.enum(["linked", "marketplace", "fetch", "checkout", "subdir", "manifest"]).optional(),
+  reason: z.string().optional(),
+});
+// repositories with the modisa-tui-plugin topic, most starred first; text is stripped of control characters
+const found = { name: z.string(), repo: z.string(), url: z.string(), description: z.string(), stars: z.number().int().nonnegative(), updated: z.string(), created: z.string(), archived: z.boolean(), install: z.string() };
+// A plugin a marketplace lists. from: where its code comes from (the marketplace's own repository, for one inside it);
+// installed: a plugin by that name is linked. Text is stripped of control characters.
+const listedPlugin = z.strictObject({ name: z.string(), marketplace: z.string(), description: z.string(), from: z.string(), ref: z.string().nullable(), subdir: z.string().nullable(), install: z.string(), installed: z.boolean() });
+// Marketplaces: git repositories listing plugins (modisa-marketplace.json), cloned under the state directory
+const marketplace = { name: z.string(), source: z.string(), ref: z.string().nullable(), commit: z.string(), addedAt: z.string(), updatedAt: z.string() };
+export const marketplaceResults = {
+  // not added: `stage` and `reason` say where it failed, and nothing was left behind
+  add: z.strictObject({ added: z.boolean(), alreadyAdded: z.boolean().optional(), name: z.string().optional(), source: z.string(), ref: z.string().nullable(), commit: z.string().optional(), description: z.string().optional(), plugins: z.array(z.string()).optional(), stage: z.enum(["source", "git", "clone", "ref", "manifest", "collision"]).optional(), reason: z.string().optional() }),
+  // error: its file can't be read now (it lists no plugins until that's fixed)
+  list: z.array(z.strictObject({ ...marketplace, description: z.string().optional(), owner: z.string().optional(), plugins: z.number().int().nonnegative(), error: z.string().optional() })),
+  // each one asked for: moved to the latest (updated), already there, or left as it was (reason)
+  update: z.array(z.strictObject({ name: z.string(), updated: z.boolean(), from: z.string(), commit: z.string(), plugins: z.number().int().nonnegative().optional(), reason: z.string().optional() })),
+  // installed: plugins installed from it, which stay installed
+  remove: z.strictObject({ name: z.string(), removed: z.literal(true), dir: z.string(), installed: z.array(z.string()) }),
+};
 export const results = {
   list: z.array(listedPane),
   "ui.state": pluginUiView,
@@ -196,52 +269,25 @@ export const attachNotifications = {
 export const errorReply = z.strictObject({ code: z.number().int(), message: z.string(), data: z.strictObject({ code: z.enum(ERROR_CODES) }).optional() });
 
 // ---------- CLI results: what `modisa … --json` prints where the CLI makes it (an e2e test checks them) ----------
-// Starting a plugin in the one session a command reaches: started (and connected), already running, not started (no
-// session running), failed (it didn't start, or exited), or no-hello (started, but never connected in time).
-export const pluginStart = z.strictObject({
-  session: z.string(),
-  state: z.enum(["started", "already-running", "not-started", "failed", "no-hello"]),
-  reason: z.string().optional(),
-  pid: z.number().int().optional(),
-  log: z.string().optional(),
-  disabledKeys: z.array(z.string()).optional(), // "<key>: <why>"
-});
 export const cliResults = {
   // registering is global (every session starts it); starting is only in `start.session`
   "plugin link": z.strictObject({ name: z.string(), dir: z.string(), linked: z.literal(true), alreadyLinked: z.boolean(), start: pluginStart }),
-  // installed: the checkout, record and link are in place (then `start` says whether it started). Not installed:
-  // `stage` and `reason` say where it failed, and nothing was left behind.
-  "plugin install": z.strictObject({
-    installed: z.boolean(),
-    alreadyInstalled: z.boolean().optional(),
-    name: z.string().optional(),
-    source: z.string(), // without credentials
-    ref: z.string().nullable(), // as requested; null: the default branch
-    commit: z.string().optional(), // what the ref resolved to
-    checkout: z.string().optional(),
-    dir: z.string().optional(), // the plugin's directory (the checkout, or --subdir inside it)
-    start: pluginStart.optional(),
-    hints: z.array(z.string()).optional(),
-    stage: z.enum(["source", "git", "clone", "ref", "subdir", "manifest", "collision"]).optional(),
-    reason: z.string().optional(),
-  }),
-  // managed: installed with `plugin install` (stopped in every reachable session; its checkout deleted only if none
-  // still runs it). Otherwise a directory you linked: stopped in the session reached, and never deleted.
-  // repositories with the modisa-tui-plugin topic, most starred first; text is stripped of control characters
+  "plugin install": pluginInstall,
+  // the GitHub index's results, and (when any marketplace is added) the marketplaces' plugins that match; indexError:
+  // the index couldn't be read, so only the marketplaces' are listed
   "plugin search": z.strictObject({
     query: z.string(),
     total: z.number().int().nonnegative(),
-    results: z.array(z.strictObject({ name: z.string(), repo: z.string(), url: z.string(), description: z.string(), stars: z.number().int().nonnegative(), updated: z.string(), created: z.string(), archived: z.boolean(), install: z.string() })),
+    results: z.array(z.strictObject(found)),
+    marketplacePlugins: z.array(listedPlugin).optional(),
+    indexError: z.string().optional(),
   }),
-  "plugin unlink": z.strictObject({
-    name: z.string(),
-    unlinked: z.literal(true),
-    managed: z.boolean(),
-    stoppedIn: z.array(z.string()),
-    stillUsing: z.array(z.string()),
-    unreachable: z.array(z.string()),
-    checkout: z.strictObject({ path: z.string(), deleted: z.boolean() }).optional(),
-  }),
+  "plugin unlink": pluginUnlink,
+  "plugin update": pluginUpdate,
+  "plugin marketplace add": marketplaceResults.add,
+  "plugin marketplace list": marketplaceResults.list,
+  "plugin marketplace update": marketplaceResults.update,
+  "plugin marketplace remove": marketplaceResults.remove,
   // A pane's process (its shell, or the command it started with), the job in the foreground of its terminal, and
   // where it is now (its working directory). An exited pane has only the pid it had.
   "pane process-info": z.strictObject({ pane: z.string(), pid: z.number().int(), foreground: z.strictObject({ pid: z.number().int(), args: z.string() }).optional(), cwd: z.string().optional() }),

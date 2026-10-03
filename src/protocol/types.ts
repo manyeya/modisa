@@ -31,7 +31,7 @@ export type PluginStatus = {
   group?: "running" | "gone"; // its process group: children can outlive the process modisa started
   invocations?: number; // action calls sent to it and not yet answered or timed out
   keys?: PluginKey[]; // its keys as the server's config binds them: active, or disabled and why
-  install?: { source: string; ref: string | null; commit: string }; // fetched with `modisa plugin install`
+  install?: { source: string; ref: string | null; commit: string; marketplace?: string }; // fetched with `modisa plugin install` (from a marketplace)
 };
 
 // A plugin key: `key` after the prefix runs `action` or opens `pane`. Disabled when it's one of modisa's keys or

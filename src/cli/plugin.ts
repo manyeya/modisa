@@ -1,6 +1,7 @@
-// The `modisa plugin` commands that work without a session server (new, sdk, schema, check, dev), and link and
-// unlink, which change the global link and then act on the one running session they reach (the default, or -s).
+// The `modisa plugin` commands that work without a session server (new, sdk, schema, check, dev, search, marketplace),
+// and link, install, update and unlink, which change what's linked and then act on the running sessions they reach.
 import { PLUGINS_DIR, readManifest } from "../config/plugins";
+import { sessionName, startWith, type StartOutcome } from "../config/plugin-manage";
 import { connectExisting } from "../protocol/transport";
 import { PROTOCOL } from "../protocol/schema";
 import { describeProtocol } from "../protocol/describe";
@@ -17,10 +18,8 @@ import GUIDE from "../plugins/template/AGENTS.md" with { type: "text" };
 export const SDK_TEXT = String(SDK);
 export const sdkVersion = (text: string) => Number(/SDK_VERSION = (\d+)/.exec(text)?.[1]) || undefined;
 
-const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink", "install", "search"];
+const LOCAL = ["new", "sdk", "schema", "check", "dev", "link", "unlink", "install", "update", "search", "marketplace"];
 export const isLocalPluginCommand = (verb?: string) => !!verb && LOCAL.includes(verb);
-
-const HELLO_MS = 10_000;
 
 export async function runPluginLocal(verb: string, args: string[], flags: Args["flags"]): Promise<number> {
   const json = !!flags.json;
@@ -41,10 +40,14 @@ export async function runPluginLocal(verb: string, args: string[], flags: Args["
       return link(args[0], str(flags.session), json);
     case "install":
       return (await import("./plugin-install")).install(args[0], { ref: str(flags.ref), subdir: str(flags.subdir), session: str(flags.session), json });
+    case "update":
+      return (await import("./plugin-install")).update(args[0], json);
     case "search":
       return (await import("./plugin-search")).search(args, json);
+    case "marketplace":
+      return (await import("./plugin-marketplace")).marketplace(args, flags);
     default:
-      return (await import("./plugin-install")).unlinkPlugin(args[0], str(flags.session), json);
+      return (await import("./plugin-install")).unlink(args[0], str(flags.session), json);
   }
 }
 
@@ -73,43 +76,20 @@ next: put the plugin's logic in plugin.ts (AGENTS.md explains how), then
   return 0;
 }
 
-export const sessionName = (session?: string) => session ?? Bun.env.MODISA_SESSION ?? "default";
-
-// "<key>: <why>" for each of a plugin's keys that's off in that session
-const offKeys = (status: any): string[] => (status?.keys ?? []).filter((k: any) => k.state === "disabled").map((k: any) => `${k.key || "(none)"}: ${k.reason}`);
+// the keys off in that session, on a line of their own
 const keysOff = (keys?: string[]) => (keys?.length ? `\n  keys off in the server's config: ${keys.join("; ")}` : "");
 
-// Start a linked plugin in the one running session this reaches, and wait for it to connect: a process that started
-// isn't a plugin that's ready. Never starts a session.
-export async function startIn(session: string | undefined, name: string) {
+// Start a linked plugin in the one running session this reaches, and wait for it to connect. Never starts a session.
+export async function startIn(session: string | undefined, name: string): Promise<StartOutcome> {
   const where = sessionName(session);
   const conn: Conn | undefined = await connectExisting(session).catch(() => undefined);
-  if (!conn) return { session: where, state: "not-started" as const, reason: `no running session ${where}; it starts with the next one` };
-  const listed = async () => (await conn.request<any[]>("plugin.list")).find((p) => p.name === name);
+  if (!conn) return { session: where, state: "not-started", reason: `no running session ${where}; it starts with the next one` };
   try {
-    let status: any;
-    try {
-      status = await conn.request("plugin.start", { name });
-    } catch (e) {
-      const code = (e as { code?: string }).code;
-      if (code === "already_running") {
-        const s = await listed();
-        return { session: where, state: "already-running" as const, pid: s?.pid, log: s?.log, disabledKeys: offKeys(s) };
-      }
-      return { session: where, state: "failed" as const, reason: (e as Error).message };
-    }
-    for (const end = Date.now() + HELLO_MS; ; await Bun.sleep(200)) {
-      const s = (await listed()) ?? status;
-      if (s.connected) return { session: where, state: "started" as const, pid: s.pid, log: s.log, disabledKeys: offKeys(s) };
-      if (s.status !== "running" && s.status !== "starting") return { session: where, state: "failed" as const, reason: s.error ?? `it ${s.status}`, pid: s.pid, log: s.log };
-      if (Date.now() > end) return { session: where, state: "no-hello" as const, reason: `it started but didn't connect within ${HELLO_MS / 1000}s`, pid: s.pid, log: s.log };
-    }
+    return await startWith((method, params) => conn.request(method, params), where, name);
   } finally {
     conn.close();
   }
 }
-
-export type StartOutcome = Awaited<ReturnType<typeof startIn>>;
 
 export function describeStart(start: StartOutcome, what = "linked") {
   switch (start.state) {

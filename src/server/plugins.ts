@@ -31,7 +31,7 @@ import { quote } from "./persist/template";
 // where an installed plugin came from, if this link is the one `plugin install` made
 const installOf = async (name: string, dir: string) => {
   const record = await readInstall(name);
-  return record && record.dir === dir ? { source: record.source, ref: record.ref, commit: record.commit } : undefined;
+  return record && record.dir === dir ? { source: record.source, ref: record.ref, commit: record.commit, ...(record.marketplace && { marketplace: record.marketplace }) } : undefined;
 };
 
 const STOP_MS = 2000;

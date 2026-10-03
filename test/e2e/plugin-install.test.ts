@@ -8,13 +8,13 @@
 // Each test makes its own repositories and plugin names, so each passes alone and in any order.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { sandbox, startServer } from "../support/harness";
+import { git, pluginRepo } from "../support/plugin-repos";
 import { cliResults } from "../../src/protocol/schema";
 
 const sb = sandbox("plugin-install");
 const S = "inst";
 const MANAGED = `${sb.root}/state/plugins-src`;
 const LINKS = `${sb.root}/config/plugins`;
-const git = (cwd: string, ...args: string[]) => Bun.$`git -c user.name=test -c user.email=test@example.com -c init.defaultBranch=main ${args}`.cwd(cwd).quiet();
 const list = async (session = S) => sb.json<any[]>(session, ["plugin", "list"], { retry: "startup" });
 const exists = async (path: string) => (await Bun.$`test -e ${path}`.quiet().nothrow()).exitCode === 0;
 const staging = async () => (await Bun.$`ls -A ${MANAGED}`.quiet().nothrow().text()).split("\n").filter((e) => e.startsWith(".staging"));
@@ -38,19 +38,7 @@ async function unlinkJson(name: string) {
   return { code: r.code, result };
 }
 
-// a bare repository with a scaffolded plugin (at `subdir`, or the root), one commit on main
-async function repo(id: string, options: { plugin?: string; subdir?: string; change?: (dir: string) => Promise<unknown> } = {}) {
-  const work = `${sb.root}/work-${id}`;
-  const dir = options.subdir ? `${work}/${options.subdir}` : work;
-  expect((await sb.run(S, ["plugin", "new", options.plugin ?? id, "--dir", dir])).code).toBe(0);
-  await options.change?.(dir);
-  await git(work, "init", "--quiet");
-  await git(work, "add", "-A");
-  await git(work, "commit", "--quiet", "-m", "plugin");
-  const bare = `${sb.root}/${id}.git`;
-  await Bun.$`git clone --quiet --bare ${work} ${bare}`.quiet();
-  return { work, bare, url: `file://${bare}`, head: (await Bun.$`git -C ${bare} rev-parse HEAD`.text()).trim() };
-}
+const repo = (id: string, options?: Parameters<typeof pluginRepo>[2]) => pluginRepo(sb, id, options);
 
 beforeAll(async () => {
   await startServer(sb, S);

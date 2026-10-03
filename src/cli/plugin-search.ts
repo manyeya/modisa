@@ -1,5 +1,6 @@
 // `modisa plugin search [words]`: plugins published on GitHub with the modisa-tui-plugin topic, most starred first,
-// each with the command that installs it. Nothing is installed or run, and nothing in the list is vetted.
+// and those your marketplaces list, each with the command that installs it. Nothing is installed or run, and nothing
+// in the list is vetted.
 // MODISA_PLUGIN_INDEX points the search at another API base (a mirror, a test server), or turns it "off".
 import { cleanText } from "../core/text";
 
@@ -51,23 +52,35 @@ export async function find(words: string[] = [], limit = 30): Promise<{ total: n
   return { total: Number.isFinite(body.total_count) ? body.total_count! : results.length, results };
 }
 
+// The index's plugins, and the plugins your marketplaces list (`plugin marketplace add`), each labelled with where
+// it's from. With a marketplace that matches, an index that can't be read is noted rather than fatal.
 export async function search(words: string[], json: boolean): Promise<number> {
   const query = words.join(" ").trim();
+  const listed = await (await import("../config/marketplaces")).marketplacePlugins(words); // not at the top: find() stays pure for the site
   let found: Awaited<ReturnType<typeof find>>;
+  let indexError: string | undefined;
   try {
     found = await find(words);
   } catch (e) {
-    return failed((e as Error).message, json);
+    if (!listed.length) return failed((e as Error).message, json);
+    indexError = (e as Error).message;
+    found = { total: 0, results: [] };
   }
   const { total, results } = found;
 
   if (json) {
-    console.log(JSON.stringify({ query, total, results }, null, 2));
+    console.log(JSON.stringify({ query, total, results, ...(listed.length && { marketplacePlugins: listed }), ...(indexError && { indexError }) }, null, 2));
     return 0;
   }
-  if (!results.length) {
+  if (indexError) console.error(`modisa: ${indexError}; listing your marketplaces' plugins only`);
+  if (!results.length && !listed.length) {
     console.log(`no plugins with the ${TOPIC} topic${query ? ` matching "${plain(query)}"` : ""}`);
     return 0;
+  }
+  for (const p of listed) {
+    console.log(`${p.name}@${p.marketplace}  marketplace ${p.marketplace}${p.installed ? "  (installed)" : ""}`);
+    if (p.description) console.log(`  ${p.description}`);
+    console.log(`  ${p.install}`);
   }
   for (const r of results) {
     console.log(`${r.repo}  ★ ${r.stars}${r.archived ? "  (archived)" : ""}${r.updated ? `  updated ${r.updated.slice(0, 10)}` : ""}`);
