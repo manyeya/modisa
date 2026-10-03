@@ -151,6 +151,18 @@ modisa plugin search github     # …that also matches these words`) + p(
         `It lists public GitHub repositories with the ${c("modisa-tui-plugin")} topic, each with the command that installs it. The same list is on the web, searchable and sortable, in the <a href="../../plugins/">plugin directory</a>. Nothing in either is vetted: a plugin runs as you, so read it before you install it.`,
         `To share one, push it to a public repository with ${c("plugin.json")} at the top and add the ${c("modisa-tui-plugin")} topic. A plugin in a subdirectory is found by its repository, so say which ${c("--subdir")} in the README.`,
       ) },
+      { id: "manager", title: "From inside modisa", html: p(
+        `${c("Ctrl+B P")} (or <em>Plugins…</em> in the palette, or the settings page's plugins section) opens the plugin manager. <strong>Discover</strong> searches the plugin index and your marketplaces, and shows exactly where a plugin comes from before it installs; <strong>Installed</strong> starts, stops, restarts, updates, removes and shows the logs of what you have; <strong>Marketplaces</strong> adds, updates and removes marketplaces; <strong>Add from URL</strong> installs from any git URL.`,
+        `It all happens on the server's machine, so over ${c("--remote")} plugins install where they run. Only you can install: an agent in a pane can't.`,
+      ) },
+      { id: "marketplaces", title: "Marketplaces", html: code("sh", `modisa plugin marketplace add acme/modisa-plugins   # or a git URL; --ref to pin one
+modisa plugin marketplace list
+modisa plugin install attention-log@acme
+modisa plugin marketplace update                    # all of them, or one by name
+modisa plugin update attention-log                  # an installed plugin, at what its ref is now
+modisa plugin marketplace remove acme`) + p(
+        `A marketplace is a git repository with a ${c("modisa-marketplace.json")} (or ${c(".modisa/marketplace.json")}) at the top: a ${c("name")}, an optional ${c("description")}, and ${c("plugins")}, each a ${c("name")}, a ${c("description")} and a ${c("source")}: a path inside the repository (${c("./plugins/x")}), a GitHub ${c("owner/repo")}, or ${c("{ git, ref, subdir }")}. Its plugins appear in ${c("plugin search")} and in the manager's Discover list. A marketplace is a list someone keeps, not a review: its plugins run as you.`,
+      ) },
       { id: "manage", title: "Run it", html: table(["Command", "Does"], [
         [c("plugin list [--json]"), "Every plugin: running or not, connected, its actions, where it came from, and keys that are off."],
         [c("plugin logs <name>"), "Its stdout and stderr."],

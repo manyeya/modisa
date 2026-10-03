@@ -57,6 +57,7 @@ Prefix is `Ctrl+B`, then:
 | `$` / `&` | rename / delete the current space (delete asks first) |
 | `b` | hide / show sidebar |
 | `s` / `t` | settings / settings on the theme section |
+| `P` | plugins: discover, install, update, remove |
 | `o` / `1-9` | pane picker / jump to agent |
 | `e` | open pane context menu |
 | `a` | launch an agent |
@@ -70,7 +71,7 @@ Mouse: click a pane to focus it, drag the border between two panes to resize the
 
 Spaces are named groups of tabs and panes. The status row shows where the active space's focused pane's git repository stands: its name, the branch, ↑ commits to push, ↓ to pull (as of your last fetch) and ● files changed (`[git]` turns each part off). Agents show their logo in their brand colour and the task they're on: the logos are a small font modisa installs the first time it starts, for Ghostty, kitty and VS Code (restart the terminal once; `modisa logos` shows where they stand, `modisa logos uninstall` takes them out). `Ctrl+B w` (or a click on the space's name at the top left) lists the spaces; right-click one to rename or delete it — deleting asks first and closes its panes. The last space can't be deleted. A new space starts in the current space's working directory; creating one does not create a directory. Use the shell's `cd` command to change a pane's working directory.
 
-The settings page (`Ctrl+B s`, or ⚙ settings in the sidebar) lists its sections down the side — theme, general, layout, git, indicators, sound, alerts, agents, integrations — and typing searches all of them. Tab switches section, ↑↓ or the pointer selects, ←→ changes a value, Enter or a click applies, Esc closes. Every change applies at once and is saved to `~/.config/modisa/config.toml`, keeping your comments and other settings.
+The settings page (`Ctrl+B s`, or ⚙ settings in the sidebar) lists its sections down the side — theme, general, layout, git, indicators, sound, alerts, agents, integrations, plugins — and typing searches all of them. Tab switches section, ↑↓ or the pointer selects, ←→ changes a value, Enter or a click applies, Esc closes. Every change applies at once and is saved to `~/.config/modisa/config.toml`, keeping your comments and other settings.
 
 - **theme** — Ion (default), Tokyo Night, Catppuccin Mocha, Gruvbox, Nord, Dracula, previewed live as you move
 - **indicators** — the agent-state glyphs (symbols `! ◆ ✓ ○`, dots, or letters) and where they show: tab badge, pane border, sidebar
@@ -78,6 +79,7 @@ The settings page (`Ctrl+B s`, or ⚙ settings in the sidebar) lists its section
 - **toasts** — toast, system notification and terminal bell per event
 - **pane labels** — agent and state in a pane's border title, and the id/status line on its bottom border
 - **integrations** — every agent's integration (installed, update available, available, not found); Enter installs, updates or removes one, and "Install all" does the recommended ones
+- **plugins** — every plugin with its state (Enter starts or stops it), and the way into the plugin manager
 
 The sidebar hides automatically below 100 columns or 22 rows. If a split would become too small, the focused pane fills the available space; expanding the terminal restores the split layout. Use the pane picker (`Ctrl+B`, `o`) or directional focus keys to reach other panes. Overflowing tabs keep the active tab visible, with previous/next buttons at the right.
 
@@ -241,12 +243,25 @@ modisa plugin check my-plugin        # manifest, build, then a throwaway session
 modisa plugin link my-plugin         # every session starts it; the running one starts it now
 modisa plugin search [words]         # GitHub repositories with the modisa-tui-plugin topic, and how to install each
 modisa plugin install https://github.com/you/modisa-plugins --subdir attention-log --ref v1.2.0
+modisa plugin marketplace add acme/modisa-plugins   # a repository that lists plugins
+modisa plugin install worktrees@acme                 # one it lists
+modisa plugin update <name>          # the latest of its ref, checked again, restarted where it runs
 modisa plugin list | logs <name> | stop <name> | start <name>
 modisa plugin run <name> <action> '{"any":"params"}'
 modisa plugin unlink <name>
 ```
 
+- **From inside modisa**: `Ctrl+B P` (or "Plugins…" in the palette, or the settings page's plugins section) opens the plugin manager. **Discover** searches the plugin index and your marketplaces; choosing one shows exactly where it comes from (the repository, folder, ref and commit) with a warning that it runs unsandboxed as you, and installs it only when you say so, at that commit. **Installed** lists every plugin with its state and pid, with buttons to start or stop, restart, read its log, update (installed ones) and remove; a `[[plugin]]` line from config.toml only starts and stops. **Marketplaces** adds (owner/repo or a git URL), updates and removes them, and **Add from URL…** installs from a git URL and an optional ref. It all happens on the server's machine, so with `--remote` it manages the plugins where they run. Only you can: an agent in a pane can't install plugins through the session.
 - **`plugin.json`** names the plugin, its protocol version and how to start it (`run`, an argv run in its directory), and what it offers: `actions` (also listed in the command palette), `panes`, `keys` under the prefix, and `links`.
+- **Marketplaces**: a git repository with `modisa-marketplace.json` (or `.modisa/marketplace.json`) at the top, listing plugins. `modisa plugin marketplace add owner/repo` (or a git URL, `--ref` to pin one) clones it into the state directory; `marketplace list`, `update [name]` and `remove <name>` manage them, and `plugin search` lists their plugins beside the index's. A source is `"./path"` inside the marketplace's own repository (it must really be inside it: no `..` or symlink out), `"owner/repo"` on GitHub, or `{ "git": url, "ref", "subdir" }`. Its text is cleaned of escape and control characters before it's shown. A marketplace is a list someone keeps, not a review.
+
+  ```json
+  { "name": "acme", "description": "Acme's plugins", "owner": "acme",
+    "plugins": [ { "name": "worktrees", "description": "a space per worktree", "source": "./plugins/worktrees" },
+                 { "name": "x", "source": { "git": "https://github.com/a/x.git", "ref": "v1", "subdir": "plugin" } },
+                 { "name": "y", "source": "owner/repo" } ] }
+  ```
+- **Update**: `plugin update <name>` fetches what an installed plugin's ref (or, with none, its default branch) is at now, checks its directory and plugin.json again (a bad commit is undone), and restarts it in every running session that runs it. One from inside a marketplace brings that marketplace up to date first. A plugin you linked is updated where it lives.
 - **Install** clones a git repository (optionally a `--ref` branch, tag or commit, and a `--subdir`), checks it, links it and starts it. It takes `https://`, `ssh://`, `git://` and `file://` URLs and `user@host:path`, never a remote-helper (`<helper>::`) URL or plain http, and git only uses those transports whatever your git config or environment says; your ssh agent, ssh command and credential helpers still apply. No build or dependency scripts run before the plugin starts, and it says when the plugin needs setup. `plugin list` shows each install's source and commit. Unlinking an install stops it in every running session, then deletes its checkout (never its data), or keeps the checkout and says why.
 - **In the TUI**: status segments, a sidebar section (rows mixing theme colours, bold and agents' brand marks; `[sidebar] agents = "<plugin>"` puts it in place of the agent list), badges on pane borders, entries in the pane menu, toasts, and panes opened as a split, tab, zoomed pane, overlay or popup. Modisa draws all of it in your theme, names the plugin on every piece, and limits how much each plugin, and a session's plugins together, can show.
 - **Keys**: `keys` bind a key under the prefix to an action or a pane. A key modisa uses, or one two plugins want, is off; move one in `[plugin_keys]` (`"<plugin>.<action or pane>" = "Y"`, or `""` to turn it off). Each client binds keys with its own config.
@@ -298,9 +313,9 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
 - `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart), single-pane attach (`pane-attach.ts`)
 - `src/core/` — paths and the split-tree layout math
 - `src/protocol/` — shared types, the Zod JSON-RPC schema, connections and transports
-- `src/config/` — config file and its check, prefix keys (`keys.ts`), themes, and the agents modisa knows (`agents/`: process names, launch/resume, screen manifests)
+- `src/config/` — config file and its check, prefix keys (`keys.ts`), themes, the agents modisa knows (`agents/`: process names, launch/resume, screen manifests), and plugins on disk: links and installs (`plugins.ts`), installing, updating and unlinking (`plugin-manage.ts`), marketplaces (`marketplaces.ts`)
 - `src/server/` — the session server
-  - `server.ts` startup/shutdown, `context.ts` shared state, `attach.ts` single-pane attach (takeover and observe)
+  - `server.ts` startup/shutdown, `context.ts` shared state, `attach.ts` single-pane attach (takeover and observe), `plugins.ts` the plugin host, `plugin-manager.ts` the plugin manager's requests (user only)
   - `rpc/` — dispatch, TUI methods, public API
   - `session/` — spaces, tabs, panes; `PtyPane` is `Bun.Terminal` + a headless libghostty terminal
   - `agents/` — detection (process identification, the manifest rule engine, integration authority), the monitor tick, the mailbox
@@ -309,7 +324,7 @@ bun test test/e2e/ui      # the TUI driven in a real PTY
   - `app.ts` startup, `context.ts` the `App` state, `render.ts`, `connection.ts`, `actions.ts`
   - `panes/` — terminal panes, mouse resize, pointer shape
   - `chrome/` — tabs, sidebar, status bar, buttons
-  - `modals/` — prompt, pick, menu, confirm, permission, context menu, the settings page
+  - `modals/` — prompt, pick, menu, confirm, permission, context menu, the settings page, the plugin manager
   - `sound/` — cuelume's sound recipes, rendered to WAV and played through OpenTUI's audio engine
   - `input/` — key names, keyboard handler, copy mode
 - `src/platform/` — controlling-terminal exec (`bun:ffi`) and the embedded libghostty libraries

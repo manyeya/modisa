@@ -85,6 +85,32 @@ restart. For a plugin `plugin install` fetched, it stops it in every running ses
 checkout (never the plugin's data or logs), or keeps the checkout and says why when a session still runs it or can't
 be reached.
 
+## Share it
+
+Push the plugin to a git repository. Anyone can then `modisa plugin install <git-url>` it, or pick it in the plugin
+manager (`Ctrl+B P`). Tag the repository `modisa-tui-plugin` on GitHub and it shows up in `modisa plugin search`, the
+manager's Discover list and the site's plugin directory.
+
+To list several plugins, or plugins from different repositories, keep a **marketplace**: a git repository with a
+`modisa-marketplace.json` (or `.modisa/marketplace.json`) at the top:
+
+```json
+{
+  "name": "acme",
+  "description": "the plugins our team uses",
+  "plugins": [
+    { "name": "attention-log", "description": "who's blocked", "source": "./plugins/attention-log" },
+    { "name": "worktrees", "source": "acme/modisa-worktrees" },
+    { "name": "deploys", "source": { "git": "https://git.acme.dev/tools/deploys.git", "ref": "v2", "subdir": "plugin" } }
+  ]
+}
+```
+
+A `source` is a path inside the marketplace repository (`./…`), a GitHub `owner/repo`, or `{ git, ref?, subdir? }`.
+Names are lowercase letters, digits and dashes. Users add it with `modisa plugin marketplace add acme/modisa-plugins`
+and install from it with `modisa plugin install attention-log@acme`. A marketplace is a list someone keeps, not a
+review: its plugins run as the user, like any other.
+
 ## Declare it in config.toml instead
 
 `~/.config/modisa/config.toml`:

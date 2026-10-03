@@ -52,14 +52,22 @@ plugins (examples/plugins/README.md)
   modisa plugin link <dir> [--json]         register it for every session, then start it in the running session
                                               reached (the default, or -s) and wait for it to connect
   modisa plugin search [words] [--json]     GitHub repositories with the modisa-tui-plugin topic, most starred first,
-                                              each with the command that installs it (none of them vetted)
+                                              and your marketplaces' plugins, each with the command that installs it
+                                              (none of them vetted)
   modisa plugin install <git-url> [--ref r] [--subdir d] [--json]   clone, check and link it, then start it like link.
                                               No dependencies are installed and nothing is built; it runs as you
+  modisa plugin install <plugin>@<marketplace> [--json]   one a marketplace lists, from where its entry says
+  modisa plugin update <name> [--json]      an installed plugin: fetch what its ref (or default branch) is at now,
+                                              check it again, restart it wherever it runs. Linked by you: update it there
+  modisa plugin marketplace add <owner/repo|git-url> [--ref r] | list | update [name] | remove <name>   [--json]
+                                              git repositories listing plugins (modisa-marketplace.json at the top)
   modisa plugin unlink <name> [--json]      remove the link. Installed: stopped in every running session, then its
                                               checkout deleted (kept, saying why, if a session still uses it or can't be
                                               reached). Linked by you: stopped in the session reached; never deleted
   modisa plugin run <name> <action> [json]   call an action a running plugin offers. A timeout means its outcome is
                                               unknown: running it again can repeat its effects
+  in the TUI, prefix P (or Plugins… in the palette): discover, install, start/stop, logs, update and remove plugins,
+                                              and manage marketplaces, on the server's machine (so --remote too)
 
 workspace
   modisa workspace create [name] [--cwd dir] [--command cmd] [--env K=V]… | workspace list
