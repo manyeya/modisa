@@ -4,7 +4,7 @@ import type { Config } from "../config/config";
 import type { Adapter } from "../config/adapters";
 import type { Conn } from "../protocol/conn";
 import { b64, fail } from "../protocol/conn";
-import { PLUGIN_UI, type PluginUiView, type Tone } from "../protocol/types";
+import type { PluginUiView, PluginViewState, Tone } from "../protocol/types";
 import { cleanText } from "../core/text";
 import { Session, type SpawnOpts } from "./session/session";
 import type { PtyPane, ReadFormat, ReadSource } from "./session/pane";
@@ -16,7 +16,10 @@ import { forWatchers } from "./attach";
 
 // plugin: set once a plugin's connection has said plugin.hello; it then acts as that plugin, never as a pane
 export type Client = { conn: Conn; attached: boolean; events: boolean; output: boolean; plugin?: string; ui?: number }; // ui: the plugin UI version it attached with
-export const understandsPlugins = (c: Client) => (c.ui ?? 0) >= PLUGIN_UI;
+// what a client can draw, by the plugin UI version it attached with (types.ts PLUGIN_UI): 1 status segments, sidebar
+// sections, badges, menu entries, popups and toasts; 2 views too
+export const understandsPlugins = (c: Client) => (c.ui ?? 0) >= 1;
+export const understandsViews = (c: Client) => (c.ui ?? 0) >= 2;
 
 // A toast for the TUI, from a plugin (ui.toast) or anyone else (notify): `from` titles it, `source` is who's counted
 // (a plugin's run, a pane, the user), `plugin` says which shared budget it comes out of. system and sound ask each
@@ -57,6 +60,7 @@ export type ServerContext = {
   agentOpts(harness: string, prompt?: string, name?: string, createdBy?: string): SpawnOpts;
   snapshot(p: PtyPane, lines?: number, source?: ReadSource, format?: ReadFormat): PtyPane["info"] & { screen: string; recentOutput: string; content: string; source: ReadSource; format: ReadFormat };
   pluginUi(): PluginUiView[]; // what plugins show in the TUI; set by server.ts (plugins.ts)
+  pluginViews(): PluginViewState[]; // the views plugins have open, for a client attaching; set by server.ts (plugins.ts)
   toast(t: Toast): number; // shown by every attached client that draws plugin toasts, how many; rate_limited past the limits
   paneExited(p: PtyPane): void; // after a pane's process ended (plugins.ts: overlays and popups; attach.ts)
   paneClosing(id: string, focused: boolean): void; // a pane is being closed; focused: it had the focus on screen
@@ -66,6 +70,7 @@ export function createContext(session: string, version: string, cfg: Config, ada
   const ctx = { session, version, epoch: crypto.randomUUID().slice(0, 8), seq: 0, cfg, adapters, clients: new Set<Client>(), watchers: new Map(), takeovers: new Map(), down: false, prompts: new Map() } as ServerContext;
 
   ctx.pluginUi = () => [];
+  ctx.pluginViews = () => [];
   ctx.movable = () => true;
   ctx.paneExited = () => {};
   ctx.paneClosing = () => {};

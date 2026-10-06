@@ -10,6 +10,7 @@ import { theme, type Theme } from "../config/themes";
 import { cellEms, chrome, fit } from "./design";
 import type { ClientPane } from "./panes/pane";
 import type { Manifest } from "../cli/update";
+import type { OpenView } from "./views/views";
 
 // connect(spawn): spawn = start the server if it isn't running (the first attach, or whoever asked for a restart)
 export type ClientOptions = { session: string; connect: (spawn: boolean) => Promise<Conn>; remote?: boolean };
@@ -59,6 +60,7 @@ export class App {
   readonly collapsedPlugins = new Set<string>(); // plugins' sidebar sections the user folded
   readonly collapsedTabs = new Set<string>(); // tabs (by id) whose agents the user folded in the sidebar's graph
   popup: { pane: string; title: string; width?: number | string; height?: number | string } | undefined; // a plugin popup this client opened
+  readonly views = new Map<string, OpenView>(); // plugins' views open now, by plugin/id, in the order they opened (views/views.ts)
   chromeSig = ""; // what the tab bar, sidebar and status row last drew
   quitting = false;
   update: Manifest | undefined; // a newer modisa release, when one is out

@@ -12,6 +12,7 @@ import { drawTabs } from "./chrome/tabs";
 import { drawSidebar } from "./chrome/sidebar";
 import { drawStatus } from "./chrome/status";
 import { popupRect, pluginLink } from "./plugin-ui";
+import { placeViews } from "./views/views";
 
 export function render(app: App) {
   const { r, th } = app;
@@ -73,6 +74,9 @@ export function render(app: App) {
     if (wantFocus && !p.term.focused) p.term.focus();
     else if (!wantFocus && p.term.focused) p.term.blur();
   }
+  // plugins' views over all that, and the keyboard to the top one: no pane keeps it under a view
+  placeViews(app);
+  if (app.modal && app.views.size) for (const [id, p] of app.panes) if (p.term.focused && id !== app.popup?.pane) p.term.blur();
   // Rebuild the tab bar, sidebar and status row only when what they show changed. Rebuilding
   // replaces their buttons, and a click that lands before the next frame would hit nothing.
   const sig = JSON.stringify([

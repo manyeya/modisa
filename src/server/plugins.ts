@@ -19,10 +19,11 @@ import { ConnectionClosedError, fail } from "../protocol/conn";
 import { PROTOCOL, type PluginManifest } from "../protocol/schema";
 import { linkMatches } from "../protocol/links";
 import { cleanText } from "../core/text";
-import type { PluginKey, PluginStatus, PluginUiView, Span, Tone } from "../protocol/types";
+import type { PluginKey, PluginStatus, PluginUiView, PluginViewState, Span, Tone } from "../protocol/types";
 import { brand } from "../config/agents/brands";
 import { linkedPlugins, readInstall, readManifest } from "../config/plugins";
-import { understandsPlugins, type Client, type ServerContext } from "./context";
+import { understandsPlugins, understandsViews, type Client, type ServerContext } from "./context";
+import { BLITS, VIEW_LIMIT, checkCells, checkView } from "./views";
 import type { Handlers } from "./rpc/dispatch";
 import type { PtyPane } from "./session/pane";
 import type { SpawnOpts } from "./session/session";
@@ -74,15 +75,19 @@ const UPDATES = { burst: 30, perSecond: 10 }; // ui.* calls per run
 // first come, first served (toasts' limits are ctx.toast's)
 const SESSION = { statusSegments: 12, badgesPerPane: 4, sidebarSections: 6, menuItems: 24, burst: 60, perSecond: 30 };
 
+// a view, and its Rasters' sizes by key: what a blit must match
+type OpenView = { state: PluginViewState; rasters: Map<string, { columns: number; rows: number }> };
 type UiState = {
   status: Map<string, PluginUiView["status"][number]>;
   sidebar?: PluginUiView["sidebar"];
   badges: Map<string, PluginUiView["badges"][number]>;
   menu: PluginUiView["menu"];
+  views: Map<string, OpenView>;
   tokens: number;
   refilled: number;
+  blits: { tokens: number; refilled: number };
 };
-const emptyUi = (): UiState => ({ status: new Map(), badges: new Map(), menu: [], tokens: UPDATES.burst, refilled: Date.now() });
+const emptyUi = (): UiState => ({ status: new Map(), badges: new Map(), menu: [], views: new Map(), tokens: UPDATES.burst, refilled: Date.now(), blits: { tokens: BLITS.burst, refilled: Date.now() } });
 
 // Text a plugin sends is shown in the TUI, cleaned and cut to cells (core/text.ts, shared with `plugin search`)
 export { cleanText };
@@ -151,6 +156,7 @@ export function createPluginHost(ctx: ServerContext) {
     const client = pl.client;
     pl.client = undefined;
     pl.actions = [];
+    for (const id of pl.ui.views.keys()) viewClosed(pl.name, id);
     pl.ui = emptyUi();
     client?.conn.close();
     // its transient panes go with it; split, tab and zoomed panes are the session's and stay
@@ -310,6 +316,17 @@ export function createPluginHost(ctx: ServerContext) {
   const uiView = () =>
     [...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).map(uiOf).filter((v) => v.actions.length || v.status.length || v.sidebar || v.badges.length || v.menu.length || v.keys.length || v.panes.length || v.links.length);
 
+  // Views go to the clients that draw them on their own channel, only when one changes: a tree can be big, and the
+  // session's view is sent again on every change of anything.
+  const views = () => [...plugins.values()].filter((pl) => pl.run && !pl.run.revoked).flatMap((pl) => [...pl.ui.views.values()].map((v) => v.state));
+  const viewers = () => ctx.attached().filter(understandsViews);
+  const viewClosed = (plugin: string, id: string) => ctx.broadcast("plugin.view.closed", { plugin, id }, viewers());
+  const closeView = (pl: Plugin, id: string) => {
+    if (!pl.ui.views.delete(id)) return false;
+    viewClosed(pl.name, id);
+    return true;
+  };
+
   // a pane is being closed: whether an overlay still had the focus then
   const paneClosing = (id: string, focused: boolean) => {
     const overlay = overlays.get(id);
@@ -421,7 +438,7 @@ export function createPluginHost(ctx: ServerContext) {
       if (p.link && !(pl.manifest?.links ?? []).some((l) => l.action === p.action && linkMatches(l, p.link!))) throw fail("invalid_params", `${p.plugin}'s ${p.action} doesn't handle that link`);
       const invocation = `${pl.name}-${++invocations}`;
       try {
-        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation, ...(p.target && { target: p.target }), ...(p.link && { link: p.link }) }, { timeoutMs: INVOKE_MS })) ?? null;
+        return (await conn.request("plugin.action", { action: p.action, params: p.params ?? {}, invocation, ...(p.target && { target: p.target }), ...(p.link && { link: p.link }), ...(p.ui && { ui: p.ui }) }, { timeoutMs: INVOKE_MS })) ?? null;
       } catch (e) {
         if ((e as { code?: string }).code === "timeout") {
           conn.notify("plugin.cancel", { invocation, action: p.action }); // advisory: nothing proves the action stopped
@@ -494,7 +511,10 @@ export function createPluginHost(ctx: ServerContext) {
       ctx.toast({ from: pl.name, source: `plugin:${pl.name}:${pl.run!.id}`, plugin: true, text: p.text, tone: p.tone, system: p.system });
       return true;
     },
-    "ui.state": (p) => uiOf(need(p.plugin)),
+    "ui.state": (p) => {
+      const pl = need(p.plugin);
+      return { ...uiOf(pl), views: [...pl.ui.views.values()].map((v) => v.state) };
+    },
 
     // ---------- panes ----------
     "plugin.pane.open": (p, c) => {
@@ -554,6 +574,56 @@ export function createPluginHost(ctx: ServerContext) {
       ctx.s.dropHidden(p.pane);
       return true;
     },
+    // ---------- views ----------
+    "ui.view.set": (p, c) => {
+      const pl = uiCall(c);
+      const old = pl.ui.views.get(p.id);
+      if (!old && pl.ui.views.size >= VIEW_LIMIT.views) throw fail("error", `at most ${VIEW_LIMIT.views} views open per plugin`);
+      if (!old && views().length >= VIEW_LIMIT.sessionViews) throw fail("error", `at most ${VIEW_LIMIT.sessionViews} views open across the session's plugins`);
+      if (p.from && ctx.s.panes.get(p.from.pane)?.info.instance !== p.from.instance) throw fail("pane_gone", `pane ${p.from.pane} has closed or restarted since`);
+      // an update replaces what it shows; where and how it's shown stay as they were unless it says otherwise
+      const was = old?.state;
+      const close = p.close ?? was?.close;
+      const { root, keys, rasters } = checkView(p.root, p.keys ?? was?.keys ?? [], close, pl.actions);
+      const width = p.width ?? was?.width, height = p.height ?? was?.height, from = p.from ?? was?.from;
+      const state: PluginViewState = {
+        plugin: pl.name, run: pl.run!.id, id: p.id, title: p.title !== undefined ? cleanText(p.title, LIMIT.menuTitle) : (was?.title ?? p.id), placement: p.placement ?? was?.placement ?? "popup",
+        ...(width !== undefined && { width }), ...(height !== undefined && { height }), ...(from && { from }), keys, ...(close && { close }), ...(p.focus && { focus: p.focus }), root, rev: (was?.rev ?? 0) + 1,
+      };
+      pl.ui.views.set(p.id, { state, rasters });
+      ctx.broadcast("plugin.view", state, viewers());
+      return { id: p.id, rev: state.rev, open: !old };
+    },
+    "ui.view.close": (p, c) => closeView(uiCall(c), p.id),
+    // A Raster repainted in place: the size it was drawn at, on its own budget so a plugin can animate one.
+    "ui.blit": (p, c) => {
+      const pl = uiCall(c);
+      const now = Date.now();
+      const b = pl.ui.blits;
+      b.tokens = Math.min(BLITS.burst, b.tokens + ((now - b.refilled) / 1000) * BLITS.perSecond);
+      b.refilled = now;
+      if (b.tokens < 1) throw fail("rate_limited", `too many blits from ${pl.name}: at most ${BLITS.perSecond} a second`);
+      b.tokens -= 1;
+      const view = pl.ui.views.get(p.view);
+      const size = view?.rasters.get(p.key);
+      if (!view || !size) throw fail("invalid_params", `${pl.name} has no raster ${p.key} in an open view ${p.view}`);
+      checkCells(p.cells, size.columns, size.rows);
+      // kept in the tree too, so a client attaching later draws what's there now
+      const swap = (n: any): any => (n.type === "raster" && n.key === p.key ? { ...n, cells: p.cells } : n.children ? { ...n, children: n.children.map(swap) } : n);
+      view.state = { ...view.state, root: swap(view.state.root) };
+      ctx.broadcast("plugin.blit", { plugin: pl.name, view: p.view, key: p.key, cells: p.cells }, viewers());
+      return true;
+    },
+    // The user closed a view: gone for every client, and its plugin told, by its close action, if it gave one.
+    "plugin.view.close": (p, c) => {
+      if (c.plugin) throw fail("usage", "plugin.view.close is the TUI's: a plugin closes its own views with ui.view.close");
+      const pl = need(p.plugin);
+      const action = pl.ui.views.get(p.id)?.state.close;
+      if (!closeView(pl, p.id) || !action || !pl.client || !pl.actions.includes(action)) return true;
+      const invocation = `${pl.name}-${++invocations}`;
+      pl.client.conn.request("plugin.action", { action, params: {}, invocation, ui: { view: p.id } }, { timeoutMs: INVOKE_MS }).catch((e) => pl.run?.note(`modisa: ${action}, run when view ${p.id} closed: ${(e as Error).message}`));
+      return true;
+    },
     "ui.popup.close": (_p, c) => {
       const pl = uiCall(c);
       for (const [id, popup] of popups) {
@@ -589,5 +659,5 @@ export function createPluginHost(ctx: ServerContext) {
     if (pl?.source === "linked" && !pl.run?.group.alive() && !pl.starting) plugins.delete(name);
   };
 
-  return { methods, start, stop, disconnected, uiView, paneExited, paneClosing, movable, forget };
+  return { methods, start, stop, disconnected, uiView, views, paneExited, paneClosing, movable, forget };
 }

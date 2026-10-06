@@ -1,7 +1,7 @@
 // Methods only the TUI client uses: attaching, screen replay, input, and the UI commands behind keys,
 // menus and mouse gestures.
 import { b64, unb64 } from "../../protocol/conn";
-import { understandsPlugins, type ServerContext } from "../context";
+import { understandsPlugins, understandsViews, type ServerContext } from "../context";
 import type { Handlers } from "./dispatch";
 
 export function clientMethods(ctx: ServerContext): Handlers {
@@ -12,7 +12,7 @@ export function clientMethods(ctx: ServerContext): Handlers {
       c.ui = typeof p.ui === "number" ? p.ui : 0; // the plugin UI it can draw; a client from before plugin UI sends none
       if (p.area) s.setArea(p.area);
       ctx.emit("client.attached", {});
-      return { ...s.view(), paused: ctx.mail.paused, ...(understandsPlugins(c) && { plugins: ctx.pluginUi() }), session: ctx.session, prompts: [...ctx.prompts.keys()], version: ctx.version };
+      return { ...s.view(), paused: ctx.mail.paused, ...(understandsPlugins(c) && { plugins: ctx.pluginUi() }), ...(understandsViews(c) && { views: ctx.pluginViews() }), session: ctx.session, prompts: [...ctx.prompts.keys()], version: ctx.version };
     },
     // Current screen of every pane as a VT stream; the client asks once its terminals exist.
     replay: () => [...s.panes.values()].map((p) => ({ pane: p.id, data: b64(new TextEncoder().encode(p.replay())) })),

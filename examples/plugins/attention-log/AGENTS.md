@@ -81,6 +81,56 @@ nothing a plugin shows can pass for modisa's own. Everything is cleared when the
   whichever client is attached. While a client is disconnected it shows none of it; a client too old to draw plugin UI
   gets none, and a popup can't open in it.
 
+## Views: whole screens of your own
+
+For more than a segment or a row, a plugin opens a **view**: an element tree modisa draws in the user's theme, framed
+and titled with the plugin's name, over everything (`placement: "popup"`, the default) or over one pane
+(`placement: "overlay"`, `from: { pane, instance }`). It needs no program of its own: the plugin sends the tree, and
+sends it again when what it shows changes.
+
+```tsx
+// plugin.tsx (and "run": ["bun", "plugin.tsx"] in plugin.json): Bun's JSX works as it comes. Without JSX, call the
+// functions: Box({ direction: "row" }, Text({}, "hi"))
+import { runPlugin, Box, Text, Gauge, Progress, Button, Input } from "./modisa-plugin";
+
+runPlugin(async (modisa) => {
+  await modisa.hello({
+    approve: (_params, call) => modisa.ui.toast(`approved: ${call.ui?.value ?? ""}`),
+    refresh: () => show(),
+  });
+  const show = () =>
+    modisa.ui.view("main", (
+      <Box gap={1}>
+        <Box direction="row" gap={2}><Gauge value={0.23} label="5h 23%" /><Gauge value={0.61} tone="warn" /></Box>
+        <Progress value={0.4} />
+        <Input key="why" placeholder="why?" action="approve" />
+        <Button label="Refresh" action="refresh" />
+      </Box>
+    ), { title: "Usage", keys: [{ key: "r", action: "refresh", description: "refresh" }], close: "refresh" });
+  await show();
+});
+```
+
+- Elements: layout (`Box` with `direction`, `gap`, `padding`, `align`, `justify`, `border`, `title`; `Scroll` with
+  `sticky`), text (`Text` with `Span` and `Icon` inside, `Markdown`, `Code` with `filetype`, `Diff` of a unified diff,
+  `Table`, `BigText`), charts drawn at whatever size the layout gives them (`Progress`, `Sparkline`, `Chart` of
+  series, `Gauge`, `Heatmap`), your own pixels (`Raster` of cells, `Image` of a PNG), `Spinner`, and controls
+  (`Button`, `Input`, `Textarea`, `Select`, `Tabs`). Every element takes `key`, `width`, `height` (cells or "50%"),
+  `grow` and `shrink`. Colours are tones, so everything follows the user's theme. Syntax highlighting knows
+  TypeScript, JavaScript, Markdown and Zig; other filetypes show plain.
+- Controls run your actions: a Button's `action` when pressed, an Input's when Enter is pressed, a Textarea's on Ctrl+S
+  or Ctrl+Enter, a Select's `action` when one is chosen and `change` when the highlight moves, a Tabs' when it moves.
+  Each gets its `params`, and `call.ui`: `{ view, key, value, index }` (what's typed or chosen: data, not a command).
+- The view's `keys` bind keys while it has the keyboard ("j", "J", "enter", "S-tab", "C-s"); `description` shows them
+  on the frame. Tab moves between controls, Escape leaves a field and then closes the view, prefix x closes it too.
+  `close` names the action run when the user closes it. Close it yourself with `modisa.ui.closeView(id)`.
+- Updating a view keeps what the user typed, chose and scrolled to in elements with the same `key` (and the same
+  `value`/`selected` you sent before), and where focus is. Give every control a `key`.
+- `Raster` is a box of cells you paint: `rasterCells(columns, rows, (x, y) => [char, ink.tone("accent"), ink.rgb("#202020")])`.
+  `modisa.ui.blit(view, key, cells)` repaints one in place, up to 60 times a second: animation.
+- Limits: 4 views per plugin and 8 in a session, 5000 elements, 40 deep, 2 MB a view. Actions named anywhere in a view
+  must be offered in `hello`. A client too old to draw views doesn't get them.
+
 ## Links
 
 `"links"` in `plugin.json` hands a URL the user Ctrl+clicks in a pane to one of the plugin's actions. When several

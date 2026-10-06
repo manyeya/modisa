@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 9;
+export const SDK_VERSION = 10;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -36,8 +36,10 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // that effects already started were undone.
 // `target` is the pane the user took the action from (a menu entry, key or palette entry), kept apart from params and
 // already checked by modisa to be that pane's current process. `link` is the URL the user Ctrl+clicked, when one of
-// the manifest's links matched it (modisa checks the pattern); treat it as data, never as a command.
-export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string }) => unknown;
+// the manifest's links matched it (modisa checks the pattern); treat it as data, never as a command. `ui` says which of
+// the plugin's views it came from and what the element held (an Input's text, a Select's chosen option); it's what the
+// user typed or chose, so treat it as data too.
+export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string; ui?: ViewEvent }) => unknown;
 
 // What a plugin shows in modisa's TUI (see Client.ui). Tones map to the user's theme: its text, dim, accent and
 // warning colours, and its colours for the four agent states.
@@ -59,7 +61,127 @@ export type UiState = {
   menu: MenuItem[];
   keys: { key: string; action?: string; pane?: string; description: string }[]; // as plugin.json declares them: each client binds them with its own config
   panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[];
+  views?: (ViewOptions & { plugin: string; run: string; id: string; title: string; keys: ViewKey[]; root: ViewNode; rev: number })[]; // the views open now
 };
+
+// ---------- views: element trees modisa draws for a plugin ----------
+// A size in cells, or a share of the parent ("50%"). Every element takes these, and `key`, which keeps what the user did
+// in it (typed, chose, scrolled) across updates and names it to the plugin when it's used.
+export type ViewSize = number | `${number}%`;
+export type ViewLayout = { key?: string; width?: ViewSize; height?: ViewSize; minWidth?: number; maxWidth?: number; minHeight?: number; maxHeight?: number; grow?: number; shrink?: number };
+export type ViewInline = string | { type: "span"; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; dim?: boolean; strike?: boolean; children?: ViewInline[] } | { type: "icon"; agent: string };
+export type ViewOption = { name: string; description?: string; value?: string };
+type ViewAct = { action?: string; params?: Record<string, unknown> };
+export type ViewNode = ViewLayout &
+  (
+    | { type: "box"; direction?: "row" | "column"; gap?: number; padding?: number; paddingX?: number; paddingY?: number; align?: "start" | "center" | "end" | "stretch"; justify?: "start" | "center" | "end" | "between" | "around" | "evenly"; wrap?: boolean; border?: boolean | "single" | "double" | "rounded" | "heavy"; title?: string; tone?: Tone; bg?: Tone; children?: ViewNode[] }
+    | { type: "scroll"; sticky?: "top" | "bottom"; children?: ViewNode[] }
+    | { type: "text"; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; dim?: boolean; strike?: boolean; wrap?: "word" | "char" | "none"; children?: ViewInline[] }
+    | { type: "markdown"; content: string }
+    | { type: "code"; content: string; filetype?: string; lineNumbers?: boolean }
+    | ({ type: "diff"; diff: string; view?: "unified" | "split"; filetype?: string; lineNumbers?: boolean; cursor?: boolean; marks?: number[]; change?: string } & ViewAct)
+    | { type: "table"; rows: (string | ViewInline[])[][]; header?: boolean; border?: boolean }
+    | { type: "bigtext"; text: string; font?: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"; tone?: Tone }
+    | { type: "progress"; value: number; tone?: Tone }
+    | { type: "sparkline"; values: number[]; tone?: Tone; min?: number; max?: number }
+    | { type: "chart"; series: { values: number[]; tone?: Tone }[]; min?: number; max?: number }
+    | { type: "gauge"; value: number; tone?: Tone; label?: string }
+    | { type: "heatmap"; values: number[][]; tone?: Tone; min?: number; max?: number }
+    | { type: "raster"; key: string; columns: number; rows: number; cells: string }
+    | { type: "image"; png: string; alt?: string; fit?: "fit" | "cover" | "fill" }
+    | { type: "spinner"; tone?: Tone; label?: string }
+    | ({ type: "button"; label: string; tone?: Tone } & ViewAct)
+    | ({ type: "input"; placeholder?: string; value?: string; maxLength?: number } & ViewAct)
+    | ({ type: "textarea"; placeholder?: string; value?: string } & ViewAct)
+    | ({ type: "select"; options: ViewOption[]; selected?: number; change?: string } & ViewAct)
+    | ({ type: "tabs"; options: ViewOption[]; selected?: number } & ViewAct)
+  );
+// A key the view binds while it has focus: "j", "J", "enter", "S-tab", "C-s". Escape and Tab are modisa's.
+export type ViewKey = { key: string; action: string; params?: Record<string, unknown>; description?: string };
+// `focus`: the key of the element this update hands the keyboard to (the comment box just opened, say).
+export type ViewOptions = { title?: string; placement?: "popup" | "overlay"; width?: ViewSize; height?: ViewSize; from?: { pane: string; instance: string }; keys?: ViewKey[]; close?: string; focus?: string };
+// What a view's element tells its action (call.ui): the view, the element's key, an Input's text, a Select's choice.
+export type ViewEvent = { view: string; key?: string; value?: string; index?: number };
+export const VIEW_LIMITS = { perPlugin: 4, perSession: 8, elements: 5000, depth: 40, megabytes: 2, blitsPerSecond: 60 };
+
+// Elements, as functions or JSX: `Box({ direction: "row" }, Text({}, "hi"))`, or in a .tsx file
+// `<Box direction="row"><Text>hi</Text></Box>`, with Bun's JSX as it comes or with `/** @jsx h */`. A string inside a
+// Box becomes a Text.
+type Child = ViewNode | ViewInline | number | false | null | undefined | Child[];
+type Props<T extends ViewNode["type"]> = Omit<Extract<ViewNode, { type: T }>, "type" | "children"> & { children?: Child };
+const flat = (xs: Child[]): (ViewNode | ViewInline)[] => xs.flatMap((x) => (Array.isArray(x) ? flat(x) : x === null || x === undefined || x === false ? [] : typeof x === "number" ? [String(x)] : [x]));
+const nodes = (xs: Child[]): ViewNode[] => flat(xs).map((x) => (typeof x === "string" ? { type: "text" as const, children: [x] } : (x as ViewNode)));
+const inline = (xs: Child[]): ViewInline[] => flat(xs) as ViewInline[];
+const el = <T extends ViewNode["type"]>(type: T) => (props: Props<T> = {} as Props<T>, ...children: Child[]) => {
+  const { children: own, ...rest } = props as Props<T> & { children?: Child };
+  const kids = [...(own === undefined ? [] : [own]), ...children];
+  return { type, ...rest, ...(kids.length && { children: type === "text" ? inline(kids) : nodes(kids) }) } as unknown as Extract<ViewNode, { type: T }>;
+};
+export const Box = el("box"), Scroll = el("scroll"), Text = el("text"), Markdown = el("markdown"), Code = el("code"), Diff = el("diff"), Table = el("table");
+export const BigText = el("bigtext"), Progress = el("progress"), Sparkline = el("sparkline"), Chart = el("chart"), Gauge = el("gauge"), Heatmap = el("heatmap");
+export const Raster = el("raster"), Image = el("image"), Spinner = el("spinner"), Button = el("button"), Input = el("input"), Textarea = el("textarea"), Select = el("select"), Tabs = el("tabs");
+// inline pieces of a Text
+export const Span = (props: Omit<Extract<ViewInline, { type: "span" }>, "type" | "children"> & { children?: Child } = {}, ...children: Child[]): ViewInline => {
+  const { children: own, ...rest } = props;
+  return { type: "span", ...rest, children: inline([...(own === undefined ? [] : [own]), ...children]) };
+};
+export const Icon = ({ agent }: { agent: string }): ViewInline => ({ type: "icon", agent });
+export const Fragment = (_props: unknown, ...children: Child[]) => children;
+// JSX through React's automatic runtime (Bun's default) makes elements ({ type, props, key }), not nodes: this calls
+// their components, so a view can be written either way.
+function resolve(x: unknown): any {
+  if (Array.isArray(x)) return x.flatMap((y) => [resolve(y)].flat());
+  if (!x || typeof x !== "object") return x;
+  const e = x as { type?: unknown; props?: Record<string, unknown>; key?: unknown; children?: unknown[] };
+  if (e.props && typeof e.props === "object") {
+    const props: Record<string, unknown> = { ...e.props, ...(e.key !== null && e.key !== undefined && { key: String(e.key) }) };
+    if (typeof e.type === "function") return resolve(e.type(props));
+    if (typeof e.type === "string") return resolve(el(e.type as ViewNode["type"])(props as never));
+    return resolve(props.children ?? []); // a fragment
+  }
+  if (Array.isArray(e.children)) {
+    const kids = resolve(e.children) as Child[];
+    return { ...e, children: e.type === "text" || e.type === "span" ? inline(kids) : nodes(kids) };
+  }
+  return x;
+}
+/** The classic JSX factory, for `/** @jsx h *\/` and `/** @jsxFrag Fragment *\/` (or tsconfig's jsxFactory). */
+export function h(type: ((props: any, ...children: Child[]) => unknown) | ViewNode["type"], props: Record<string, unknown> | null, ...children: Child[]): any {
+  return typeof type === "function" ? type(props ?? {}, ...children) : el(type)((props ?? {}) as never, ...children);
+}
+export declare namespace h {
+  namespace JSX {
+    type Element = ViewNode | ViewInline | Child[];
+    interface ElementChildrenAttribute {
+      children: unknown;
+    }
+    interface IntrinsicElements {
+      [type: string]: Record<string, unknown>;
+    }
+  }
+}
+
+// A Raster's cells, painted by `paint(x, y)`: a character, or [character, fg, bg] with colours from `ink`. Width-1
+// printable characters only (blocks, braille and box drawing are).
+export const ink = {
+  default: 0x01000000,
+  tone: (t: Tone) => 0x02000000 | Math.max(0, (["fg", "dim", "accent", "warn", "working", "blocked", "done", "idle"] as Tone[]).indexOf(t)),
+  rgb: (hex: string) => parseInt(hex.replace(/^#/, ""), 16) & 0xffffff,
+};
+export function rasterCells(columns: number, rows: number, paint: (x: number, y: number) => string | [string, number?, number?] | undefined) {
+  const words = new Uint32Array(columns * rows * 3);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < columns; x++) {
+      const c = paint(x, y);
+      const [ch, f, b] = typeof c === "string" ? [c] : (c ?? [" "]);
+      const i = (y * columns + x) * 3;
+      words[i] = ch.codePointAt(0) ?? 0x20;
+      words[i + 1] = f ?? ink.default;
+      words[i + 2] = b ?? ink.default;
+    }
+  }
+  return Buffer.from(words.buffer).toString("base64");
+}
 
 export class ModisaError extends Error {
   constructor(message: string, readonly code: string) {
@@ -172,6 +294,16 @@ export class Client {
     closePopup: () => this.request<true>("ui.popup.close"),
     /** What this plugin shows now. */
     state: () => this.request<UiState>("ui.state", { plugin: this.name ?? "" }),
+    /**
+     * Open a view, or show something else in it: an element tree (see Box, Text, … below) that modisa draws in the
+     * user's theme, over everything (placement "popup", the default) or over the pane `from` (placement "overlay").
+     * Updating it keeps what the user typed, chose and scrolled to in elements with the same `key`. The actions its
+     * elements, `keys` and `close` name must be ones offered in hello. Limits: VIEW_LIMITS.
+     */
+    view: (id: string, root: ViewNode | Child, options: ViewOptions = {}) => this.request<{ id: string; rev: number; open: boolean }>("ui.view.set", { id, ...options, root: resolve(root) }),
+    closeView: (id: string) => this.request<boolean>("ui.view.close", { id }),
+    /** Repaint a Raster of an open view in place (see rasterCells), at up to 60 a second: animation. */
+    blit: (view: string, key: string, cells: string) => this.request<true>("ui.blit", { view, key, cells }),
   };
 
   /**
@@ -225,14 +357,14 @@ export class Client {
     }
   }
 
-  private async answer(id: number, { action, params, invocation, target, link }: { action?: string; params?: Record<string, unknown>; invocation?: string; target?: { pane: string; instance: string }; link?: string }) {
+  private async answer(id: number, { action, params, invocation, target, link, ui }: { action?: string; params?: Record<string, unknown>; invocation?: string; target?: { pane: string; instance: string }; link?: string; ui?: ViewEvent }) {
     const reply = (x: object) => this.send({ jsonrpc: "2.0", id, ...x });
     const run = action ? this.actions[action] : undefined;
     if (!run) return reply({ error: { code: -32601, message: `no action ${action}` } });
     const controller = new AbortController();
     if (invocation) this.running.set(invocation, controller);
     try {
-      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal, ...(target && { target }), ...(link && { link }) })) ?? null });
+      reply({ result: (await run(params ?? {}, { invocation, signal: controller.signal, ...(target && { target }), ...(link && { link }), ...(ui && { ui }) })) ?? null });
     } catch (error) {
       reply({ error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
     } finally {

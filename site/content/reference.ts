@@ -177,6 +177,26 @@ modisa plugin marketplace remove acme`) + p(
         `Its actions are in the command palette. An action taken on a pane gets that pane, already checked to be the same process.`,
         `Modisa draws everything in your theme and names the plugin on every piece, so nothing a plugin shows can pass for modisa's own. Each plugin, and a session's plugins together, can only show so much and update so often. It's all cleared when the plugin stops.`,
       ]) },
+      { id: "views", title: "Views", html: p(
+        `For more than a segment or a row, a plugin opens a <strong>view</strong>: an element tree modisa draws in your theme, framed and named for the plugin, over everything or over one pane. It's written like a web page, as JSX or plain function calls, and needs no program of its own.`,
+      ) + code("tsx", `await modisa.ui.view("main", (
+  <Box gap={1}>
+    <Box direction="row" gap={2}><Gauge value={0.23} label="5h 23%" /><Gauge value={0.61} tone="warn" /></Box>
+    <Diff diff={patch} filetype="typescript" />
+    <Input key="note" placeholder="comment…" action="comment" />
+    <Button label="Send" action="send" />
+  </Box>
+), { title: "Review", keys: [{ key: "s", action: "send", description: "send" }] });`) + table(["Elements", "Are"], [
+        [`${c("Box")}, ${c("Scroll")}`, "flex layout: direction, gap, padding, alignment, borders and titles; a scrolling area"],
+        [`${c("Text")}, ${c("Markdown")}, ${c("Code")}, ${c("Diff")}, ${c("Table")}, ${c("BigText")}`, "styled text with agents' marks, Markdown, highlighted code and diffs (unified or split), tables, large type"],
+        [`${c("Progress")}, ${c("Sparkline")}, ${c("Chart")}, ${c("Gauge")}, ${c("Heatmap")}`, "charts from numbers, drawn at whatever size the layout gives them, in eighth blocks and braille"],
+        [`${c("Raster")}, ${c("Image")}`, "cells the plugin paints itself, repainted in place up to 60 times a second; a PNG"],
+        [`${c("Button")}, ${c("Input")}, ${c("Textarea")}, ${c("Select")}, ${c("Tabs")}, ${c("Spinner")}`, "controls that run the plugin's actions with what they hold"],
+      ]) + ul([
+        `${kbd("Tab")} moves between controls, the view's own keys run its actions, ${kbd("Esc")} closes it (and tells the plugin), and so does ${kbd("Ctrl+B")} ${kbd("x")}.`,
+        `Updating a view keeps what you've typed, chosen and scrolled to.`,
+        `Colours are tones, so a view follows your theme; text is cleaned like everything else a plugin shows, and a view can only be so big.`,
+      ]) },
       { id: "keys", title: "Keys", html: code("toml", `[plugin_keys]\n"attention-log.log" = "Y"   # <plugin>.<action or pane>; "" turns it off`) + p(
         `A plugin's ${c("keys")} bind keys under the prefix to its actions and panes. A key modisa uses, one reserved for getting out of plugin panes (${c("x")}, ${c("d")}, Escape), or one two plugins want is off, and the keyboard guide says why. ${c("[plugin_keys]")} moves a key. Each client binds keys with its own config, so two people attached to one session can differ.`,
       ) },

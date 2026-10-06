@@ -1,7 +1,7 @@
 // Wire protocol: JSON-RPC 2.0, newline-delimited, over a unix socket (or ssh stdio for --remote).
 // Requests get responses; the server pushes events as notifications ({method, params}, no id).
 import { z } from "zod";
-import { ERROR_CODES, type ErrorCode } from "./types";
+import { ERROR_CODES, type ErrorCode, type PluginViewState, type ViewInline, type ViewNode } from "./types";
 import { LINK, globProblem, regexProblem } from "./links";
 import type { Node } from "../core/layout";
 
@@ -153,6 +153,62 @@ export const pluginUiView = z.strictObject({
   panes: z.array(z.strictObject({ id: z.string(), title: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]) })),
   links: z.array(z.strictObject({ pattern: z.string().optional(), regex: z.string().optional(), action: z.string() })),
 });
+// ---------- plugin views (types.ts ViewNode): element trees a plugin shows, drawn by the client ----------
+// The shapes only; how much of them there may be (nodes, depth, bytes) and what text is cleaned to is the server's
+// (server/views.ts), and the actions they name must be ones the plugin offered in hello.
+const viewSize = z.union([z.number().int().min(0).max(1000), z.templateLiteral([z.number().min(0).max(100), z.literal("%")])]);
+const count = z.number().int().min(0).max(1000);
+const layout = {
+  key: z.string().min(1).max(80).optional(),
+  width: viewSize.optional(), height: viewSize.optional(),
+  minWidth: count.optional(), maxWidth: count.optional(), minHeight: count.optional(), maxHeight: count.optional(),
+  grow: z.number().min(0).max(100).optional(), shrink: z.number().min(0).max(100).optional(),
+};
+const act = { action: z.string().min(1).optional(), params: z.record(z.string(), z.unknown()).optional() };
+const look = { tone: tone.optional(), bold: z.boolean().optional(), italic: z.boolean().optional(), underline: z.boolean().optional(), dim: z.boolean().optional(), strike: z.boolean().optional() };
+const viewInline: z.ZodType<ViewInline> = z.lazy(() =>
+  z.union([z.string(), z.strictObject({ type: z.literal("span"), ...look, children: z.array(viewInline).optional() }), z.strictObject({ type: z.literal("icon"), agent: z.string().max(40) })]),
+);
+const viewOption = z.strictObject({ name: z.string(), description: z.string().optional(), value: z.string().optional() });
+const values = z.array(z.number()).max(4096);
+export const viewNode: z.ZodType<ViewNode> = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    z.strictObject({
+      ...layout, type: z.literal("box"), direction: z.enum(["row", "column"]).optional(), gap: count.optional(), padding: count.optional(), paddingX: count.optional(), paddingY: count.optional(),
+      align: z.enum(["start", "center", "end", "stretch"]).optional(), justify: z.enum(["start", "center", "end", "between", "around", "evenly"]).optional(), wrap: z.boolean().optional(),
+      border: z.union([z.boolean(), z.enum(["single", "double", "rounded", "heavy"])]).optional(), title: z.string().optional(), tone: tone.optional(), bg: tone.optional(), children: z.array(viewNode).optional(),
+    }),
+    z.strictObject({ ...layout, type: z.literal("scroll"), sticky: z.enum(["top", "bottom"]).optional(), children: z.array(viewNode).optional() }),
+    z.strictObject({ ...layout, type: z.literal("text"), ...look, wrap: z.enum(["word", "char", "none"]).optional(), children: z.array(viewInline).optional() }),
+    z.strictObject({ ...layout, type: z.literal("markdown"), content: z.string() }),
+    z.strictObject({ ...layout, type: z.literal("code"), content: z.string(), filetype: z.string().max(40).optional(), lineNumbers: z.boolean().optional() }),
+    z.strictObject({ ...layout, ...act, type: z.literal("diff"), diff: z.string(), view: z.enum(["unified", "split"]).optional(), filetype: z.string().max(40).optional(), lineNumbers: z.boolean().optional(), cursor: z.boolean().optional(), marks: z.array(z.number().int().min(0)).max(10_000).optional(), change: z.string().min(1).optional() }),
+    z.strictObject({ ...layout, type: z.literal("table"), rows: z.array(z.array(z.union([z.string(), z.array(viewInline)]))).max(500), header: z.boolean().optional(), border: z.boolean().optional() }),
+    z.strictObject({ ...layout, type: z.literal("bigtext"), text: z.string(), font: z.enum(["tiny", "block", "shade", "slick", "huge", "grid", "pallet"]).optional(), tone: tone.optional() }),
+    z.strictObject({ ...layout, type: z.literal("progress"), value: z.number(), tone: tone.optional() }),
+    z.strictObject({ ...layout, type: z.literal("sparkline"), values, tone: tone.optional(), min: z.number().optional(), max: z.number().optional() }),
+    z.strictObject({ ...layout, type: z.literal("chart"), series: z.array(z.strictObject({ values, tone: tone.optional() })).max(8), min: z.number().optional(), max: z.number().optional() }),
+    z.strictObject({ ...layout, type: z.literal("gauge"), value: z.number(), tone: tone.optional(), label: z.string().optional() }),
+    z.strictObject({ ...layout, type: z.literal("heatmap"), values: z.array(values).max(256), tone: tone.optional(), min: z.number().optional(), max: z.number().optional() }),
+    z.strictObject({ ...layout, type: z.literal("raster"), key: z.string().min(1).max(80), columns: z.number().int().min(1).max(512), rows: z.number().int().min(1).max(256), cells: z.string() }),
+    z.strictObject({ ...layout, type: z.literal("image"), png: z.string(), alt: z.string().optional(), fit: z.enum(["fit", "cover", "fill"]).optional() }),
+    z.strictObject({ ...layout, type: z.literal("spinner"), tone: tone.optional(), label: z.string().optional() }),
+    z.strictObject({ ...layout, ...act, type: z.literal("button"), label: z.string(), tone: tone.optional() }),
+    z.strictObject({ ...layout, ...act, type: z.literal("input"), placeholder: z.string().optional(), value: z.string().optional(), maxLength: z.number().int().min(1).max(100_000).optional() }),
+    z.strictObject({ ...layout, ...act, type: z.literal("textarea"), placeholder: z.string().optional(), value: z.string().optional() }),
+    z.strictObject({ ...layout, ...act, type: z.literal("select"), options: z.array(viewOption).max(1000), selected: z.number().int().min(0).optional(), change: z.string().min(1).optional() }),
+    z.strictObject({ ...layout, ...act, type: z.literal("tabs"), options: z.array(viewOption).max(50), selected: z.number().int().min(0).optional() }),
+  ]),
+);
+const viewKey = z.strictObject({ key: z.string().min(1).max(20), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), description: z.string().optional() });
+const viewPlace = { title: z.string().optional(), placement: z.enum(["popup", "overlay"]).optional(), width: viewSize.optional(), height: viewSize.optional() };
+export const pluginViewState: z.ZodType<PluginViewState> = z.strictObject({
+  plugin: z.string(), run: z.string(), id: z.string(), title: z.string(), placement: z.enum(["popup", "overlay"]), width: viewSize.optional(), height: viewSize.optional(),
+  from: z.strictObject({ pane: z.string(), instance: z.string() }).optional(), keys: z.array(viewKey), close: z.string().optional(), focus: z.string().optional(), root: viewNode, rev: z.number().int(),
+});
+// what a view's element tells its plugin it was used for: plugin.invoke's `ui`, handed to the action as call.ui
+const viewEvent = z.strictObject({ view: z.string().min(1).max(40), key: z.string().max(80).optional(), value: z.string().max(100_000).optional(), index: z.number().int().min(0).optional() });
+
 // ---------- managing plugins: what the CLI prints (cliResults) and the server answers (results) ----------
 // Starting a plugin in the one session a command reaches: started (and connected), already running, not started (no
 // session running), failed (it didn't start, or exited), or no-hello (started, but never connected in time).
@@ -228,7 +284,8 @@ export const marketplaceResults = {
 };
 export const results = {
   list: z.array(listedPane),
-  "ui.state": pluginUiView,
+  "ui.state": pluginUiView.extend({ views: z.array(pluginViewState).optional() }),
+  "ui.view.set": z.strictObject({ id: z.string(), rev: z.number().int(), open: z.boolean() }),
   "plugin.pane.open": z.strictObject({ pane: z.string(), instance: z.string(), placement: z.enum(["overlay", "popup", "split", "tab", "zoomed"]), title: z.string(), width: z.union([z.number(), z.string()]).optional(), height: z.union([z.number(), z.string()]).optional() }),
   "events.subscribe": z.strictObject({ protocol: z.number().int(), epoch: z.string(), seq: z.number().int().nonnegative(), panes: z.array(listedPane).optional() }),
   // content: what source and format asked for; screen and recentOutput: the visible screen and recent text, as always
@@ -381,7 +438,7 @@ export const api = {
   // run: the run whose UI the action was taken from (ui.state's `run`); refused if that run has since ended
   // target: the pane the action is for (a menu entry, key or palette entry), a complete pane + instance pair kept apart
   // from the plugin's own params; checked when invoked, and handed to the action as call.target
-  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional(), target: z.strictObject({ pane: z.string().min(1), instance: z.string().min(1) }).optional(), link: z.string().min(1).max(2048).optional() }),
+  "plugin.invoke": z.object({ caller, plugin: z.string().min(1), action: z.string().min(1), params: z.record(z.string(), z.unknown()).optional(), run: z.string().optional(), target: z.strictObject({ pane: z.string().min(1), instance: z.string().min(1) }).optional(), link: z.string().min(1).max(2048).optional(), ui: viewEvent.optional() }),
   // A plugin's own TUI contributions, only on its bound connection (after plugin.hello). Text is cleaned of control
   // characters and cut to length; actions must be ones the plugin offered in hello; updates are rate-limited.
   "ui.status.set": z.object({ caller, id: z.string().min(1).max(40), text: z.string(), tone: tone.default("fg"), action: z.string().min(1).optional() }),
@@ -403,6 +460,14 @@ export const api = {
   "plugin.popup.close": z.object({ caller, pane: z.string().min(1) }),
   // a plugin closing its own popup (bound connection)
   "ui.popup.close": z.object({ caller }),
+  // A view (types.ts PluginViewState): set opens it or replaces what it shows, keeping what the user has typed, chosen
+  // and scrolled to in elements with the same key; close takes it away; blit repaints one of its Rasters in place.
+  // `from` is the pane an overlay covers; `close` the action run when the user closes it.
+  "ui.view.set": z.object({ caller, id: z.string().min(1).max(40), ...viewPlace, from: z.strictObject({ pane: z.string().min(1), instance: z.string().min(1) }).optional(), keys: z.array(viewKey).max(40).optional(), close: z.string().min(1).optional(), focus: z.string().min(1).max(80).optional(), root: viewNode }),
+  "ui.view.close": z.object({ caller, id: z.string().min(1).max(40) }),
+  "ui.blit": z.object({ caller, view: z.string().min(1).max(40), key: z.string().min(1).max(80), cells: z.string() }),
+  // the TUI client: the user closed a view (Escape, prefix x)
+  "plugin.view.close": z.object({ caller, plugin: z.string().min(1), id: z.string().min(1) }),
   // from integrations: lifecycle state (authoritative for the pane until released or the agent exits),
   // the agent's own session id (for exact resume), or both
   // title: what the pane is called while it has no name, over the terminal title its program sets ("" stops); not saved

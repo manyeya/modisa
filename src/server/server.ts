@@ -54,6 +54,7 @@ export async function runServer(session: string) {
   const plugins = createPluginHost(ctx);
   const attach = createAttach(ctx);
   ctx.pluginUi = plugins.uiView;
+  ctx.pluginViews = plugins.views;
   ctx.paneExited = (p) => (plugins.paneExited(p), attach.paneExited(p));
   ctx.paneClosing = (id, focused) => (plugins.paneClosing(id, focused), attach.paneClosing(id));
   ctx.movable = plugins.movable;

@@ -91,10 +91,75 @@ export type PluginUiView = {
   links: { pattern?: string; regex?: string; action: string }[]; // URLs Ctrl+click hands to an action, in manifest order (src/protocol/links.ts)
 };
 
+// ---------- plugin views: element trees a plugin shows, drawn by the client in the user's theme ----------
+
+// A size in cells, or a share of the parent ("50%").
+export type ViewSize = number | `${number}%`;
+// What every element takes: `key` keeps an element's state (focus, scroll, what's typed) across updates, and names it
+// to the plugin when it's used; the rest place it in its parent's flex layout.
+export type ViewLayout = { key?: string; width?: ViewSize; height?: ViewSize; minWidth?: number; maxWidth?: number; minHeight?: number; maxHeight?: number; grow?: number; shrink?: number };
+// Styled inline text inside a Text: plain strings, spans, and agents' marks (`icon` names a built-in agent).
+export type ViewInline = string | { type: "span"; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; dim?: boolean; strike?: boolean; children?: ViewInline[] } | { type: "icon"; agent: string };
+// An option of a Select or Tabs: what it says, and the value an action gets when it's chosen (its name when absent).
+export type ViewOption = { name: string; description?: string; value?: string };
+// What a Button, Input, Select and Tabs run: one of the plugin's actions, with params of its own.
+type ViewAct = { action?: string; params?: Record<string, unknown> };
+export type ViewNode = ViewLayout &
+  (
+    | { type: "box"; direction?: "row" | "column"; gap?: number; padding?: number; paddingX?: number; paddingY?: number; align?: "start" | "center" | "end" | "stretch"; justify?: "start" | "center" | "end" | "between" | "around" | "evenly"; wrap?: boolean; border?: boolean | "single" | "double" | "rounded" | "heavy"; title?: string; tone?: Tone; bg?: Tone; children?: ViewNode[] }
+    | { type: "scroll"; sticky?: "top" | "bottom"; children?: ViewNode[] }
+    | { type: "text"; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; dim?: boolean; strike?: boolean; wrap?: "word" | "char" | "none"; children?: ViewInline[] }
+    | { type: "markdown"; content: string }
+    | { type: "code"; content: string; filetype?: string; lineNumbers?: boolean }
+    | ({ type: "diff"; diff: string; view?: "unified" | "split"; filetype?: string; lineNumbers?: boolean; cursor?: boolean; marks?: number[]; change?: string } & ViewAct) // cursor: a line cursor (j/k), Enter runs action
+    | { type: "table"; rows: (string | ViewInline[])[][]; header?: boolean; border?: boolean }
+    | { type: "bigtext"; text: string; font?: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"; tone?: Tone }
+    | { type: "progress"; value: number; tone?: Tone }
+    | { type: "sparkline"; values: number[]; tone?: Tone; min?: number; max?: number }
+    | { type: "chart"; series: { values: number[]; tone?: Tone }[]; min?: number; max?: number }
+    | { type: "gauge"; value: number; tone?: Tone; label?: string }
+    | { type: "heatmap"; values: number[][]; tone?: Tone; min?: number; max?: number }
+    | { type: "raster"; key: string; columns: number; rows: number; cells: string } // see RASTER below
+    | { type: "image"; png: string; alt?: string; fit?: "fit" | "cover" | "fill" } // base64 PNG bytes
+    | { type: "spinner"; tone?: Tone; label?: string }
+    | ({ type: "button"; label: string; tone?: Tone } & ViewAct)
+    | ({ type: "input"; placeholder?: string; value?: string; maxLength?: number } & ViewAct)
+    | ({ type: "textarea"; placeholder?: string; value?: string } & ViewAct)
+    | ({ type: "select"; options: ViewOption[]; selected?: number; change?: string } & ViewAct) // action on Enter, change on moving
+    | ({ type: "tabs"; options: ViewOption[]; selected?: number } & ViewAct)
+  );
+// A Raster's cells: base64 of `columns * rows` little-endian u32 triplets [codePoint, fg, bg], row-major. A colour is
+// 0x00RRGGBB, RASTER.DEFAULT for the cell's default, or RASTER.TONE | the index of a tone in TONES.
+export const RASTER = { DEFAULT: 0x01000000, TONE: 0x02000000 } as const;
+export const TONES: readonly Tone[] = ["fg", "dim", "accent", "warn", "working", "blocked", "done", "idle"];
+// Keys a view binds while it has focus (and what's focused in it doesn't take the key): "j", "S-tab", "C-s", "enter".
+export type ViewKey = { key: string; action: string; params?: Record<string, unknown>; description?: string };
+// A view as the server holds it and sends it to clients. `placement` is where it opens: floating over everything
+// (popup), or over the pane it's `from` (overlay; a popup while that pane isn't on screen). `close` is the action run
+// when the user closes it; `focus` the element this update hands the keyboard to. `rev` rises with every change.
+export type PluginViewState = {
+  plugin: string;
+  run: string;
+  id: string;
+  title: string;
+  placement: "popup" | "overlay";
+  width?: ViewSize;
+  height?: ViewSize;
+  from?: { pane: string; instance: string };
+  keys: ViewKey[];
+  close?: string;
+  focus?: string; // the key of the element this rev gives the keyboard to
+  root: ViewNode;
+  rev: number;
+};
+// What a view's element tells its plugin when it's used: the view, the element's key, and the value it has (an
+// Input's text, a Select's chosen option) as `call.ui` beside the action's params.
+export type ViewEvent = { view: string; key?: string; value?: string; index?: number };
+
 // The plugin UI a client understands, sent with attach: the server sends plugins' UI (in views, plugin toasts, popups)
 // only to clients at this version or later, so an older client never gets what it can't draw. Bump on a change an
 // older client would misdraw.
-export const PLUGIN_UI = 1;
+export const PLUGIN_UI = 2;
 
 // Everything a client needs to draw the session.
 export type View = { active: number; workspaces: WorkspaceView[]; panes: PaneInfo[]; plugins?: PluginUiView[] };

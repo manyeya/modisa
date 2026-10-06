@@ -1,7 +1,8 @@
 // Attaching to the server, handling what it pushes, reconnecting after drops and restarts, and quitting.
 import { codeVersion } from "../core/paths";
 import { unb64 } from "../protocol/conn";
-import { PLUGIN_UI } from "../protocol/types";
+import { PLUGIN_UI, type PluginViewState } from "../protocol/types";
+import { clearViews, viewBlit, viewClosed, viewSet } from "./views/views";
 import type { App, ServerView } from "./context";
 import { notify, sentToast } from "./notify";
 import { permission } from "./modals/permission";
@@ -40,6 +41,15 @@ async function attach(app: App, spawn: boolean) {
       case "plugin.toast":
         sentToast(app, d);
         break;
+      case "plugin.view":
+        viewSet(app, d);
+        break;
+      case "plugin.view.closed":
+        viewClosed(app, d);
+        break;
+      case "plugin.blit":
+        viewBlit(app, d);
+        break;
       case "prompt":
         permission(app, d.id, d.text);
         break;
@@ -69,6 +79,7 @@ async function attach(app: App, spawn: boolean) {
       // plugins' actions can't reach the session now: hide what they show (the next attach brings it back), and a popup
       // this client had open is gone with the connection
       if (app.popup) app.modal?.close(null);
+      clearViews(app);
       if (app.view?.plugins?.length) {
         app.view = { ...app.view, plugins: [] };
         render(app);
@@ -76,11 +87,13 @@ async function attach(app: App, spawn: boolean) {
       void connectWithRetry(app, true);
     }
   };
-  const res = await conn.request<ServerView & { prompts: number[]; version?: string }>("attach", { area: app.area(), ui: PLUGIN_UI });
+  const res = await conn.request<ServerView & { prompts: number[]; version?: string; views?: PluginViewState[] }>("attach", { area: app.area(), ui: PLUGIN_UI });
   for (const p of app.panes.values()) p.destroy(); // reconnect: rebuild from the replay
   app.panes.clear();
   app.view = res;
   render(app);
+  clearViews(app);
+  for (const v of res.views ?? []) viewSet(app, v);
   for (const { pane, data } of await conn.request<{ pane: string; data: string }[]>("replay")) app.panes.get(pane)?.term.write(unb64(data));
   for (const id of res.prompts) permission(app, id, "(pending permission request)");
   ready = true;

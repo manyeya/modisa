@@ -311,6 +311,14 @@ These work only on a plugin's bound connection (after `plugin.hello`); from any 
 | `ui.state` | `plugin` | what it shows now |
 | `plugin.pane.open` | `plugin`, `pane`, `params`, `from` | opens one of `plugin.json`'s `panes` |
 | `ui.popup.close` | — | closes the plugin's popup |
+| `ui.view.set` | `id`, `root`, `title`, `placement`, `width`, `height`, `from`, `keys`, `close` | opens a view, or shows something else in it: an element tree modisa draws (`ViewNode` in `src/protocol/types.ts`) |
+| `ui.view.close` | `id` | closes it |
+| `ui.blit` | `view`, `key`, `cells` | repaints one of a view's Rasters in place, up to 60 a second |
+
+A view's elements run the plugin's actions as `plugin.action` requests with `"ui":{"view","key","value","index"}` beside
+the params: which view, which element, and what it held (an Input's text, a Select's choice). The user closing a view
+runs its `close` action the same way. Views go only to clients that draw them (`attach` with `ui` 2 or later), on
+their own notifications (`plugin.view`, `plugin.view.closed`, `plugin.blit`), never in the session's `view`.
 
 An `action` must be one the run offered in `plugin.hello`, or the call fails with `no_such_action`. A pane named with
 its `instance` that has closed or restarted fails with `pane_gone`. Too many updates fail with `rate_limited`; a popup
