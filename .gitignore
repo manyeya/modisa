@@ -1,4 +1,7 @@
-# dependencies (bun install)
+# cargo
+/target
+
+# the docs site's dependencies (bun install)
 node_modules
 
 # output

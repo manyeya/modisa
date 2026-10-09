@@ -1,8 +1,7 @@
 // The plugin directory: every public repository with the modisa-tui-plugin topic, as found when the site was built
 // (site/build.ts refreshes it daily). The list is real HTML, so it reads without JavaScript; site.js adds the search
-// box and the sort. Everything from GitHub is a stranger's text: already cleaned by find(), and escaped here.
-import type { Found } from "../../src/cli/plugin-search";
-import { TOPIC } from "../../src/cli/plugin-search";
+// box and the sort. Everything from GitHub is a stranger's text: already cleaned by modisa's plugin search, and escaped here.
+import { DATA, type Found } from "./data";
 import { c, code, escape } from "./html";
 
 const day = (iso: string) => escape(iso.slice(0, 10));
@@ -25,7 +24,7 @@ export function pluginsPage(o: { found: Found[]; built: string }) {
   return `<main id="main" class="doc plugins">
   <p class="crumb">PLUGINS</p>
   <h1>Plugins</h1>
-  <p class="doc-lede">What people have built on modisa: sidebars, status segments, popups and actions, installed with one command. Found automatically on GitHub by the ${c(TOPIC)} topic, and refreshed daily.</p>
+  <p class="doc-lede">What people have built on modisa: sidebars, status segments, popups and actions, installed with one command. Found automatically on GitHub by the ${c(DATA.topic)} topic, and refreshed daily.</p>
   <aside class="note"><strong>Read before you install.</strong><p>Nobody reviews these. A plugin runs as you, with your files and network: look at its code first.</p></aside>
 ${found.length > 6 ? `  <section class="plugin-fresh" aria-labelledby="fresh"><h2 id="fresh">New</h2><div class="plugin-grid">${fresh.map(card).join("")}</div></section>` : ""}
   <section aria-labelledby="browse">
@@ -43,9 +42,9 @@ ${found.length > 6 ? `  <section class="plugin-fresh" aria-labelledby="fresh"><h
     <ol>
       <li>Write it: ${c("modisa plugin new my-plugin")} scaffolds one, and the <a href="../docs/plugins/">plugin docs</a> cover the rest.</li>
       <li>Push it to a public GitHub repository with ${c("plugin.json")} at the top.</li>
-      <li>Give the repository the ${c(TOPIC)} topic. It shows up here within a day, and in ${c("modisa plugin search")} right away.</li>
+      <li>Give the repository the ${c(DATA.topic)} topic. It shows up here within a day, and in ${c("modisa plugin search")} right away.</li>
     </ol>
-    ${code("sh", `gh repo edit --add-topic ${TOPIC}`)}
+    ${code("sh", `gh repo edit --add-topic ${DATA.topic}`)}
   </section>
   <p class="plugin-built">Last refreshed ${escape(o.built)}.</p>
 </main>`;

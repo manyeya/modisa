@@ -1,9 +1,9 @@
 // The version this push releases, for the release workflow (appends key=value lines to GITHUB_OUTPUT,
-// or prints them). Versions come from git tags: the first release is package.json's version; after
+// or prints them). Versions come from git tags: the first release is Cargo.toml's version; after
 // that every push to main bumps the patch, or the minor/major when a commit since the last release
 // says [minor]/[major]. Staging builds are the next version plus -staging.<run>.
 //   bun .github/scripts/next-version.ts <stable|staging> <run number>
-import pkg from "../../package.json";
+const pkg = Bun.TOML.parse(await Bun.file(`${import.meta.dir}/../../Cargo.toml`).text()).package as { version: string };
 
 const [channel = "stable", run = "0"] = Bun.argv.slice(2);
 const git = async (...args: string[]) => (await Bun.$`git ${args}`.quiet().nothrow().text()).trim();
@@ -20,7 +20,7 @@ if (last) {
 const base = `${major}.${minor}.${patch}`;
 const version = channel === "staging" ? `${base}-staging.${run}` : base;
 // only code changes make a release; a docs-only push just redeploys the site
-const changed = !last || (await Bun.$`git diff --quiet ${last} HEAD -- src package.json bun.lock tsconfig.json`.quiet().nothrow()).exitCode !== 0;
+const changed = !last || (await Bun.$`git diff --quiet ${last} HEAD -- src Cargo.toml Cargo.lock`.quiet().nothrow()).exitCode !== 0;
 const notes = (await git("log", "--no-merges", "--format=- %s", range)).split("\n").filter(Boolean).slice(0, 60).join("\n") || "- Maintenance";
 
 const out = [`version=${version}`, `tag=${channel === "staging" ? "staging" : `v${version}`}`, `channel=${channel}`, `changed=${changed}`, `last=${last ?? ""}`, `notes<<NOTES_END`, notes, "NOTES_END"].join("\n") + "\n";

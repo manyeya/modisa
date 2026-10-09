@@ -1,32 +1,21 @@
+modisa is a Rust binary: `cargo build`, `cargo test`, `cargo run -- <args>`. Bun is only for the docs site (`bun site/build.ts`), plugins (TypeScript, run by bun) and running the end-to-end suite (`parity/run.sh`).
 
-Default to using Bun instead of Node.js.
+## Runtime
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
-
-## APIs
-
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+Everything runs on one thread: a current-thread tokio runtime and a `LocalSet` (`src/main.rs`). Server state is `Rc<RefCell<Server>>` (`src/server/mod.rs`), client state `Rc<RefCell<App>>` (`src/client/mod.rs`). Borrow them only between awaits, never across one; work that could re-enter a borrow (a dialog opened from a key handler, a tick started from a request) goes in a task with `spawn_local`. Ask the kernel for process facts (`src/platform/procs.rs`) instead of spawning `ps` or `lsof`: agent detection asks every half second.
 
 ## Frontends
 
-There is no web frontend. The UI is the OpenTUI client in `src/client`, which draws the `view` the server pushes. The docs site is a dependency-free static generator (`bun site/build.ts`, content in `site/content`); keep it that way, no Vite, React or HTML imports. Bun's API docs are in `node_modules/bun-types/docs/**.mdx`.
+There is no web frontend. The UI is the ratatui client in `src/client`, drawn whole every frame from the `App` and the `view` the server pushes; a frame records what it put where (`app.hits`) for the mouse. Pane screens are `alacritty_terminal` terminals wrapped in `src/vt.rs`. The docs site is a dependency-free static generator (`bun site/build.ts`, content in `site/content`); keep it that way, no Vite, React or HTML imports. What it shows from the code (agents, every setting, integrations, the plugin directory) it gets from the binary: `modisa __site-data`.
 
 ## Project structure
 
-Code lives in feature folders under `src/` (`cli`, `core`, `protocol`, `config`, `server`, `client`, `platform`, `integrations`, `skills`, `plugins`); README's "Layout" section lists what goes where. Types shared by client and server go in `src/protocol/`: TypeScript types in `types.ts`, the wire contract as zod schemas in `schema.ts` (the server validates against it and `protocol.describe` publishes it). Change the two together, and never put them in a server or client file. Server features are modules that take the `ServerContext` (`src/server/context.ts`); client features are functions that take the `App` (`src/client/context.ts`).
+Code lives in feature modules under `src/` (`cli`, `core`, `protocol`, `config`, `server`, `client`, `vt`, `platform`, `integrations`, `skills`, `plugins`); README's "Layout" section lists what goes where. Types shared by client and server go in `src/protocol/`: the types in `types.rs`, the wire contract in `schema.rs` and `describe.json` (what `protocol.describe` publishes). Change them together, and never put them in a server or client file. Request validation is hand-written and keeps modisa's own error messages.
 
-Tests live in `test/`, not next to the code: `test/unit` for pure logic, `test/e2e` (and `test/e2e/ui`) for one feature per file, each in its own `sandbox()` session, `test/support` for shared helpers, and `test/fixtures` for captured screens. Put a helper in `test/support` instead of copying it between files.
+This is a port of a TypeScript build, whose last commit is `b83399d53c96`. Comments that mention "the original", "the TypeScript" or a `.ts` file mean that build; read it with `git show b83399d53c96:<path>`.
 
-Releases come from `.github/workflows/release.yml` on every push to `main` (versions from git tags, `[minor]`/`[major]` in a commit message to bump more); `staging` publishes a rolling prerelease. The binary's version is baked in with `--define BUILD_VERSION`; from source it's `<package.json version>-dev` (`src/core/version.ts`). The docs site is `site/` (`bun site/build.ts`).
+Unit tests sit next to the code (`#[cfg(test)] mod tests`); captured agent screens are in `tests/fixtures`. The end-to-end suite is the TypeScript build's, run against this binary by `parity/run.sh`, which takes it out of git history (its last commit) and needs bun. Tests never touch the real `~/.local/state/modisa` or `~/.config/modisa`: give them scratch `MODISA_DIR` and `MODISA_CONFIG_DIR`.
+
+Releases come from `.github/workflows/release.yml` on every push to `main` (versions from git tags, `[minor]`/`[major]` in a commit message to bump more); `staging` publishes a rolling prerelease. The binary's version is baked in from `MODISA_BUILD_VERSION` at build time; from source it's `<Cargo.toml version>-dev` (`src/core/version.rs`).
+
+`src/config/agents/marks.ttf` (the agents' logo font) is a committed build artifact. Its generator was `.github/scripts/agent-logos.ts` in the TypeScript build (`git show b83399d53c96:.github/scripts/agent-logos.ts`); port it when a logo needs adding.

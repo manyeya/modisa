@@ -1,3 +1,0 @@
-[test]
-# only the suite: plugins' own tests (examples/plugins/*/plugin.test.ts) run under `modisa plugin check`
-root = "test"

@@ -1,13 +1,13 @@
 // The home page. The hero is a live HTML rendering of a modisa session (animated by landing.js),
 // not a screenshot: agents working, one waiting on you, one done.
-import { BUILTIN_AGENTS } from "../../src/config/agents";
+import { DATA } from "./data";
 import { escape } from "./html";
 import { icon } from "./icons";
 
 export const INSTALL = "curl -fsSL https://manyeya.github.io/modisa/install.sh | sh";
 export const mark = (_base = "./") => `<span class="mark" aria-hidden="true"></span>`;
 
-const agentNames = BUILTIN_AGENTS.filter((a) => a.id !== "generic").map((a) => a.name);
+const agentNames = DATA.agents.map((a) => a.name);
 const copyButton = (text: string, label = "Copy") => `<button type="button" class="copy" aria-label="Copy command" data-copy-text="${escape(text)}">${label}</button>`;
 
 // One pane of the demo session. Its body lines are what the agent has drawn.

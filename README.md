@@ -2,7 +2,7 @@
 
 An agent-aware terminal multiplexer. No AI of its own — it hosts coding agents (Claude Code, Codex, Pi, …) and shells in real terminal panes, and tells you which one needs you. Docs: **https://manyeya.github.io/modisa**.
 
-Built with Bun and OpenTUI: real terminal panes, named spaces, an agent sidebar, a segmented status bar, mouse menus, and live themes.
+Built in Rust with ratatui and alacritty_terminal, one small binary: real terminal panes, named spaces, an agent sidebar, a segmented status bar, mouse menus, and live themes.
 
 ## Install
 
@@ -32,11 +32,10 @@ modisa uninstall        # or: curl -fsSL https://manyeya.github.io/modisa/instal
 
 It lists what it will do and asks first. Then it removes modisa's hooks and skill from every agent, stops running sessions, and deletes saved state in `~/.local/state/modisa`. Your config in `~/.config/modisa` stays unless you add `--purge`. If the install script put the binary there, uninstall deletes it too; if mise or a package did, finish with that tool's remove command.
 
-From source (also the way to run it on an Intel Mac), with Bun ≥ 1.3.5:
+From source (also the way to run it on an Intel Mac), with a Rust toolchain:
 
 ```bash
-bun install
-bun start
+cargo install --path .   # or just run it: cargo run --release
 ```
 
 ## Keys
@@ -283,56 +282,51 @@ A `[[plugin]]` `run` line in config.toml still starts a program with no manifest
 ## Build
 
 ```bash
-bun run build   # single binary at dist/modisa (ad-hoc signed on macOS)
-bun site/build.ts   # the docs site into site/out, every link checked
+cargo build --release   # single binary at target/release/modisa
+bun site/build.ts       # the docs site into site/out, every link checked (bun, and the binary for its data)
 ```
 
 ## Contributing & releases
 
-Work lands on `dev` (CI: typecheck and tests on Linux and macOS). A pull request from `dev` to `staging` publishes a rolling `staging` prerelease; one from `staging` to `main` releases.
+Work lands on `dev` (CI: unit tests, a release build and the end-to-end suite on Linux and macOS). A pull request from `dev` to `staging` publishes a rolling `staging` prerelease; one from `staging` to `main` releases.
 
 Every push to `main` is a release (`.github/workflows/release.yml`): the tests run, the next version is taken from the git tags — the patch goes up, or the minor/major when a commit since the last release says `[minor]`/`[major]` — each platform is compiled on its own runner, and the release gets the binaries, `SHA256SUMS` and `manifest.json`. The docs site deploys to GitHub Pages in the same run. A push that changes only docs skips the release and just redeploys the site.
 
 ## Test
 
 ```bash
-bun run test              # everything
-bun test test/unit        # fast, pure tests
-bun test test/e2e/ui      # the TUI driven in a real PTY
+cargo test         # unit tests: layout math, config, keys, detection against captured screens, the mailbox, connections
+parity/run.sh      # the end-to-end suite (needs bun): every feature, each in its own sandboxed session
+parity/run.sh test/e2e/panes.test.ts   # one file of it
 ```
 
-- `test/unit/` — pure logic: layout math, chrome geometry, config, detection against captured screens, mailbox, connections
-- `test/e2e/` — one file per feature, each with its own sandboxed session: sessions, panes, cli, agents, messaging, permissions, integrations, plugins, remote, reconnect
-- `test/e2e/ui/` — keyboard, mouse, spaces, chrome, read back through `libghostty-vt`
-- `test/support/` — the harness (`sandbox`, `Screen`, `startServer`), a fake agent, and mouse encoders
-- `test/fixtures/` — captured agent screens used by the detection tests
+The end-to-end suite is the TypeScript build's, from its last commit: `parity/run.sh` takes its `src/` and `test/` out of
+git history and points its harness at this binary, so the behaviour it pins down carried over unchanged.
+
+- `tests/fixtures/` — captured agent screens used by the detection tests
 
 ## Layout
 
-- `src/main.ts` — entry point; dispatches to the CLI, server, client or integrations
-- `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart), single-pane attach (`pane-attach.ts`)
-- `src/core/` — paths and the split-tree layout math
-- `src/protocol/` — shared types, the Zod JSON-RPC schema, connections and transports
-- `src/config/` — config file and its check, prefix keys (`keys.ts`), themes, the agents modisa knows (`agents/`: process names, launch/resume, screen manifests), and plugins on disk: links and installs (`plugins.ts`), installing, updating and unlinking (`plugin-manage.ts`), marketplaces (`marketplaces.ts`)
+- `src/main.rs` — entry point; dispatches to the CLI, server, client or integrations, on one thread (a current-thread tokio runtime)
+- `src/cli/` — argument parsing, help, API commands, session commands (attach, ls, kill, restart), single-pane attach (`pane_attach.rs`), plugin commands
+- `src/core/` — paths, version and the split-tree layout math
+- `src/protocol/` — shared types, the JSON-RPC schema (`describe.json`, what `protocol.describe` publishes), connections and transports
+- `src/config/` — config file and its check, prefix keys (`keys.rs`), themes, the agents modisa knows (`agents/`: process names, launch/resume, screen manifests), and plugins on disk: links and installs (`plugins.rs`), installing, updating and unlinking (`plugin_manage.rs`), marketplaces (`marketplaces.rs`)
 - `src/server/` — the session server
-  - `server.ts` startup/shutdown, `context.ts` shared state, `attach.ts` single-pane attach (takeover and observe), `plugins.ts` the plugin host, `plugin-manager.ts` the plugin manager's requests (user only)
+  - `mod.rs` startup/shutdown and shared state, `attach.rs` single-pane attach (takeover and observe), `plugins.rs` the plugin host, `plugin_manager.rs` the plugin manager's requests (user only), `pty.rs` pseudo-terminals
   - `rpc/` — dispatch, TUI methods, public API
-  - `session/` — spaces, tabs, panes; `PtyPane` is `Bun.Terminal` + a headless libghostty terminal
+  - `session/` — spaces, tabs, panes; a `PtyPane` is a pty + a headless terminal (`src/vt.rs`)
   - `agents/` — detection (process identification, the manifest rule engine, integration authority), the monitor tick, the mailbox
-  - `persist/` — `bun:sqlite` store, restore, `modisa.toml` templates
-- `src/client/` — the OpenTUI client
-  - `app.ts` startup, `context.ts` the `App` state, `render.ts`, `connection.ts`, `actions.ts`
-  - `panes/` — terminal panes, mouse resize, pointer shape
-  - `chrome/` — tabs, sidebar, status bar, buttons
-  - `modals/` — prompt, pick, menu, confirm, permission, context menu, the settings page, the plugin manager
-  - `sound/` — cuelume's sound recipes, rendered to WAV and played through OpenTUI's audio engine
-  - `input/` — key names, keyboard handler, copy mode
-- `src/platform/` — controlling-terminal exec (`bun:ffi`) and the embedded libghostty libraries
-- `src/integrations/` — every agent integration (`targets.ts`), config-file editing, plugin sources, and `modisa hook`
+  - `persist/` — SQLite store, restore, `modisa.toml` templates
+- `src/client/` — the ratatui client: `mod.rs` startup and the `App` state, `draw.rs`, `input.rs`, `keys.rs` (keys as a pane's program expects them, kitty protocol included), `actions.rs`, `modals.rs`, `settings.rs`, `views/` (plugin views), `sound.rs`
+- `src/vt.rs` — the headless terminal: `alacritty_terminal`, with text and ANSI export and replay
+- `src/platform/` — process facts from the kernel (`procs.rs`: libproc on macOS, `/proc` on Linux) and the logo font
+- `src/integrations/` — every agent integration (`targets.rs`), config-file editing, plugin sources, and `modisa hook`
 - `src/skills/` — the modisa skill (`modisa/SKILL.md`), installed by the integrations
-- `src/plugins/` — the plugin authoring kit: `modisa-plugin.ts` (the client library plugins vendor) and the `modisa plugin new` templates
-- `examples/plugins/` — how to write a plugin, the attention log and the worktrees plugin (a space per git worktree; both built from `modisa plugin new`, checked by `test/e2e/plugin-authoring.test.ts`, linked with `modisa plugin link examples/plugins/<name>`), and an older hand-written one
-- `site/` — the docs site: `build.ts` (a dependency-free static generator), `content/` (the landing page and docs), `assets/` (CSS, JS, icons)
+- `src/plugins/` — the plugin authoring kit: `modisa-plugin.ts` (the TypeScript client library plugins vendor) and the `modisa plugin new` templates
+- `examples/plugins/` — how to write a plugin, the attention log and the worktrees plugin (a space per git worktree; both built from `modisa plugin new`, checked by the e2e suite's plugin-authoring test, linked with `modisa plugin link examples/plugins/<name>`), and an older hand-written one
+- `parity/` — runs the end-to-end suite against this build
+- `site/` — the docs site: `build.ts` (a dependency-free static generator), `content/` (the landing page and docs; `data.ts` asks the binary for its agents, settings and plugins), `assets/` (CSS, JS, icons)
 - `.github/` — CI, the release workflow and its scripts; `install.sh` is the installer
 
 ## License

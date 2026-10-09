@@ -6,7 +6,7 @@ import { escape, type Page } from "./content/html";
 import { landing, mark } from "./content/landing";
 import { pluginsPage } from "./content/plugins";
 import { reference } from "./content/reference";
-import { find } from "../src/cli/plugin-search";
+import { DATA } from "./content/data";
 
 const root = import.meta.dir;
 const out = `${root}/out`;
@@ -84,11 +84,12 @@ const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&gt;/g, "
 
 // The plugin directory's list, from GitHub. In CI a failure stops the build, so a bad fetch never deploys an empty
 // directory over a good one; locally it builds with none.
-const found = await find([], 100).then((r) => r.results, (e: Error) => {
-  if (Bun.env.CI) throw e;
-  console.warn(`plugin directory: ${e.message}; building it empty`);
+const found = (() => {
+  if (Array.isArray(DATA.plugins)) return DATA.plugins;
+  if (Bun.env.CI) throw new Error(`plugin directory: ${DATA.plugins.error}`);
+  console.warn(`plugin directory: ${DATA.plugins.error}; building it empty`);
   return [];
-});
+})();
 const pluginsBlurb = "Community plugins for modisa, the terminal multiplexer for coding agents: search them, sort them, and install any with one command.";
 
 await Bun.$`rm -rf ${out}`;

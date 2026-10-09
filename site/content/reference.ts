@@ -1,11 +1,9 @@
 // Docs: agents, automation, and reference. Agent and integration lists come from the code itself.
-import { BUILTIN_AGENTS } from "../../src/config/agents";
-import { SAMPLE } from "../../src/config/config";
-import { TARGETS } from "../../src/integrations/targets";
+import { DATA } from "./data";
 import { c, code, kbd, p, table, ul, type Page } from "./html";
 
-const agents = BUILTIN_AGENTS.filter((a) => a.id !== "generic");
-const integrations = (kind: string) => TARGETS.filter((t) => t.kind === kind).map((t) => t.name).join(", ");
+const agents = DATA.agents;
+const integrations = (kind: "lifecycle" | "session") => DATA.integrations[kind];
 
 export const reference: Page[] = [
   {
@@ -246,7 +244,7 @@ modisa config check --json   # {file, exists, ok, problems: [{level, key, messag
 zoom = "f"                 # <action> = a key after the prefix
 split-right = ["v", "|"]   # or several
 help = ""                  # or none`) + p(`An action set in ${c("[keys]")} has only the keys given there, taking each from whatever had it; the rest keep modisa's. The keyboard guide (${kbd("Ctrl+B")} ${kbd("?")}) shows every binding with its action's name. A key is one character (${c("H")} is shift+h) or ${c("left")}, ${c("right")}, ${c("up")}, ${c("down")}, ${c("home")}, ${c("end")}, ${c("pageup")}, ${c("pagedown")}, ${c("f1")}–${c("f12")}. ${c("x")} (close pane), ${c("d")} (detach) and Escape are how you get out of anything a plugin opens, so they can't be given to anything else. A key ${c("[keys]")} frees can go to a plugin; one it takes can't.`) + code("sh", `modisa config reset-keys   # [keys] and [plugin_keys] out, prefix "C-b"; the old file in config.toml.bak`) },
-      { id: "reference", title: "Every setting", html: code("toml", SAMPLE) },
+      { id: "reference", title: "Every setting", html: code("toml", DATA.sample) },
     ],
   },
   {

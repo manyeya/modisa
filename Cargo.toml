@@ -1,0 +1,29 @@
+[package]
+name = "modisa"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+alacritty_terminal = "0.26.0"
+base64 = "0.23.1"
+crossterm = "0.29.0"
+getrandom = "0.4.3"
+indexmap = { version = "2.14.2", features = ["serde"] }
+libc = "0.2.190"
+ratatui = "0.30.2"
+regex = "1.13.1"
+regex-automata = "0.4.18"
+regex-syntax = "0.8.11"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
+tokio = { version = "1.53.2", features = ["rt", "net", "process", "time", "macros", "io-util", "signal", "sync", "fs"] }
+toml = "1.1.7"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
