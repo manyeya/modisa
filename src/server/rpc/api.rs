@@ -10,7 +10,7 @@ use crate::core::layout::{side, Axis, Dir};
 use crate::core::paths;
 use crate::core::text::clean_text;
 use crate::protocol::conn::{error, fail, RpcError, RpcResult};
-use crate::protocol::schema::{Params, DESCRIBE, PROTOCOL};
+use crate::protocol::schema::{invalid, Params, DESCRIBE, PROTOCOL};
 use crate::protocol::types::AgentState;
 use crate::server::session::{MoveTo, SpawnOpts};
 use crate::server::{keys, permissions, shutdown, Server, Shared, Toast};
@@ -35,6 +35,8 @@ pub fn route(method: &str) -> Option<Handler> {
         "pane.keys" => async_handler!(pane_keys),
         "pane.close" => async_handler!(pane_close),
         "pane.rename" => Sync(pane_rename),
+        "pane.meta.set" => Sync(pane_meta_set),
+        "pane.meta.clear" => Sync(pane_meta_clear),
         "pane.focus" => Sync(pane_focus),
         "pane.move" => async_handler!(pane_move),
         "pane.swap" => Sync(pane_swap),
@@ -282,6 +284,53 @@ fn pane_rename(srv: &mut Server, p: &Value, _c: u64) -> RpcResult {
     let name = p.str("name")?;
     let id = srv.need(target.as_deref(), caller.as_deref())?;
     srv.s.rename_pane(&id, &name);
+    Ok(json!(true))
+}
+
+// Values for a pane that formats and plugins show (CUSTOMIZE.md, Metadata): `values` a record of key → value (strings,
+// numbers or booleans), for `ttl` seconds if given.
+fn pane_meta_set(srv: &mut Server, p: &Value, _c: u64) -> RpcResult {
+    use crate::server::session::pane::META_KEYS;
+    let p = Params::new(p)?;
+    let caller = caller(&p)?;
+    let target = p.opt_len("target", 1, None)?;
+    let values = p.record("values")?.unwrap_or_default();
+    let ttl = p.opt_num("ttl", Some(0.0), Some(86400.0 * 30.0), false)?.map(|s| (s * 1000.0) as u64);
+    let mut set = Vec::new();
+    for (k, v) in &values {
+        let key = k.to_lowercase();
+        if key.is_empty() || key.len() > 32 || !key.chars().all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c)) {
+            return Err(invalid(&format!("values.{k}"), "a key is 1 to 32 of a-z, 0-9, _ . -"));
+        }
+        let text = match v {
+            Value::String(s) => s.clone(),
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            _ => return Err(invalid(&format!("values.{k}"), "a value is a string, a number or a boolean")),
+        };
+        set.push((key, text));
+    }
+    let id = srv.subject(target.as_deref(), caller.as_deref())?;
+    let pane = srv.s.panes.get_mut(&id).ok_or_else(|| fail("not_found", format!("no pane {id}")))?;
+    if set.iter().filter(|(k, _)| !pane.info.meta.contains_key(k)).count() + pane.info.meta.len() > META_KEYS {
+        return Err(fail("limit", format!("a pane has at most {META_KEYS} values")));
+    }
+    let changed = set.into_iter().fold(false, |any, (k, v)| pane.set_meta(k, v, ttl) || any);
+    if changed {
+        srv.s.changed();
+    }
+    Ok(json!(srv.s.panes[&id].info.meta))
+}
+
+fn pane_meta_clear(srv: &mut Server, p: &Value, _c: u64) -> RpcResult {
+    let p = Params::new(p)?;
+    let caller = caller(&p)?;
+    let target = p.opt_len("target", 1, None)?;
+    let keys: Vec<String> = p.str_list("keys", 0, 1)?.unwrap_or_default().iter().map(|k| k.to_lowercase()).collect();
+    let id = srv.subject(target.as_deref(), caller.as_deref())?;
+    if srv.s.panes.get_mut(&id).is_some_and(|pane| pane.clear_meta(&keys)) {
+        srv.s.changed();
+    }
     Ok(json!(true))
 }
 

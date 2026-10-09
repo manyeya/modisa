@@ -284,6 +284,26 @@ impl Cli<'_> {
                 let p = if rest.len() > 1 { obj(vec![("target", s(r(0))), ("name", s(r(1)))]) } else { obj(vec![("name", s(r(0)))]) };
                 self.call("pane.rename", p).await?;
             }
+            "pane meta" => {
+                // pane meta set key=value… | clear [key…]   (--pane p, --ttl seconds)
+                let target = s(a.str("pane").map(String::from));
+                match r(0) {
+                    Some("set") => {
+                        let values: Map<String, Value> = rest.iter().skip(1).filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_string(), json!(v))).collect();
+                        if values.is_empty() {
+                            return Err(fail("usage", "usage: modisa pane meta set <key>=<value>… [--pane p] [--ttl seconds]"));
+                        }
+                        let res = self.call("pane.meta.set", obj(vec![("target", target), ("values", Some(Value::Object(values))), ("ttl", n(a.num("ttl")))])).await?;
+                        if json {
+                            print(&res);
+                        }
+                    }
+                    Some("clear") => {
+                        self.call("pane.meta.clear", obj(vec![("target", target), ("keys", Some(json!(rest.iter().skip(1).collect::<Vec<_>>())))])).await?;
+                    }
+                    _ => return Err(fail("usage", "usage: modisa pane meta set <key>=<value>… | clear [key…]   [--pane p] [--ttl seconds]")),
+                }
+            }
             "pane focus" => {
                 self.call("pane.focus", obj(vec![("target", s(r(0))), ("dir", s(a.str("direction")))])).await?;
             }

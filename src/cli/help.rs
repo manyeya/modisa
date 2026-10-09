@@ -29,6 +29,7 @@ panes (from inside a pane, targets default to the calling pane)
   modisa pane neighbor [target] --direction d   the pane on that side of it
   modisa pane edges [target]                the pane on each side of it, or (edge)
   modisa pane process-info [target]         its pid, the job in the foreground of its terminal, and its shell's cwd
+  modisa pane meta set <key>=<value>… | clear [key…]  [--pane p] [--ttl seconds]   values formats and plugins show
   modisa pane attach [target] [--takeover|--observe] [--remote ssh://host]   one pane full-screen in this terminal.
                                               --takeover (the default): it takes this terminal's size and only its
                                               typing, one at a time; --observe only watches (q stops). prefix d detaches;
@@ -89,6 +90,7 @@ setup
   modisa update                            install the newest release (then modisa restart); names brew or mise's command when they installed it
   modisa uninstall [--purge] [--yes]       remove integrations, sessions, state (and config with --purge), and install.sh's binary
   modisa version | --version               this version, and whether a newer one is out
+  modisa profile export | import <file or URL> [--yes]   your whole setup in one file: config, themes, plugins
   modisa integration status | install|uninstall <agent|all>   (hooks + the modisa skill)
   modisa logos [status|install|uninstall]  agents' logos in the sidebar: a font, and your terminals told about it
   modisa config [path|edit]

@@ -757,6 +757,7 @@ mod tests {
                 popup: None,
                 takeover: None,
                 muted: false,
+                meta: Default::default(),
             };
             FakePane {
                 id: id.into(),

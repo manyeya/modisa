@@ -27,6 +27,7 @@ pub mod plugin_git;
 pub mod plugin_install;
 pub mod plugin_marketplace;
 pub mod plugin_search;
+pub mod profile;
 pub mod sessions;
 pub mod uninstall;
 pub mod update;
@@ -78,6 +79,14 @@ pub async fn run(argv: Vec<String>) -> i32 {
         Some("hook") => crate::integrations::hook::run_hook(arg(0), arg(1)).await, // run by agents' hooks: modisa hook <agent> <action>
         Some("config") => sessions::config_command(arg(0), &a).await,
         Some("__site-data") => site_data().await,
+        Some("profile") => match arg(0) {
+            Some("export") => profile::export(),
+            Some("import") => profile::import(arg(1), a.switch("yes")).await,
+            _ => {
+                eprintln!("usage: modisa profile export > my-setup.toml | modisa profile import <file or URL> [--yes]");
+                2
+            }
+        },
         // new, sdk, schema, check, dev, link and unlink need no server; the rest go through it
         Some("plugin") if is_local_plugin_command(arg(0)) => plugin::run_plugin_local(arg(0).unwrap_or_default(), &rest[1..], &a).await,
         Some("view") => view::run_view(arg(0), rest.get(1..).unwrap_or_default(), &a), // a view drawn without a session

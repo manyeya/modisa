@@ -118,6 +118,9 @@ fn look(srv: &mut Server) {
     if attached {
         srv.s.seen();
     }
+    if srv.s.panes.values_mut().fold(false, |any, p| p.expire_meta() || any) {
+        srv.s.changed();
+    }
     if !srv.mail.paused {
         let now = now_ms();
         let ready: Vec<String> = srv

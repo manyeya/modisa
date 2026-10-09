@@ -1,4 +1,5 @@
 // Server-side pane: PTY + headless terminal screen. Lives as long as the server, clients come and go.
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::LazyLock;
 
@@ -35,6 +36,26 @@ pub struct PaneOpts {
 
 // The payload of the last complete ESC ] 9 ; 4 … (BEL or ESC \) in a chunk of output.
 static OSC_PROGRESS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\]9;(4;[^\x07\x1b]*)(?:\x07|\x1b\\)").unwrap());
+static USER_VAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\]1337;SetUserVar=modisa_([A-Za-z0-9_.-]{1,32})=([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)").unwrap());
+
+// Values a program sets for its pane with the escape other terminals take for user variables:
+// ESC ] 1337 ; SetUserVar=modisa_<key>=<base64> BEL. ponytail: one split across two reads is missed
+fn user_vars(bytes: &[u8]) -> Vec<(String, String)> {
+    use base64::Engine;
+    if !bytes.windows(5).any(|w| w == b"\x1b]133") {
+        return vec![];
+    }
+    USER_VAR
+        .captures_iter(bytes)
+        .filter_map(|c| {
+            let value = base64::engine::general_purpose::STANDARD.decode(&c[2]).ok()?;
+            Some((String::from_utf8_lossy(&c[1]).to_lowercase(), String::from_utf8_lossy(&value).into_owned()))
+        })
+        .collect()
+}
+
+pub const META_KEYS: usize = 32; // a pane's values, at most
+pub const META_CHARS: usize = 200; // one value, at most
 fn progress(bytes: &[u8]) -> Option<String> {
     // most output has no OSC 9 at all: skip the regex
     if !bytes.windows(4).any(|w| w == b"\x1b]9;") {
@@ -66,6 +87,7 @@ pub struct PtyPane {
     pub closed_while_running: bool, // closed before its process exited, so the exit that follows was caused by the close
     pub env: Option<IndexMap<String, String>>, // what it was started with on top of the server's environment: saved
     pub ephemeral: bool, // closes when its process exits, command or not (a plugin's popup)
+    pub meta_until: HashMap<String, u64>, // when a value set with a ttl goes (ms)
     pub generation: u64, // rises with every change to what's on its screen: output, a resize. What hasn't changed needn't be read again
     pty: Rc<Pty>,
     input: Option<mpsc::UnboundedSender<Vec<u8>>>,
@@ -99,6 +121,7 @@ impl PtyPane {
             popup: None,
             takeover: None,
             muted: false,
+            meta: Default::default(),
         };
         let argv: Vec<String> = match &opts.command {
             Some(c) => vec![shell.clone(), "-lc".into(), c.clone()],
@@ -163,6 +186,7 @@ impl PtyPane {
             closed_while_running: false,
             env: opts.env,
             ephemeral: false,
+            meta_until: HashMap::new(),
             generation: 0,
             pty,
             input: Some(tx),
@@ -181,8 +205,44 @@ impl PtyPane {
         if let Some(p) = progress(bytes) {
             self.osc_progress = p;
         }
+        let set = user_vars(bytes).into_iter().fold(false, |any, (k, v)| self.set_meta(k, v, None) || any);
         let events = self.screen.write(bytes);
-        self.handle(events)
+        self.handle(events) || set
+    }
+
+    // A value for it (cleaned, cut to META_CHARS), until `ttl` ms pass if given; false when nothing changed or it's full.
+    pub fn set_meta(&mut self, key: String, value: String, ttl: Option<u64>) -> bool {
+        let value: String = crate::core::text::clean_text(&value, META_CHARS);
+        match ttl {
+            Some(t) => drop(self.meta_until.insert(key.clone(), now_ms() + t)),
+            None => drop(self.meta_until.remove(&key)),
+        }
+        if self.info.meta.get(&key) == Some(&value) || (!self.info.meta.contains_key(&key) && self.info.meta.len() >= META_KEYS) {
+            return false;
+        }
+        self.info.meta.insert(key, value);
+        true
+    }
+
+    // These values gone (none named: all of them); true if any was there.
+    pub fn clear_meta(&mut self, keys: &[String]) -> bool {
+        let before = self.info.meta.len();
+        if keys.is_empty() {
+            self.info.meta.clear();
+            self.meta_until.clear();
+        }
+        for k in keys {
+            self.info.meta.shift_remove(k);
+            self.meta_until.remove(k);
+        }
+        self.info.meta.len() != before
+    }
+
+    // The values whose time is up, gone; true if any was.
+    pub fn expire_meta(&mut self) -> bool {
+        let now = now_ms();
+        let gone: Vec<String> = self.meta_until.iter().filter(|(_, at)| **at <= now).map(|(k, _)| k.clone()).collect();
+        !gone.is_empty() && self.clear_meta(&gone)
     }
 
     pub fn flush_sync(&mut self) -> bool {

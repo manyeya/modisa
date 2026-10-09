@@ -219,17 +219,19 @@ still show).
 
 ## Metadata
 
-Any program can show values in modisa (`{meta.<key>}` in formats, and plugins' snapshot): context %, cost, the
-model, a test run's progress.
+Any program can show values in modisa (`{meta.<key>}` in formats, `meta` in `modisa pane list --json` and in plugins'
+snapshot): context %, cost, the model, a test run's progress.
 
-- `modisa pane meta set context=43% cost=$1.20 [--pane p3] [--ttl 60s]`, `modisa pane meta clear [keys…]`
-- from inside a pane, without the CLI: the user-var escape sequence other terminals use,
-  `printf '\e]1337;SetUserVar=modisa_context=%s\a' "$(printf 43%% | base64)"`
-
-modisa's integrations fill some keys for you when the agent reports them: `model`, `context`, `cost`, `session`.
+- `modisa pane meta set context=43% cost=1.20 [--pane p3] [--ttl 60]`, `modisa pane meta clear [key…] [--pane p3]`
+  (without `--pane`: the pane it runs in). Keys are 1–32 of a–z, 0–9, `_ . -`; a pane holds at most 32.
+- From inside a pane, without the CLI: the user-variable escape other terminals use,
+  `printf '\e]1337;SetUserVar=modisa_context=%s\a' "$(printf 43%% | base64)"`.
+- Plugins: the `pane.meta.set` and `pane.meta.clear` requests (with a `target` pane).
 
 ## Profiles
 
-`modisa profile export > my-setup.toml` writes everything above (config, your themes, sound pack paths, plugin
-sources) to one file. `modisa profile import <file or URL>` merges one into yours, after backing yours up to
-`config.toml.bak`, and installs its plugins after showing what they are. Share setups as a gist.
+`modisa profile export > my-setup.toml` writes your setup to one file: config.toml as you wrote it (comments
+included), the themes in your themes directory, and where each plugin you installed came from (plugins linked from a
+directory are named but can't come along). `modisa profile import <file or URL>` shows what it will change and asks
+first (`--yes` for scripts). It replaces your config.toml, keeping yours as `config.toml.bak`, adds the themes, and
+installs the plugins you don't have, each of which runs as you, so import profiles you trust. Share setups as a gist.

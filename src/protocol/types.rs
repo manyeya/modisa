@@ -93,6 +93,8 @@ pub struct PaneInfo {
     pub takeover: Option<bool>, // driven from another terminal (pane attach)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub muted: bool, // its agent makes no sound and no system notification
+    #[serde(default, skip_serializing_if = "indexmap::IndexMap::is_empty")]
+    pub meta: indexmap::IndexMap<String, String>, // values set for it (pane meta, or SetUserVar=modisa_<key> from it)
 }
 
 impl PaneInfo {

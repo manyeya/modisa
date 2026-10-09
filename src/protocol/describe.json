@@ -4693,6 +4693,63 @@
           "type": "string"
         }
       }
+    },
+    "pane.meta.set": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "caller": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9_.-]{1,32}$"
+          },
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "description": "values for the pane, shown by formats ({meta.<key>}) and to plugins"
+        },
+        "ttl": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2592000,
+          "description": "seconds before they go"
+        }
+      },
+      "required": [
+        "values"
+      ]
+    },
+    "pane.meta.clear": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "caller": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "none: all of them"
+        }
+      }
     }
   },
   "results": {
@@ -4818,6 +4875,15 @@
           },
           "tabId": {
             "type": "string"
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "meta": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -8379,6 +8445,15 @@
               },
               "tabId": {
                 "type": "string"
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "meta": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
               }
             },
             "required": [
@@ -8535,6 +8610,15 @@
             "text",
             "ansi"
           ]
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -8668,6 +8752,15 @@
         },
         "tabId": {
           "type": "string"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -8798,6 +8891,15 @@
         },
         "tabId": {
           "type": "string"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -8928,6 +9030,15 @@
         },
         "tabId": {
           "type": "string"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -9058,6 +9169,15 @@
         },
         "tabId": {
           "type": "string"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -9206,6 +9326,9 @@
                           "type": "string"
                         },
                         "zoomed": {
+                          "type": "boolean"
+                        },
+                        "unread": {
                           "type": "boolean"
                         }
                       },
@@ -9382,6 +9505,15 @@
                   },
                   "tabId": {
                     "type": "string"
+                  },
+                  "muted": {
+                    "type": "boolean"
+                  },
+                  "meta": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
                   }
                 },
                 "required": [
