@@ -66,6 +66,9 @@ plugins (examples/plugins/README.md)
                                               reached). Linked by you: stopped in the session reached; never deleted
   modisa plugin run <name> <action> [json]   call an action a running plugin offers. A timeout means its outcome is
                                               unknown: running it again can repeat its effects
+  modisa view render <tree.json|-> [--size 80x24] [--theme name] [--ansi]   draw a view's tree (its root, or
+                                              { root, title, keys }) as the TUI would, without a session: as text, or with
+                                              its colours. For snapshot tests (examples/plugins/VIEWS.md)
   in the TUI, prefix P (or Plugins… in the palette): discover, install, start/stop, logs, update and remove plugins,
                                               and manage marketplaces, on the server's machine (so --remote too)
 

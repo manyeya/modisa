@@ -30,8 +30,12 @@ pub fn plugin_ui(app: &App) -> &[Value] {
     app.view.as_ref().and_then(|v| v.plugins.as_deref()).unwrap_or(&[])
 }
 
+// A plugin's tone (dim, accent, warn, working, blocked, done, idle) as the theme's colour; anything else is the text's.
 pub fn tone_color(app: &App, tone: &str) -> &'static str {
-    super::views::build::tone(&app.th, Some(tone), app.th.fg)
+    match tone {
+        "dim" | "accent" | "warn" | "working" | "blocked" | "done" | "idle" => crate::protocol::ui::token(&app.th, tone).unwrap_or(app.th.fg),
+        _ => app.th.fg,
+    }
 }
 
 fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {

@@ -160,8 +160,8 @@ export type ViewNode = Common &
     | { type: "fill"; symbol?: string }
     | { type: "clear" }
     | { type: "code"; content: string; language?: string; line_numbers?: boolean | number; highlight?: number[]; wrap?: boolean; syntax_theme?: string }
-    | ({ type: "diff"; diff: string; language?: string; view?: "unified" | "split"; line_numbers?: boolean; cursor?: boolean; marks?: number[] } & Acts)
-    | { type: "markdown"; content: string }
+    | ({ type: "diff"; diff: string; language?: string; view?: "unified" | "split"; line_numbers?: boolean; cursor?: boolean; marks?: number[]; syntax_theme?: string } & Acts)
+    | { type: "markdown"; content: string; syntax_theme?: string }
     | { type: "big_text"; text: ViewText; pixel_size?: "full" | "half_height" | "half_width" | "quadrant" | "third_height" | "sextant" | "quarter_height" | "octant"; align?: Align }
     | { type: "image"; data: string; alt?: string; resize?: "fit" | "crop" | "scale" }
     | ({ type: "input"; value?: string; placeholder?: string; mask?: string } & Acts)

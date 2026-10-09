@@ -203,11 +203,12 @@ A unified diff (`git diff` output, one file or many).
 | `marks` | indexes of body lines drawn as marked |
 | `action` | Enter (or a click) on a line: `{ "line": i, "old": n, "new": n, "text": "…" }` |
 | `change` | the cursor moved: the same |
+| `syntax_theme` | as for code |
 
 ### markdown
 
 `content` (CommonMark plus GitHub tables, task lists, strikethrough, footnotes, alerts), scrollable with an `id`.
-Fenced code is highlighted as `code` is.
+Fenced code is highlighted as `code` is (`syntax_theme` too).
 
 ### big_text
 

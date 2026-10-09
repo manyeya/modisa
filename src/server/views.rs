@@ -584,7 +584,8 @@ fn field(t: &str, k: &str, v: &Value, at: &str) -> Option<Check> {
         ("calendar", "month_header" | "weekday_header" | "surrounding") if *v == Value::Bool(false) => Ok(()),
         ("calendar", "month_header" | "weekday_header" | "surrounding" | "default_style") => style(v, at),
 
-        ("code" | "diff", "language") | ("code", "syntax_theme") => name(v, at, 40),
+        ("code" | "diff", "language") => name(v, at, 40),
+        ("code" | "diff" | "markdown", "syntax_theme") => string(v, at).and_then(|s| ui::syntax_theme(s).map(drop).map_err(|e| invalid(at, e))),
         ("code", "line_numbers") if v.is_boolean() => Ok(()),
         ("code", "line_numbers") => int(v, at, 0.0, WHOLE),
         ("code", "highlight") | ("diff", "marks") => each(v, at, |x, at| int(x, at, 0.0, WHOLE)),
@@ -987,7 +988,7 @@ mod tests {
         refused(json!({ "type": "diff" }), "root.diff");
         refused(json!({ "type": "diff", "diff": "", "marks": [-1] }), "root.marks.0");
         refused(json!({ "type": "diff", "diff": "", "view": "side" }), "Invalid option");
-        refused(json!({ "type": "diff", "diff": "", "syntax_theme": "nord" }), "Unrecognized key");
+        refused(json!({ "type": "diff", "diff": "", "syntax_theme": "no such theme" }), "isn't one of");
         refused(json!({ "type": "markdown", "content": 1 }), "expected string");
         refused(json!({ "type": "big_text" }), "root.text");
         refused(json!({ "type": "big_text", "text": "x", "pixel_size": "huge" }), "Invalid option");

@@ -736,6 +736,9 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
             connecting: false,
         })
     });
+    // which graphics protocol the terminal speaks, for plugins' images: asked before anything else reads it or is waiting
+    // on what the client writes
+    views::image::start(&shared);
     paint_background(shared.borrow().th.bg);
 
     // input on a thread of its own: crossterm's reads block

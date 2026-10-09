@@ -7,30 +7,51 @@
 // has it back.
 pub mod build;
 pub mod charts;
+pub mod code;
+pub mod fields;
+pub mod headless;
+pub mod highlight;
+pub mod image;
+pub mod markdown;
+pub mod raster;
+pub mod tree;
 
-use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Position;
-use ratatui::style::Modifier;
+use ratatui::style::{Modifier, Style};
 use serde_json::{json, Map, Value};
 
-use super::design::{fit, floating};
+use super::design::{color, fit, floating};
 use super::draw::{Canvas, Hit};
 use super::App;
 use crate::config::BorderStyle;
 use crate::core::layout::{display_rects, Rect};
 use crate::core::text::width;
-use build::{focusables, key_of, walk, Ctx, Draw, ElState, Focus, Fired};
+use build::{focus_kind, focusables, node_at, Ctx, Draw, Elems, Fired, Focus};
 
 pub struct OpenView {
-    pub state: Value, // as the server holds it (PluginViewState)
-    pub elems: HashMap<String, ElState>, // what the user did in its elements, by key
-    pub focus: Option<String>, // the key of what has the keyboard, kept across updates; None: nothing
-    pub focus_rev: Option<u64>, // the rev whose `focus` was applied: a plugin hands the keyboard over once per update
-    pub armed: bool, // the prefix was pressed: x closes
+    pub state: Value,                            // as the server holds it (PluginViewState)
+    pub elems: Elems,                            // what the user did in its elements, by key
+    pub focus: Option<String>,                   // the key of what has the keyboard, kept across updates; None: nothing
+    pub focus_rev: Option<u64>,                  // the rev whose `focus` was applied: a plugin hands the keyboard over once per update
+    pub armed: bool,                             // the prefix was pressed: x closes
+    pub clicked: Option<(String, i32, Instant)>, // the last click, and on what: a second one there soon is a double click
+}
+
+impl OpenView {
+    pub fn new(state: Value) -> Self {
+        let mut v = OpenView { state: Value::Null, elems: Elems::new(), focus: None, focus_rev: None, armed: false, clicked: None };
+        v.update(state);
+        v
+    }
+    fn update(&mut self, state: Value) {
+        self.elems = build::reconcile(&mut self.elems, &state["root"]);
+        self.state = state;
+        refocus(self);
+    }
 }
 
 const MIN: (i32, i32) = (20, 5);
@@ -44,17 +65,10 @@ fn id_of(s: &Value) -> String {
 
 pub fn view_set(app: &mut App, state: Value) {
     let id = id_of(&state);
-    let i = match app.views.iter().position(|v| id_of(&v.state) == id) {
-        Some(i) => i,
-        None => {
-            app.views.push(OpenView { state: Value::Null, elems: HashMap::new(), focus: None, focus_rev: None, armed: false });
-            app.views.len() - 1
-        }
-    };
-    let v = &mut app.views[i];
-    v.elems = build::reconcile(&mut v.elems, &state["root"]);
-    v.state = state;
-    refocus(v);
+    match app.views.iter_mut().find(|v| id_of(&v.state) == id) {
+        Some(v) => v.update(state),
+        None => app.views.push(OpenView::new(state)),
+    }
     animate(app);
     app.dirty();
 }
@@ -73,7 +87,7 @@ fn refocus(v: &mut OpenView) {
     if v.focus.as_ref().is_some_and(|k| fs.iter().any(|(x, _)| x == k)) {
         return;
     }
-    v.focus = [Focus::Field, Focus::List, Focus::Button, Focus::Scroll].iter().find_map(|kind| fs.iter().find(|(_, f)| f == kind)).map(|(k, _)| k.clone());
+    v.focus = [Focus::Field, Focus::Pick, Focus::Button, Focus::Scroll].iter().find_map(|kind| fs.iter().find(|(_, f)| f == kind)).map(|(k, _)| k.clone());
 }
 
 pub fn view_closed(app: &mut App, plugin: &str, id: &str) {
@@ -86,16 +100,16 @@ pub fn view_blit(app: &mut App, d: &Value) {
     let id = format!("{}/{}", d["plugin"].as_str().unwrap_or(""), d["view"].as_str().unwrap_or(""));
     let Some(v) = app.views.iter_mut().find(|v| id_of(&v.state) == id) else { return };
     // kept in the state: the next frame draws what's there now
-    fn swap(n: &mut Value, key: &str, cells: &Value) {
-        if n["type"] == "raster" && n["key"] == key {
+    fn swap(n: &mut Value, id: &str, cells: &Value) {
+        if n["type"] == "raster" && n["id"] == id {
             n["cells"] = cells.clone();
         } else if let Some(kids) = n.get_mut("children").and_then(Value::as_array_mut) {
-            for k in kids {
-                swap(k, key, cells);
-            }
+            kids.iter_mut().for_each(|k| swap(k, id, cells));
+        } else if let Some(child) = n.get_mut("child") {
+            swap(child, id, cells);
         }
     }
-    swap(&mut v.state["root"], d["key"].as_str().unwrap_or(""), &d["cells"]);
+    swap(&mut v.state["root"], d["id"].as_str().unwrap_or(""), &d["cells"]);
     app.dirty();
 }
 
@@ -134,7 +148,7 @@ pub fn animate(app: &mut App) {
 fn spinning(app: &App) -> bool {
     super::modals::busy(app) || app.views.iter().any(|v| {
         let mut any = false;
-        walk(&v.state["root"], "0".into(), &mut |n, _| any |= n["type"] == "spinner");
+        build::walk(&v.state["root"], "0".into(), &mut |n, _| any |= n["type"] == "spinner");
         any
     })
 }
@@ -172,7 +186,7 @@ fn rect_of(app: &App, s: &Value) -> Rect {
     floating(w, h, vw, vh, Some((w - vw) / 2), Some((h - vh) / 3))
 }
 
-// Every view, the newest on top, each framed and titled; returns where the caret of the field with the keyboard is.
+// Every view, the newest on top; returns where the caret of the field with the keyboard is.
 pub fn draw(app: &mut App, c: &mut Canvas) -> Option<Position> {
     if app.views.is_empty() {
         return None;
@@ -181,46 +195,64 @@ pub fn draw(app: &mut App, c: &mut Canvas) -> Option<Position> {
     let mut cursor = None;
     {
         let app = &*app;
-        let th = app.th;
-        let ctx = Ctx { th: &th, logos: app.logos, cell: app.cell_ems(), tick: tick() };
+        let ctx = Ctx { th: &app.th, logos: app.logos, cell: app.cell_ems(), tick: tick() };
         let n = views.len();
         for (i, v) in views.iter_mut().enumerate() {
             let top = i + 1 == n;
-            let r = rect_of(app, &v.state);
             if top {
                 c.hit(Rect { x: 0, y: 0, w: c.w, h: c.h }, Hit::Inert); // under the top one, nothing takes a click
             }
-            c.fill(r, th.bg);
-            c.hit(r, Hit::Inert);
-            let s = &v.state;
-            let fs = focusables(&s["root"]);
-            let keys: Vec<String> = s["keys"].as_array().into_iter().flatten().filter_map(|k| k["description"].as_str().filter(|d| !d.is_empty()).map(|d| format!("{} {d}", k["key"].as_str().unwrap_or("")))).collect();
-            let mut bottom = keys;
-            if fs.len() > 1 {
-                bottom.push("tab moves".into());
-            }
-            bottom.push("esc closes".into());
-            let room = (r.w - 4).max(0) as usize;
-            let title = fit(&format!(" {} · {} ", s["plugin"].as_str().unwrap_or(""), s["title"].as_str().unwrap_or("")), room);
-            let (edge, tc) = if top { (th.focus, th.focus) } else { (th.border, th.dim) };
-            c.border(r, BorderStyle::Rounded, edge, Some(th.bg), Some((&title, tc)));
-            let bt = fit(&format!(" {} ", bottom.join(" · ")), room);
-            if r.h >= 2 && !bt.is_empty() {
-                c.text(r.x + r.w - 2 - width(&bt) as i32, r.y + r.h - 1, &bt, tc, Some(th.bg), Modifier::empty(), room);
-            }
-            // inside the border, a cell of padding each side
-            let inner = Rect { x: r.x + 2, y: r.y + 1, w: (r.w - 4).max(0), h: (r.h - 2).max(0) };
-            let id = id_of(s);
-            let el = build::layout(&ctx, &s["root"], inner, &mut v.elems);
-            let mut d = Draw { view: &id, focus: v.focus.as_deref(), active: top && app.modal.is_none(), cursor: None };
-            build::draw(&ctx, c, &el, inner, &mut v.elems, &mut d);
-            if d.active {
-                cursor = d.cursor;
+            let active = top && app.modal.is_none();
+            let at = draw_view(&ctx, c, v, rect_of(app, &v.state), top, active);
+            if active {
+                cursor = at;
             }
         }
     }
     app.views = views;
     cursor
+}
+
+fn cells_of(r: Rect) -> ratatui::layout::Rect {
+    let (x, y) = (r.x.max(0), r.y.max(0));
+    ratatui::layout::Rect::new(x as u16, y as u16, (r.x + r.w - x).max(0) as u16, (r.y + r.h - y).max(0) as u16)
+}
+
+// A view in `r`: its frame (its plugin and title on top; its keys, Tab and Escape at the bottom), and its elements
+// inside, a cell in from the sides. Returns where the caret goes.
+pub fn draw_view(ctx: &Ctx, c: &mut Canvas, v: &mut OpenView, r: Rect, top: bool, active: bool) -> Option<Position> {
+    let th = ctx.th;
+    c.fill(r, th.bg);
+    let area = cells_of(r).intersection(c.buf.area);
+    c.buf.set_style(area, Style::new().fg(color(th.fg)));
+    c.hit(r, Hit::Inert);
+    let s = &v.state;
+    let fs = focusables(&s["root"]);
+    let keys: Vec<String> = s["keys"].as_array().into_iter().flatten().filter_map(|k| k["description"].as_str().filter(|d| !d.is_empty()).map(|d| format!("{} {d}", k["key"].as_str().unwrap_or("")))).collect();
+    let mut bottom = keys;
+    if !bottom.is_empty() {
+        bottom.push("? keys".into());
+    }
+    if fs.len() > 1 {
+        bottom.push("tab moves".into());
+    }
+    bottom.push("esc closes".into());
+    let room = (r.w - 4).max(0) as usize;
+    let (plugin, name) = (s["plugin"].as_str().unwrap_or(""), s["title"].as_str().unwrap_or(""));
+    let title = fit(&if plugin.is_empty() { format!(" {name} ") } else { format!(" {plugin} · {name} ") }, room);
+    let (edge, tc) = if top { (th.focus, th.focus) } else { (th.border, th.dim) };
+    c.border(r, BorderStyle::Rounded, edge, Some(th.bg), Some((&title, tc)));
+    let bt = fit(&format!(" {} ", bottom.join(" · ")), room);
+    if r.h >= 2 && !bt.is_empty() {
+        c.text(r.x + r.w - 2 - width(&bt) as i32, r.y + r.h - 1, &bt, tc, Some(th.bg), Modifier::empty(), room);
+    }
+    // inside the border, a cell of padding each side
+    let inner = Rect { x: r.x + 2, y: r.y + 1, w: (r.w - 4).max(0), h: (r.h - 2).max(0) };
+    let id = id_of(s);
+    let mut d = Draw { view: &id, focus: v.focus.as_deref(), active, cursor: None };
+    let root = &v.state["root"];
+    build::draw(ctx, c, root, &build::root_key(root), cells_of(inner), &mut v.elems, &mut d);
+    d.cursor
 }
 
 // ---------- the keyboard ----------
@@ -242,28 +274,6 @@ pub fn view_key_name(k: &KeyEvent) -> String {
     format!("{}{}{}{base}", if ctrl { "C-" } else { "" }, if meta { "M-" } else { "" }, if shifted { "S-" } else { "" })
 }
 
-fn node_at<'a>(root: &'a Value, key: &str) -> Option<&'a Value> {
-    let mut found = None;
-    walk(root, key_of(root, "0"), &mut |n, k| {
-        if found.is_none() && k == key {
-            found = Some(n);
-        }
-    });
-    found
-}
-
-const LIST_KEYS: [&str; 11] = ["up", "down", "j", "k", "S-up", "S-down", "enter", "left", "right", "[", "]"];
-
-fn scroll_step(name: &str) -> Option<i32> {
-    Some(match name {
-        "up" | "k" => -1,
-        "down" | "j" => 1,
-        "pageup" | "C-u" => -10,
-        "pagedown" | "C-d" => 10,
-        _ => return None,
-    })
-}
-
 // A key while the top view has the keyboard. Nothing it gets reaches the panes under it.
 pub fn key(app: &mut App, k: &KeyEvent) {
     let Some(i) = app.views.len().checked_sub(1) else { return };
@@ -282,10 +292,6 @@ pub fn key(app: &mut App, k: &KeyEvent) {
             return close_by_user(app, i);
         }
     }
-    let printable = match k.code {
-        KeyCode::Char(c) if !ctrl && !k.modifiers.contains(KeyModifiers::ALT) => Some(c),
-        _ => None,
-    };
     let v = &mut app.views[i];
     let fs = focusables(&v.state["root"]);
     let at = v.focus.as_ref().and_then(|f| fs.iter().position(|(x, _)| x == f));
@@ -312,59 +318,101 @@ pub fn key(app: &mut App, k: &KeyEvent) {
         return;
     }
     let bound = v.state["keys"].as_array().into_iter().flatten().find(|x| x["key"] == name.as_str()).cloned();
-    let bound_fire = |b: &Value| Fired { action: b["action"].as_str().map(String::from), params: b.get("params").cloned().unwrap_or(json!({})), ui: Map::new() };
-    let focused = v.focus.clone();
-    let node = focused.as_deref().and_then(|f| node_at(&v.state["root"], f)).cloned();
-    if let (Some(f), Some(n)) = (focused.as_deref(), node.as_ref()) {
-        let st = v.elems.entry(f.to_string()).or_default();
-        let took = if typing {
+    let focused = v.focus.clone().and_then(|f| node_at(&v.state["root"], &f).cloned().map(|n| (f, n)));
+    if let Some((f, n)) = focused {
+        let st = v.elems.entry(f.clone()).or_default();
+        if typing {
             // a field takes what's typed; only a view key with Ctrl or Alt gets past it
-            Some(match bound.as_ref().filter(|_| name.starts_with("C-") || name.starts_with("M-")) {
-                Some(b) => Some(bound_fire(b)),
-                None => build::field_key(n, st, &name, printable).flatten(),
-            })
-        } else if kind == Some(Focus::List) && LIST_KEYS.contains(&name.as_str()) && bound.is_none() {
-            Some(build::list_key(n, st, &name).flatten()) // the list moves and chooses
-        } else if n["type"] == "diff" {
-            build::diff_key(n, st, &name) // an element with keys of its own (a diff's cursor) took it
-        } else {
-            None
-        };
-        if let Some(fired) = took {
-            return fire(app, i, fired);
+            if bound.is_none() || !(name.starts_with("C-") || name.starts_with("M-")) {
+                let (fired, edited) = fields::key(&n, st, k, &name);
+                fire(app, i, fired);
+                if edited {
+                    changed(app, i, &f);
+                }
+                return;
+            }
+        } else if let Some(fired) = build::element_key(&n, st, &name) {
+            return fire(app, i, fired); // what has the keyboard uses the key
         }
     }
     if let Some(b) = bound {
-        return fire(app, i, Some(bound_fire(&b)));
+        return fire(app, i, bound_fire(&b).into_iter().collect());
     }
-    if kind == Some(Focus::Button) && (name == "enter" || name == "space") {
-        return fire(app, i, node.as_ref().map(build::press));
+    if name == "?" {
+        return help(app, i);
     }
-    if let Some(delta) = scroll_step(&name) {
-        // what has the keyboard, if it scrolls; else the first thing that does
-        let target = focused.filter(|_| kind == Some(Focus::Scroll)).or_else(|| fs.iter().find(|(_, f)| *f == Focus::Scroll).map(|(k, _)| k.clone()));
-        if let Some(t) = target {
-            if let Some(n) = node_at(&v.state["root"], &t).cloned() {
-                build::scroll_by(&n, v.elems.entry(t).or_default(), delta);
-            }
+    // nothing with the keyboard scrolls: the scroll keys reach the first thing that does
+    if !matches!(kind, Some(Focus::Scroll | Focus::Pick)) {
+        if let Some((t, n)) = fs.iter().find(|(_, f)| *f == Focus::Scroll).and_then(|(t, _)| node_at(&v.state["root"], t).cloned().map(|n| (t.clone(), n))) {
+            build::scroll_key(&n, v.elems.entry(t).or_default(), &name);
         }
     }
 }
 
-// Text pasted while a view has the keyboard goes into the field that has it.
-pub fn paste(app: &mut App, text: &str) {
-    let Some(v) = app.views.last_mut() else { return };
-    let Some(f) = v.focus.clone() else { return };
-    let Some(n) = node_at(&v.state["root"], &f).cloned() else { return };
-    if build::focus_kind(n["type"].as_str().unwrap_or("")) != Some(Focus::Field) {
+// one of the view's keys, as it runs
+fn bound_fire(b: &Value) -> Option<Fired> {
+    b["action"].as_str().map(|a| Fired { action: a.to_string(), params: b.get("params").cloned().unwrap_or(json!({})), ui: Map::new() })
+}
+
+// `?`: the view's keys in a list; choosing one runs it.
+fn help(app: &mut App, i: usize) {
+    let v = &app.views[i];
+    let keys: Vec<Value> = v.state["keys"].as_array().cloned().unwrap_or_default();
+    if keys.is_empty() {
         return;
     }
-    let area = n["type"] == "textarea";
-    let st = v.elems.entry(f).or_default();
-    for ch in text.chars().filter(|c| !c.is_control() || (area && *c == '\n')) {
-        build::field_key(&n, st, "", Some(ch));
-    }
+    let items: Vec<super::modals::ListItem> = keys.iter().enumerate().map(|(k, b)| super::modals::ListItem::new(b["description"].as_str().or(b["action"].as_str()).unwrap_or(""), "", k.to_string()).key(b["key"].as_str().unwrap_or(""))).collect();
+    let (title, view, shared) = (format!("{} · keys", v.state["plugin"].as_str().unwrap_or("")), id_of(&v.state), app.shared());
+    tokio::task::spawn_local(async move {
+        let chosen = super::modals::pick(&shared, &title, items, Some("tab moves · esc closes".into())).await;
+        let Some(b) = chosen.and_then(|k| k.parse::<usize>().ok()).and_then(|k| keys.get(k)) else { return };
+        let mut a = shared.borrow_mut();
+        if let Some(i) = a.views.iter().position(|v| id_of(&v.state) == view) {
+            fire(&mut a, i, bound_fire(b).into_iter().collect());
+        }
+    });
+}
+
+// Text pasted while a view has the keyboard goes into the field that has it.
+pub fn paste(app: &mut App, text: &str) {
+    let Some(i) = app.views.len().checked_sub(1) else { return };
+    let v = &mut app.views[i];
+    let Some(f) = v.focus.clone() else { return };
+    let Some(n) = node_at(&v.state["root"], &f).filter(|n| focus_kind(n) == Some(Focus::Field)).cloned() else { return };
+    fields::paste(&n, v.elems.entry(f.clone()).or_default(), text);
+    changed(app, i, &f);
     app.dirty();
+}
+
+// A field's text changed: its `change` runs, at most every 150ms; the last edit's always arrives.
+const CHANGE_EVERY: Duration = Duration::from_millis(150);
+
+fn changed(app: &mut App, i: usize, key: &str) {
+    let v = &mut app.views[i];
+    let Some(n) = node_at(&v.state["root"], key).filter(|n| !n["change"].is_null()).cloned() else { return };
+    let st = v.elems.entry(key.to_string()).or_default();
+    if st.pending {
+        return; // the one that's due says what's there then
+    }
+    let wait = st.sent.map_or(Duration::ZERO, |t| CHANGE_EVERY.saturating_sub(t.elapsed()));
+    if wait.is_zero() {
+        st.sent = Some(Instant::now());
+        let f = fields::change(&n, st);
+        return fire(app, i, f.into_iter().collect());
+    }
+    st.pending = true;
+    let (me, view, key) = (app.me.clone(), id_of(&v.state), key.to_string());
+    tokio::task::spawn_local(async move {
+        tokio::time::sleep(wait).await;
+        let Some(a) = me.upgrade() else { return };
+        let mut a = a.borrow_mut();
+        let Some(i) = a.views.iter().position(|v| id_of(&v.state) == view) else { return };
+        let v = &mut a.views[i];
+        let (Some(n), Some(st)) = (node_at(&v.state["root"], &key).cloned(), v.elems.get_mut(&key)) else { return };
+        (st.pending, st.sent) = (false, Some(Instant::now()));
+        let f = fields::change(&n, st);
+        fire(&mut a, i, f.into_iter().collect());
+    });
 }
 
 fn close_by_user(app: &mut App, i: usize) {
@@ -377,60 +425,60 @@ fn close_by_user(app: &mut App, i: usize) {
     });
 }
 
-// An element was used: its plugin's action, with what it holds. Only a failure is shown; what an action does, its
+// An element was used: its plugin's actions, with what it holds. Only a failure is shown; what an action does, its
 // plugin shows.
-fn fire(app: &mut App, i: usize, f: Option<Fired>) {
-    let Some(f) = f else { return };
-    let Some(action) = f.action else { return };
+fn fire(app: &mut App, i: usize, fired: Vec<Fired>) {
     let Some(v) = app.views.get(i) else { return };
-    let (plugin, run, view) = (v.state["plugin"].as_str().unwrap_or("").to_string(), v.state["run"].clone(), v.state["id"].clone());
-    let mut ui = Map::new();
-    ui.insert("view".into(), view);
-    ui.extend(f.ui);
     let Some(conn) = app.conn.clone() else { return };
-    let me = app.me.clone();
-    let params = json!({ "plugin": plugin, "action": action, "params": f.params, "run": run, "ui": ui });
-    tokio::task::spawn_local(async move {
-        if let Err(e) = conn.request("plugin.invoke", params, None).await {
-            if let Some(a) = me.upgrade() {
-                let mut a = a.borrow_mut();
-                let c = if e.code == "timeout" { a.th.warn } else { a.th.blocked };
-                a.toast(&format!("{plugin}: {action}: {}", e.message), c);
+    let (plugin, run, view) = (v.state["plugin"].as_str().unwrap_or("").to_string(), v.state["run"].clone(), v.state["id"].clone());
+    for f in fired {
+        let mut ui = Map::new();
+        ui.insert("view".into(), view.clone());
+        ui.extend(f.ui);
+        let (conn, me, plugin, action) = (conn.clone(), app.me.clone(), plugin.clone(), f.action);
+        let params = json!({ "plugin": plugin, "action": action, "params": f.params, "run": run, "ui": ui });
+        tokio::task::spawn_local(async move {
+            if let Err(e) = conn.request("plugin.invoke", params, None).await {
+                if let Some(a) = me.upgrade() {
+                    let mut a = a.borrow_mut();
+                    let c = if e.code == "timeout" { a.th.warn } else { a.th.blocked };
+                    a.toast(&format!("{plugin}: {action}: {}", e.message), c);
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 // ---------- the pointer ----------
 
-// A click on an element of a view: it takes the keyboard; a button presses, a list's row or a tab is chosen.
+const DOUBLE: Duration = Duration::from_millis(400);
+
+// A click on an element of a view: it takes the keyboard, and what's clicked in it is chosen or pressed.
 pub fn click(app: &mut App, view: &str, key: &str, part: i32) {
     let Some(i) = app.views.iter().position(|v| id_of(&v.state) == view) else { return };
     app.dirty();
     let v = &mut app.views[i];
     let Some(n) = node_at(&v.state["root"], key).cloned() else { return };
-    if build::focus_kind(n["type"].as_str().unwrap_or("")).is_some() {
+    if focus_kind(&n).is_some() {
         v.focus = Some(key.to_string());
     }
-    let st = v.elems.entry(key.to_string()).or_default();
-    let fired = match n["type"].as_str() {
-        Some("button") => Some(build::press(&n)),
-        Some("select" | "tabs") if part >= 0 => build::pick(&n, st, part as usize),
-        _ => None,
-    };
+    let now = Instant::now();
+    let double = part >= 0 && v.clicked.as_ref().is_some_and(|(k, p, t)| k == key && *p == part && now.duration_since(*t) < DOUBLE);
+    v.clicked = (!double).then(|| (key.to_string(), part, now));
+    let fired = build::click(&n, v.elems.entry(key.to_string()).or_default(), part, double);
     fire(app, i, fired);
 }
 
-// The wheel over a view: the innermost area under the pointer that scrolls.
+// The wheel over a view: the innermost element under the pointer that scrolls (or moves a choice).
 pub fn wheel(app: &mut App, under: &[Hit], rows: i32) {
     for h in under {
         let Hit::View { view, key, .. } = h else { continue };
-        let Some(v) = app.views.iter_mut().find(|v| id_of(&v.state) == *view) else { continue };
+        let Some(i) = app.views.iter().position(|v| id_of(&v.state) == *view) else { continue };
+        let v = &mut app.views[i];
         let Some(n) = node_at(&v.state["root"], key).cloned() else { continue };
-        if matches!(n["type"].as_str(), Some("scroll" | "code" | "diff" | "markdown")) {
-            build::scroll_by(&n, v.elems.entry(key.clone()).or_default(), rows);
+        if let Some(fired) = build::wheel(&n, v.elems.entry(key.clone()).or_default(), rows) {
             app.dirty();
-            return;
+            return fire(app, i, fired);
         }
     }
 }
@@ -454,5 +502,17 @@ mod tests {
         assert_eq!(cells(&json!("50%"), 100, 3), 50);
         assert_eq!(cells(&json!(12), 100, 3), 12);
         assert_eq!(cells(&Value::Null, 100, 3), 3);
+    }
+
+    #[test]
+    fn focus_goes_where_the_plugin_says_once_per_update() {
+        let root = json!({ "type": "layout", "children": [{ "type": "button", "id": "ok" }, { "type": "input", "id": "name" }] });
+        let mut v = OpenView::new(json!({ "root": root, "rev": 1 }));
+        assert_eq!(v.focus.as_deref(), Some("#name")); // the field first
+        v.update(json!({ "root": root, "rev": 2, "focus": "ok" }));
+        assert_eq!(v.focus.as_deref(), Some("#ok"));
+        v.focus = Some("#name".into());
+        v.update(json!({ "root": root, "rev": 2, "focus": "ok" }));
+        assert_eq!(v.focus.as_deref(), Some("#name")); // the same update doesn't take it back
     }
 }

@@ -30,6 +30,7 @@ pub mod plugin_search;
 pub mod sessions;
 pub mod uninstall;
 pub mod update;
+pub mod view;
 
 use crate::core::paths::{abs_path, cwd};
 use args::parse_args;
@@ -79,6 +80,7 @@ pub async fn run(argv: Vec<String>) -> i32 {
         Some("__site-data") => site_data().await,
         // new, sdk, schema, check, dev, link and unlink need no server; the rest go through it
         Some("plugin") if is_local_plugin_command(arg(0)) => plugin::run_plugin_local(arg(0).unwrap_or_default(), &rest[1..], &a).await,
+        Some("view") => view::run_view(arg(0), rest.get(1..).unwrap_or_default(), &a), // a view drawn without a session
         Some("help" | "--help" | "-h") => {
             outln!("{HELP}");
             0

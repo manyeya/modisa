@@ -2926,7 +2926,7 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 40,
-                  "description": "one of the built-in syntax themes, instead of the user's theme"
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
                 }
               },
               "required": [
@@ -3008,6 +3008,12 @@
                 "change": {
                   "type": "string",
                   "minLength": 1
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
                 }
               },
               "required": [
@@ -3063,6 +3069,12 @@
                 },
                 "content": {
                   "type": "string"
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
                 }
               },
               "required": [
@@ -6828,7 +6840,7 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 40,
-                  "description": "one of the built-in syntax themes, instead of the user's theme"
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
                 }
               },
               "required": [
@@ -6910,6 +6922,12 @@
                 "change": {
                   "type": "string",
                   "minLength": 1
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
                 }
               },
               "required": [
@@ -6965,6 +6983,12 @@
                 },
                 "content": {
                   "type": "string"
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
                 }
               },
               "required": [
