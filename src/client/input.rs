@@ -458,7 +458,9 @@ fn mouse(shared: &Shared, m: MouseEvent) {
                     let sidebar = r.sidebar;
                     app.resizing = Some(Resizing { x, y, sidebar, saw_drag });
                     if sidebar {
-                        sidebar_to(&mut app, x + 1);
+                        // the edge follows the pointer: from the left edge, or from the right one when it's there
+                        let w = if app.cfg.sidebar.position == "right" { app.width - x } else { x + 1 };
+                        sidebar_to(&mut app, w);
                     } else {
                         app.call("dragMove", json!({ "x": x, "y": y }));
                     }
@@ -572,6 +574,10 @@ fn mouse(shared: &Shared, m: MouseEvent) {
                     app.dirty();
                 }
                 Some(Hit::FocusPane(p)) => app.call("focusPane", json!({ "pane": p })),
+                Some(Hit::Named(a)) => {
+                    drop(app);
+                    actions::run_named(shared, &a);
+                }
                 Some(Hit::Slot(h)) => super::slots::clicked(&mut app, &h),
                 Some(Hit::View { view, key, part }) => super::slots::element_click(&mut app, &view, &key, part),
                 Some(Hit::PluginFold(name)) => {

@@ -8,6 +8,8 @@ pub mod actions;
 pub mod commands;
 pub mod design;
 pub mod draw;
+pub mod format;
+pub mod vars;
 pub mod input;
 pub mod keys;
 pub mod modals;
@@ -131,6 +133,7 @@ pub struct App {
     quit: Rc<Notify>,
     toast_seq: u64,
     connecting: bool,
+    window_title: String, // the terminal's title as [window] title last set it
 }
 
 impl App {
@@ -184,6 +187,7 @@ impl App {
             quit,
             toast_seq: 0,
             connecting: false,
+            window_title: String::new(),
         }
     }
 
@@ -205,7 +209,7 @@ impl App {
 
     // ---------- geometry ----------
     pub fn metrics(&self) -> design::Chrome {
-        design::chrome(self.width, self.height, self.sidebar, self.cfg.sidebar.width)
+        design::chrome_at(self.width, self.height, self.sidebar, self.cfg.sidebar.width, &self.cfg.tabs.position, self.cfg.sidebar.position == "right")
     }
     pub fn side_width(&self) -> i32 {
         self.metrics().side
@@ -253,6 +257,15 @@ impl App {
         }
     }
     // The current space's agents, what needs you first. Other spaces' agents reach you as notifications.
+    // how many of the agents shown are working, and how many need you
+    pub fn counts(&self) -> (usize, usize) {
+        let agents = self.sorted_agents();
+        let n = |s: AgentState| agents.iter().filter(|p| p.agent.as_ref().is_some_and(|a| a.state == s)).count();
+        (n(AgentState::Working), n(AgentState::Blocked))
+    }
+
+    // The agents the sidebar shows ([sidebar] show: this space's, this tab's, or all), in [sidebar] sort's order:
+    // attention (who needs you first), name, or created.
     pub fn sorted_agents(&self) -> Vec<PaneInfo> {
         let order = |s: AgentState| match s {
             AgentState::Blocked => 0,
@@ -260,9 +273,18 @@ impl App {
             AgentState::Working => 2,
             AgentState::Idle => 3,
         };
-        let here: HashSet<String> = self.ws().tabs.iter().flat_map(|t| tree_panes(&t.tree)).collect();
+        let here: HashSet<String> = match self.cfg.sidebar.show.as_str() {
+            "tab" => tree_panes(&self.tab().tree).into_iter().collect(),
+            "all" => self.view.as_ref().unwrap().workspaces.iter().flat_map(|w| w.tabs.iter()).flat_map(|t| tree_panes(&t.tree)).collect(),
+            _ => self.ws().tabs.iter().flat_map(|t| tree_panes(&t.tree)).collect(),
+        };
         let mut agents: Vec<PaneInfo> = self.view.as_ref().unwrap().panes.iter().filter(|p| p.agent.is_some() && here.contains(&p.id)).cloned().collect();
-        agents.sort_by_key(|p| order(p.agent.as_ref().unwrap().state));
+        let id = |p: &PaneInfo| p.id.trim_start_matches('p').parse::<u64>().unwrap_or(0);
+        match self.cfg.sidebar.sort.as_str() {
+            "name" => agents.sort_by_key(|p| p.name.clone().unwrap_or_else(|| p.title.clone()).to_lowercase()),
+            "created" => agents.sort_by_key(id),
+            _ => agents.sort_by_key(|p| order(p.agent.as_ref().unwrap().state)),
+        }
         agents
     }
 
@@ -830,6 +852,7 @@ fn setup_terminal() -> std::io::Result<Terminal<CrosstermBackend<std::io::Stdout
     crossterm::terminal::enable_raw_mode()?;
     let mut out = std::io::stdout();
     crossterm::execute!(out, crossterm::terminal::EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste, EnableFocusChange)?;
+    let _ = write!(out, "\x1b[22;2t"); // the terminal's title, kept on its stack for [window] title to give back
     if crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false) {
         let _ = crossterm::execute!(out, PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
     }
@@ -840,7 +863,7 @@ fn restore_terminal() {
     use crossterm::event::{DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, PopKeyboardEnhancementFlags};
     let mut out = std::io::stdout();
     let _ = crossterm::execute!(out, PopKeyboardEnhancementFlags, DisableMouseCapture, DisableBracketedPaste, DisableFocusChange, crossterm::cursor::Show, crossterm::terminal::LeaveAlternateScreen);
-    let _ = write!(out, "\x1b]111\x07\x1b]22;default\x07");
+    let _ = write!(out, "\x1b]111\x07\x1b]22;default\x07\x1b[23;2t");
     let _ = out.flush();
     let _ = crossterm::terminal::disable_raw_mode();
 }
@@ -871,6 +894,13 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
         crate::config::themes::LIGHT.store(light, std::sync::atomic::Ordering::Relaxed);
     }
     let shared: Shared = Rc::new_cyclic(|me| RefCell::new(App::new(opts, cfg, (size.width as i32, size.height as i32), me.clone(), redraw.clone(), quit_signal.clone())));
+    // a {sh:…} in a format answering: draw again
+    let me = Rc::downgrade(&shared);
+    format::on_answer(Rc::new(move || {
+        if let Some(a) = me.upgrade() {
+            a.borrow().dirty();
+        }
+    }));
     // which graphics protocol the terminal speaks, for plugins' images: asked before anything else reads it or is waiting
     // on what the client writes
     views::image::start(&shared);
@@ -953,4 +983,11 @@ fn draw_now(shared: &Shared, terminal: &mut Terminal<CrosstermBackend<std::io::S
     let mut app = shared.borrow_mut();
     input::report_focus(&mut app);
     let _ = terminal.draw(|f| draw::render(&mut app, f));
+    // [window] title, when what it says changes
+    if let Some(t) = draw::window_title(&app).filter(|t| *t != app.window_title) {
+        let mut out = std::io::stdout();
+        let _ = write!(out, "\x1b]2;{t}\x07");
+        let _ = out.flush();
+        app.window_title = t;
+    }
 }

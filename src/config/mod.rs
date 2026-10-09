@@ -54,12 +54,56 @@ pub enum IndicatorStyle {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum BorderStyle {
+    #[serde(alias = "plain")]
     Single,
     Rounded,
     Double,
+    #[serde(alias = "thick")]
     Heavy,
+    LightDoubleDashed,
+    HeavyDoubleDashed,
+    LightTripleDashed,
+    HeavyTripleDashed,
+    LightQuadrupleDashed,
+    HeavyQuadrupleDashed,
+    QuadrantInside,
+    QuadrantOutside,
+    ProportionalWide,
+    ProportionalTall,
+    Full,
+    None, // blank: the panes keep their room, with no lines
+}
+
+impl BorderStyle {
+    pub const NAMES: &'static [&'static str] = &[
+        "single", "rounded", "double", "heavy", "light_double_dashed", "heavy_double_dashed", "light_triple_dashed", "heavy_triple_dashed", "light_quadruple_dashed",
+        "heavy_quadruple_dashed", "quadrant_inside", "quadrant_outside", "proportional_wide", "proportional_tall", "full", "none",
+    ];
+
+    // its characters: ratatui's border sets
+    pub fn set(self) -> ratatui::symbols::border::Set<'static> {
+        use ratatui::symbols::border::*;
+        match self {
+            BorderStyle::Single => PLAIN,
+            BorderStyle::Rounded => ROUNDED,
+            BorderStyle::Double => DOUBLE,
+            BorderStyle::Heavy => THICK,
+            BorderStyle::LightDoubleDashed => LIGHT_DOUBLE_DASHED,
+            BorderStyle::HeavyDoubleDashed => HEAVY_DOUBLE_DASHED,
+            BorderStyle::LightTripleDashed => LIGHT_TRIPLE_DASHED,
+            BorderStyle::HeavyTripleDashed => HEAVY_TRIPLE_DASHED,
+            BorderStyle::LightQuadrupleDashed => LIGHT_QUADRUPLE_DASHED,
+            BorderStyle::HeavyQuadrupleDashed => HEAVY_QUADRUPLE_DASHED,
+            BorderStyle::QuadrantInside => QUADRANT_INSIDE,
+            BorderStyle::QuadrantOutside => QUADRANT_OUTSIDE,
+            BorderStyle::ProportionalWide => PROPORTIONAL_WIDE,
+            BorderStyle::ProportionalTall => PROPORTIONAL_TALL,
+            BorderStyle::Full => FULL,
+            BorderStyle::None => EMPTY,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,6 +135,11 @@ pub struct Sidebar {
     pub agents: String, // a plugin whose section replaces the AGENTS list
     pub logos: Logos,
     pub graph: bool,
+    pub position: String,      // left or right
+    pub sections: Vec<String>, // agents, plugins (every plugin's sections), plugin:<name>, commands: in this order
+    pub row: Vec<String>,      // an agent's rows as formats (1–3); none: modisa's own
+    pub sort: String,          // attention, recent, name, created
+    pub show: String,          // space (this space's agents), tab, all
 }
 
 // What the status row shows besides the buttons.
@@ -100,6 +149,23 @@ pub struct Status {
     pub agents: bool,
     pub panes: bool,
     pub theme: bool,
+    pub left: String,  // a format for the left of the row instead of modisa's (CUSTOMIZE.md, Formats)
+    pub right: String, // and for the right
+}
+
+// The tab bar: where, and each tab's label as a format.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tabs {
+    pub position: String, // top, bottom or hidden
+    pub format: String,
+}
+
+// The terminal's own title (OSC 2) as a format; "" leaves it to the terminal.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Window {
+    pub title: String,
 }
 
 // The active space's repository in the status row.
@@ -116,6 +182,9 @@ pub struct Git {
 #[serde(default)]
 pub struct Panes {
     pub border: BorderStyle,
+    pub title: String,          // a format for the border title; "" modisa's
+    pub title_position: String, // top_left, top_center, top_right, bottom_left, bottom_center, bottom_right
+    pub dim_unfocused: f64,     // 0 to 0.8: unfocused panes' text mixed toward the background
 }
 
 // How each agent event is told: per NotifyEvent (an AgentState but idle).
@@ -348,6 +417,8 @@ pub struct Config {
     pub status: Status,
     pub git: Git,
     pub panes: Panes,
+    pub tabs: Tabs,
+    pub window: Window,
     pub notify: Notify,
     pub sound: Sound,
     pub indicators: Indicators,
@@ -374,10 +445,23 @@ pub fn defaults() -> Config {
         theme: "ion".into(),
         theme_light: None,
         mouse: Mouse { hover: true },
-        sidebar: Sidebar { visible: true, width: 26, agents: String::new(), logos: Logos::Auto, graph: false },
-        status: Status { agents: true, panes: true, theme: false },
+        sidebar: Sidebar {
+            visible: true,
+            width: 26,
+            agents: String::new(),
+            logos: Logos::Auto,
+            graph: false,
+            position: "left".into(),
+            sections: vec!["agents".into(), "plugins".into(), "commands".into()],
+            row: vec![],
+            sort: "attention".into(),
+            show: "space".into(),
+        },
+        status: Status { agents: true, panes: true, theme: false, left: String::new(), right: String::new() },
         git: Git { status: true, repo: true, counts: true, changes: true },
-        panes: Panes { border: BorderStyle::Single },
+        panes: Panes { border: BorderStyle::Single, title: String::new(), title_position: "top_left".into(), dim_unfocused: 0.0 },
+        tabs: Tabs { position: "top".into(), format: String::new() },
+        window: Window { title: String::new() },
         notify: Notify { blocked: vec![NotifyKind::Toast, NotifyKind::System, NotifyKind::Sound], done: vec![NotifyKind::Toast], working: vec![], unread: false, click: "none".into(), agents: IndexMap::new() },
         sound: Sound { volume: 0.7, blocked: "chime".into(), done: "success".into(), working: "loading".into(), pack: String::new(), agents: IndexMap::new() },
         indicators: Indicators { style: IndicatorStyle::Symbols, tab: true, pane: true, sidebar: true },
@@ -407,7 +491,7 @@ macro_rules! default_from_defaults {
 }
 default_from_defaults!(
     Mouse.mouse, Sidebar.sidebar, Status.status, Git.git, Panes.panes, Notify.notify, Sound.sound, Indicators.indicators,
-    PaneLabels.pane_labels, Update.update, Messaging.messaging, Permissions.permissions
+    PaneLabels.pane_labels, Update.update, Messaging.messaging, Permissions.permissions, Tabs.tabs, Window.window
 );
 
 impl Default for Config {
@@ -416,7 +500,7 @@ impl Default for Config {
     }
 }
 
-pub const SAMPLE: &str = r#"# modisa config — changes apply live (Ctrl+B s opens the settings page)
+pub const SAMPLE: &str = r##"# modisa config — changes apply live (Ctrl+B s opens the settings page)
 prefix = "C-b"              # C-<key>
 theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, dracula, bearded-* (see settings)
 
@@ -426,11 +510,25 @@ width = 26                  # 20 to 48 columns, at most a third of the terminal;
 agents = ""                 # a plugin whose sidebar section takes the AGENTS list's place ("radar"); "" keeps modisa's
 logos = "auto"              # agents' logos where the terminal can show them (modisa logos); "on", or "off" for plain marks
 graph = false               # true draws the AGENTS list as a git graph of its tabs; the dots stay either way
+position = "left"           # left or right
+sections = ["agents", "plugins", "commands"]   # their order; "plugin:<name>" for one plugin's; leave one out to hide it
+sort = "attention"          # attention (who needs you first), name, created
+show = "space"              # space (this space's agents), tab, all
+# row = ["{icon} {name}", "  {agent} · {state}"]   # agents as a flat list of these formats (see CUSTOMIZE.md)
 
 [status]                    # the bottom row, besides its buttons
 agents = true               # how many agents are working and need you
 panes = true                # how many panes this tab has
 theme = false               # the theme's name (click it to change theme)
+# left = "#[bold $accent] modisa #[] {space} {?blocked|#[$blocked]{blocked} need you|}"   # the row as your formats
+# right = "{git.branch} #[$dim]{clock:%H:%M}"
+
+[tabs]
+position = "top"            # top, bottom or hidden
+# format = "{tab.index}:{tab}"
+
+[window]
+# title = "{space} · {name}"   # the terminal's title; "" leaves it alone
 
 [git]                       # the active space's repository, on the right of the status row
 status = true               # its branch (green when clean and in step with its upstream)
@@ -439,7 +537,10 @@ counts = true               # ↑ commits to push, ↓ commits to pull
 changes = true              # ● files changed
 
 [panes]
-border = "single"           # single, rounded, double or heavy
+border = "single"           # single, rounded, double, heavy, light_double_dashed … quadrant_outside, full, none
+dim_unfocused = 0.0         # 0 to 0.8: the other panes' text mixed toward the background
+# title = "{name} {?agent|{icon} {agent} {state}|}"
+title_position = "top_left" # top_left, top_center, top_right, bottom_left, bottom_center, bottom_right
 
 [mouse]                     # clicks, drags, the wheel and right-click always work (Shift-drag selects text natively)
 hover = true                # the pointer resting on a row of a menu, picker or the settings page selects it
@@ -543,7 +644,7 @@ run_foreign = "ask"
 # How --remote starts modisa on the far side of ssh. Set an absolute path when it isn't on the
 # PATH of a non-interactive ssh shell (~/.local/bin often isn't).
 # remote_command = "modisa"
-"#;
+"##;
 
 // A TOML parse error's message, and where it is: the line and column (both from 1) its span starts at.
 #[derive(Clone, Debug, PartialEq)]
@@ -669,6 +770,8 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         status: overlay(d.status, get("status")),
         git: overlay(git, get("git")),
         panes: overlay(d.panes, get("panes")),
+        tabs: overlay(d.tabs, get("tabs")),
+        window: overlay(d.window, get("window")),
         notify: overlay(d.notify, get("notify")),
         sound: overlay(d.sound, get("sound")),
         indicators: overlay(d.indicators, get("indicators")),
@@ -1110,10 +1213,15 @@ mod tests {
     fn the_config_serializes_with_the_ts_field_names() {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-        let ts = ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys"];
-        let since = ["actions", "root_keys", "modes", "command", "hook", "remote_command", "slots"]; // the Rust build's, with the TS's last among them
-        assert_eq!(fields, [&ts[..], &since[..]].concat());
-        assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false }));
+        // the TS build's, with this build's among them: tabs and window by the panes; actions to hook, and slots, at the end
+        assert_eq!(
+            fields,
+            [
+                "prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "tabs", "window", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents",
+                "plugin", "plugin_keys", "keys", "actions", "root_keys", "modes", "command", "hook", "remote_command", "slots"
+            ]
+        );
+        assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false, "position": "left", "sections": ["agents", "plugins", "commands"], "row": [], "sort": "attention", "show": "space" }));
         assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [], "unread": false, "click": "none" }));
         assert_eq!(v["sound"], json!({ "volume": 0.7, "blocked": "chime", "done": "success", "working": "loading", "pack": "" }));
         assert_eq!(v["permissions"], json!({ "keys_foreign": "ask", "close_foreign": "ask", "run_foreign": "ask" }));

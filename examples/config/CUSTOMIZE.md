@@ -47,69 +47,70 @@ Windows Terminal JSON, base16/base24 YAML. `modisa config check` reports a theme
 ## Formats
 
 A format is text with `{variables}`, `#[styles]` and conditionals. The status row, tab labels, pane titles, the
-terminal's window title and the sidebar's agent rows each have one.
+terminal's window title and the sidebar's agent rows can each be one.
 
 | | |
 |---|---|
-| `{name}` | a variable (below); unknown ones are empty, and `config check` warns |
-| `{name:arg}` | with an argument: `{clock:%H:%M}`, `{cwd:short}`, `{sh:git log -1 --format=%s|30s}` |
+| `{name}` | a variable (below); unknown ones are empty |
+| `{name:arg}` | with an argument: `{clock:%H:%M}`, `{cwd:short}`, `{sh:git log -1 --format=%s\|30s}` |
 | `{?name\|then\|else}` | `then` when `name` is set and not 0/false/empty, else `else` (both may hold variables) |
-| `{name=value\|then\|else}` | `then` when `name` equals `value` |
+| `{name=value\|then\|else}` | `then` when `name` is `value` |
 | `{name:=N}` / `{name:<N}` | at most N cells (cut with …) / padded to N cells |
-| `#[style]` | style from here on (`#[bold $warn]`, `#[on $bar]`); `#[]` back to the format's base style |
-| `#[click=action]…#[/click]` | a clickable part: a modisa action (`palette`, `split-right`, …), `plugin:<name>.<action>`, or `sh:<command>` |
-| `#[align=right]` | what follows goes to the right edge |
+| `#[style]` | style from here on (`#[bold $warn]`, `#[on $bar]`); `#[]` back to the base style |
+| `#[click=action]…#[/click]` | a clickable part: anything a key can run (Keys, below) |
+| `#[align=right]` | what follows goes to the right edge (status row) |
 
-Variables (where they make sense): `session` `space` `tab` `tab.index` `pane` `pane.index` `name` `title`
-`terminal_title` `cwd` `command` `agent` (harness name) `agent.id` `state` (working/blocked/done/idle) `icon` (the
-agent's mark) `working` `blocked` `done` `idle` (counts) `panes` `tabs` `spaces` `zoomed` `mode` (the current key
-mode) `prefix` (when the prefix is armed) `git.branch` `git.repo` `git.ahead` `git.behind` `git.changes`
-`git.clean` `theme` `host` `user` `clock` `date` `meta.<key>` (see Metadata) `plugin.<name>.<id>` (a plugin's
-status piece, CHROME.md) `sh` (a command's first output line, cached for its interval; default 10s).
+A variable's value is always text as it is: a pane title holding `#[…]` or `{…}` can't style or click anything.
+
+Variables everywhere: `session` `space` `spaces` `tabs` `panes` `working` `blocked` `done` `idle` (counts of the
+agents shown) `mode` (the key mode on) `prefix` (`on` while the prefix waits for its key) `git.branch` `git.repo`
+`git.ahead` `git.behind` `git.changes` `git.clean` `theme` `host` `user` `clock` (`{clock:%H:%M}`, strftime) `date`
+`sh` (`{sh:command|30s}`: its first line, run again after the interval, 10s by default) and `plugin.<name>.<id>` (a
+plugin's status piece, CHROME.md). About a pane (pane titles, agent rows, the window title, tabs via their focused
+pane): `pane` `pane.index` `name` `title` `terminal_title` `cwd` (`{cwd:short}`: its last part) `command` `agent`
+`state` `icon` `zoomed` `exited` and `meta.<key>` (Metadata, below). About a tab: `tab` `tab.index` `panes` `blocked`
+`zoomed` `unread`. modisa's status buttons are variables too: `{sidebar_button}` `{agent_button}` `{working_button}`
+`{needyou_button}` `{panes_button}`.
 
 ```toml
-[status]
-left = "#[click=palette]#[bold $accent] modisa #[] {space} {?blocked|#[$blocked]! {blocked} need you|}"
-right = "{?git.branch|{git.branch}{?git.changes| ●{git.changes}} |}#[$dim]{clock:%H:%M}"
-rows = 1                    # 1–3; with more, left2/right2, left3/right3
+[status]                    # either set: the whole row is yours (plugins' status pieces still go after left, before right)
+left = "#[click=palette]#[bold $accent] modisa #[] {space} {?blocked|#[$blocked]! {blocked} need you|} {mode}"
+right = "{?git.branch|{git.branch}{?git.changes| ●{git.changes}|} |}#[$dim]{clock:%H:%M}"
 
 [tabs]
-format = "{tab.index}:{tab}{?blocked| #[$blocked]!}"
-position = "top"            # top, bottom or hidden
+format = "{tab.index}:{tab}{?blocked| #[$blocked]!|}"
+position = "top"            # top, bottom (above the status row) or hidden
 
 [panes]
 title = "{name} {?agent|{icon} {agent} {state}|}"
-title_position = "top_left" # top_left, top_center, top_right, bottom_left, …
+title_position = "top_left" # top_left, top_center, top_right, bottom_left, bottom_center, bottom_right
 
 [window]
-title = "{space} · {?agent|{agent} {state}|{command}}"   # the terminal's title (OSC 2); "" leaves it alone
+title = "{space} · {?agent|{agent} {state}|{name}}"   # the terminal's title (OSC 2); yours comes back when modisa ends
 ```
-
-The status row's built-in buttons are variables too (`{sidebar_button}`, `{agent_button}`, `{working_button}`,
-`{needyou_button}`, `{panes_button}`), so a format places them or leaves them out. Without `left`/`right` the row is
-modisa's default.
 
 ## Sidebar
 
 ```toml
 [sidebar]
 position = "left"           # left or right
-sections = ["agents", "plugin:radar", "commands"]   # order; leave one out to hide it
-row = ["{icon} {name}", "  #[$dim]{agent} · {state}{?meta.context| · {meta.context}|}"]   # 1–3 lines per agent
-group = "tab"               # tab, space, repo, state or none
-sort = "attention"          # attention (needs-you first), recent, name, created
-show = "all"                # all, space (this space's agents), tab
+sections = ["agents", "plugins", "commands"]   # in this order; "plugin:<name>" for one plugin's; leave one out to hide it
+row = ["{icon} {name}", "  #[$dim]{agent} · {state}{?meta.context| · {meta.context}|}"]   # agents as a list of these
+sort = "attention"          # attention (who needs you first), name, created
+show = "space"              # space (this space's agents), tab, all
 ```
+
+Without `commands` in `sections`, the footer goes and the rest have its room. With `row`, the agents are a flat list
+of those formats (1–3 rows each); without it, modisa's own list, grouped by tab.
 
 ## Panes
 
 ```toml
 [panes]
-border = "rounded"          # plain, rounded, double, thick, light_double_dashed, heavy_double_dashed,
-                            # light_triple_dashed, heavy_triple_dashed, light_quadruple_dashed,
-                            # heavy_quadruple_dashed, quadrant_inside, quadrant_outside, none
-dim_unfocused = 0.25        # 0–0.8: mix unfocused panes' text toward the background
-gap = 0                     # cells between panes (0–2)
+border = "rounded"          # single, rounded, double, heavy, light_double_dashed, heavy_double_dashed,
+                            # light_triple_dashed, heavy_triple_dashed, light_quadruple_dashed, heavy_quadruple_dashed,
+                            # quadrant_inside, quadrant_outside, proportional_wide, proportional_tall, full, none
+dim_unfocused = 0.25        # 0–0.8: the other panes' text mixed toward the background
 ```
 
 ## Keys

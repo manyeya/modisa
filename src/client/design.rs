@@ -111,13 +111,26 @@ pub fn agent_task(title: Option<&str>, not: &[Option<&str>]) -> String {
 pub struct Chrome {
     pub top: i32,
     pub side: i32,
+    pub side_x: i32,           // where the sidebar starts: 0 on the left, w - side on the right
+    pub tabs_y: Option<i32>,   // the tab bar's row ([tabs] position), none when it's hidden
     pub area: Rect,
 }
 
+// Where everything goes: the tab bar on top (or at the bottom, over the status row, or hidden), the sidebar on the left
+// (or the right), the panes in what's left.
 pub fn chrome(w: i32, h: i32, sidebar: bool, preferred: i64) -> Chrome {
-    let (top, bottom) = (1, 1); // tab bar, status row
+    chrome_at(w, h, sidebar, preferred, "top", false)
+}
+
+pub fn chrome_at(w: i32, h: i32, sidebar: bool, preferred: i64, tabs: &str, right: bool) -> Chrome {
+    let (top, bottom, tabs_y) = match tabs {
+        "bottom" => (0, 2, Some(h - 2)),
+        "hidden" => (0, 1, None),
+        _ => (1, 1, Some(0)),
+    };
     let side = if sidebar && w >= 100 && h >= 22 { (preferred.max(20) as i32).min(48).min(w / 3) } else { 0 };
-    Chrome { top, side, area: Rect { x: side, y: top, w: (w - side).max(1), h: (h - top - bottom).max(1) } }
+    let (side_x, area_x) = if right { (w - side, 0) } else { (0, side) };
+    Chrome { top, side, side_x, tabs_y, area: Rect { x: area_x, y: top, w: (w - side).max(1), h: (h - top - bottom).max(1) } }
 }
 
 pub fn floating(w: i32, h: i32, want_w: i32, want_h: i32, x: Option<i32>, y: Option<i32>) -> Rect {

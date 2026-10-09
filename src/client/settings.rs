@@ -416,7 +416,7 @@ fn step(app: &mut App, s: &mut Settings, act: &Act, by: i64) {
         }
         Act::Border => {
             let now = json!(app.cfg.panes.border).as_str().unwrap_or("single").to_string();
-            save(app, Some("panes"), "border", json!(cycle(&["single", "rounded", "double", "heavy"], &now, by)));
+            save(app, Some("panes"), "border", json!(cycle(crate::config::BorderStyle::NAMES, &now, by)));
         }
         Act::Sound(event) => {
             let options = sound_options();

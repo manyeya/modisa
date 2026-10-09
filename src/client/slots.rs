@@ -509,8 +509,8 @@ fn body(app: &App, c: &mut Canvas, s: &mut Side, p: &SlotPiece, rows: i32, fallb
 
 // Plugins' own sidebar sections, under each plugin's name (a click on it folds them): each its title, then its lines or
 // its element.
-pub fn sections(app: &App, c: &mut Canvas, s: &mut Side, elems: &mut HashMap<String, SlotElem>) {
-    let ps = pieces(app, "sidebar", |_| true);
+pub fn sections(app: &App, c: &mut Canvas, s: &mut Side, elems: &mut HashMap<String, SlotElem>, only: Option<&str>) {
+    let ps = pieces(app, "sidebar", |p| only.is_none_or(|o| p.plugin == o));
     let mut names: Vec<&str> = vec![];
     for p in &ps {
         if !names.contains(&p.plugin.as_str()) {

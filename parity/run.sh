@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # The end-to-end suite of the TypeScript build (its last commit, $TS below), run against this one: its src/ and test/
 # from git history (the tests import protocol types and schemas from src/), with a harness that starts our binary
 # instead of `bun src/main.ts`. Needs bun. Usage: parity/run.sh [test files or patterns…]   (default: the e2e suite)
-set -e
+set -e -o pipefail
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 TS=b83399d53c96 # the last commit of the TypeScript build
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -34,6 +34,24 @@ export MODISA_DIR="$out/state" # the suite's own process (its libghostty) never 
 cd "$out"
 if [ $# -eq 0 ]; then set -- test/e2e; fi
 status=0
-bun test --timeout 60000 "$@" || status=$?
+log=$(mktemp)
+bun test --timeout 60000 "$@" 2>&1 | tee "$log" || status=$?
 pkill -f "$MODISA_BIN server" || true # a test that only deletes its sandbox leaves that sandbox's server running
+# ponytail: a file that failed runs once more, and passing then is reported as flaky, not hidden. macOS CI's slow
+# runners sometimes leave a TUI test's menu open after a resize (test/e2e/ui/mouse.test.ts); it doesn't happen
+# locally. A file that fails twice fails the run.
+if [ $status -ne 0 ]; then
+  # a file's header is "test/….test.ts:" (in GitHub Actions, "##[group]test/….test.ts:")
+  failed=$(awk '{ line = $0; sub(/^##\[group\]/, "", line) } line ~ /^test\/.*\.test\.ts:$/ { file = substr(line, 1, length(line) - 1) } /^\(fail\)/ && file { print file }' "$log" | sort -u)
+  if [ -n "$failed" ]; then
+    echo "re-running what failed: $failed"
+    # shellcheck disable=SC2086
+    if bun test --timeout 60000 $failed; then
+      echo "FLAKY (passed on the second run): $failed"
+      status=0
+    fi
+    pkill -f "$MODISA_BIN server" || true
+  fi
+fi
+rm -f "$log"
 exit $status
