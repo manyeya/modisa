@@ -14,14 +14,14 @@ use regex::Regex;
 use serde_json::{json, Value};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::design::{agent_mark, fit};
+use super::design::fit;
 use super::draw::{Canvas, Hit};
 use super::modals::{self, key_name, Kind, Modal};
-use super::{App, Shared};
+use super::App;
 use crate::config::keys::{bind_plugin_keys, BoundKey, DeclaredKey, KeyState};
 use crate::config::BorderStyle;
 use crate::core::layout::Rect;
-use crate::core::text::{grapheme_width, width};
+use crate::core::text::grapheme_width;
 use crate::protocol::conn::b64;
 use crate::protocol::links::{link_matches, LinkEntry};
 use crate::vt::Screen;
@@ -45,30 +45,7 @@ pub fn list_of<'a>(v: &'a Value, k: &str) -> &'a [Value] {
     v[k].as_array().map(Vec::as_slice).unwrap_or(&[])
 }
 
-// A sidebar row's spans as (text, colour, bold), cut to `width` cells with … where it runs out. An icon is the agent's
-// glyph in its brand colour, or in the theme's text colour when the brand has none or it would be faint on this theme.
-pub fn span_text(app: &App, spans: &[Value], base: &str, w: usize) -> Vec<(String, String, bool)> {
-    let mut out = vec![];
-    let mut left = w as i64;
-    for x in spans {
-        if left <= 0 {
-            break;
-        }
-        if let Some(icon) = x["icon"].as_str() {
-            // a logo is drawn two cells wide: the cell after it is its own, so what follows doesn't run into it
-            let mark = agent_mark(&app.th, icon, app.logos, app.cell_ems());
-            out.push((format!("{}{}", mark.glyph, " ".repeat(mark.cells.saturating_sub(2))), mark.color, false));
-            left -= mark.cells as i64 - 1;
-            continue;
-        }
-        let text = fit(str_of(x, "text"), left as usize);
-        left -= width(&text) as i64;
-        out.push((text, tone_color(app, x["tone"].as_str().unwrap_or(base)).to_string(), x["bold"].as_bool() == Some(true)));
-    }
-    out
-}
-
-fn title_of(app: &App, plugin: &str, action: &str) -> String {
+pub fn title_of(app: &App, plugin: &str, action: &str) -> String {
     plugin_ui(app).iter().find(|p| p["plugin"] == plugin).and_then(|p| list_of(p, "actions").iter().find(|a| a["id"] == action)).and_then(|a| a["title"].as_str()).unwrap_or(action).to_string()
 }
 
@@ -78,8 +55,10 @@ fn short(value: &Value) -> String {
 }
 
 // Run a plugin's action and say how it went: its result, its error, or that a timeout left the outcome unknown. `run` is
-// the run whose UI it was taken from (captured when that was drawn): the server refuses it if that run ended.
-pub fn run_plugin_action(app: &App, plugin: &str, run: &str, action: &str, params: Value, target: Option<(String, String)>, link: Option<String>) {
+// the run whose UI it was taken from (captured when that was drawn): the server refuses it if that run ended. `ui` says
+// where in modisa's chrome it was clicked (slots.rs).
+#[allow(clippy::too_many_arguments)]
+pub fn run_plugin_action(app: &App, plugin: &str, run: &str, action: &str, params: Value, target: Option<(String, String)>, link: Option<String>, ui: Option<Value>) {
     let Some(conn) = app.conn.clone() else { return };
     let label = format!("{plugin}: {}", title_of(app, plugin, action));
     let mut p = json!({ "plugin": plugin, "action": action, "params": params, "run": run });
@@ -88,6 +67,9 @@ pub fn run_plugin_action(app: &App, plugin: &str, run: &str, action: &str, param
     }
     if let Some(l) = link {
         p["link"] = json!(l);
+    }
+    if let Some(u) = ui {
+        p["ui"] = u;
     }
     let me = app.me.clone();
     tokio::task::spawn_local(async move {
@@ -142,7 +124,7 @@ pub fn plugin_key(app: &mut App, key: &str) {
     let target = focused_target(app);
     let plugin = bound.declared.plugin.clone();
     if let Some(action) = &bound.declared.action {
-        return run_plugin_action(app, &plugin, &run, action, json!({}), target, None);
+        return run_plugin_action(app, &plugin, &run, action, json!({}), target, None, None);
     }
     if let Some(pane) = &bound.declared.pane {
         open_plugin_pane(app, &plugin, &run, pane, json!({}), target);
@@ -175,7 +157,7 @@ pub fn plugin_link(app: &mut App, pane: &str, url: &str, x: i32, y: i32) {
     }
     if handlers.len() == 1 {
         let (p, r, a) = &handlers[0];
-        return run_plugin_action(app, p, r, a, json!({}), target, Some(url.to_string()));
+        return run_plugin_action(app, p, r, a, json!({}), target, Some(url.to_string()), None);
     }
     // the title says what's being chosen, with the URL cut to fit the menu (fit also blanks control characters)
     let title = format!("Open {} with", fit(url, 18));
@@ -185,7 +167,7 @@ pub fn plugin_link(app: &mut App, pane: &str, url: &str, x: i32, y: i32) {
         let options = names.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)).collect();
         let chosen = modals::menu(&shared, &title, options, x, y).await;
         if let Some((p, r, a)) = chosen.and_then(|i| i.parse::<usize>().ok()).and_then(|i| handlers.get(i)) {
-            run_plugin_action(&shared.borrow(), p, r, a, json!({}), target, Some(url));
+            run_plugin_action(&shared.borrow(), p, r, a, json!({}), target, Some(url), None);
         }
     });
 }
@@ -390,28 +372,6 @@ pub fn line_text(screen: &Screen, row: i32) -> String {
         }
     }
     out
-}
-
-// A click on a plugin's sidebar row or status segment: focus the process the row was set for (the server checks the
-// instance), never another pane given its id; or run its action.
-pub fn clicked(shared: &Shared, plugin: &str, run: &str, action: Option<&str>, pane: Option<&str>, instance: Option<&str>) {
-    let app = shared.borrow();
-    if let Some(p) = pane {
-        let Some(conn) = app.conn.clone() else { return };
-        let (me, plugin) = (app.me.clone(), plugin.to_string());
-        let target = format!("{p}:{}", instance.unwrap_or(""));
-        tokio::task::spawn_local(async move {
-            if conn.request("pane.focus", json!({ "target": target }), None).await.is_err() {
-                if let Some(a) = me.upgrade() {
-                    let mut a = a.borrow_mut();
-                    let w = a.th.warn;
-                    a.toast(&format!("{plugin}: that pane is gone"), w);
-                }
-            }
-        });
-    } else if let Some(a) = action {
-        run_plugin_action(&app, plugin, run, a, json!({}), None, None);
-    }
 }
 
 #[cfg(test)]

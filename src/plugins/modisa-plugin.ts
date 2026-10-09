@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 11;
+export const SDK_VERSION = 12;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -37,8 +37,9 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // `target` is the pane the user took the action from (a menu entry, key or palette entry), kept apart from params and
 // already checked by modisa to be that pane's current process. `link` is the URL the user Ctrl+clicked, when one of
 // the manifest's links matched it (modisa checks the pattern); treat it as data, never as a command. `ui` says which of
-// the plugin's views it came from, which element and what it held (ViewEvent: an input's text, a list's choice); it's
-// what the user typed or chose, so treat it as data too.
+// the plugin's views it came from, which element and what it held (ViewEvent: an input's text, a list's choice), or
+// which of its pieces in modisa's chrome (SlotEvent: a status segment, a sidebar row, a toast's button); it's what the
+// user typed or chose, so treat it as data too.
 export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string; ui?: ViewEvent }) => unknown;
 
 // What a plugin shows in modisa's TUI (see Client.ui). Tones map to the user's theme: its text, dim, accent and
@@ -55,6 +56,7 @@ export type UiState = {
   plugin: string;
   run: string;
   actions: { id: string; title: string; description?: string }[];
+  // what the older methods set (ui.status, ui.sidebar, ui.badge, ui.menu), as they set it
   status: { id: string; text: string; tone: Tone; action?: string }[];
   sidebar?: { title: string; rows: { text: string; tone: Tone; spans?: Span[]; action?: string; pane?: string; instance?: string }[] };
   badges: { pane: string; instance: string; text: string; tone: Tone }[];
@@ -62,6 +64,7 @@ export type UiState = {
   keys: { key: string; action?: string; pane?: string; description: string }[]; // as plugin.json declares them: each client binds them with its own config
   panes: { id: string; title: string; placement: "overlay" | "popup" | "split" | "tab" | "zoomed" }[];
   views?: (ViewOptions & { plugin: string; run: string; id: string; title: string; keys: ViewKey[]; root: ViewNode; rev: number })[]; // the views open now
+  slots?: SlotState[]; // what ui.slot set
 };
 
 // ---------- views: element trees modisa draws for a plugin (UI 3) ----------
@@ -181,9 +184,63 @@ export type ViewSize = number | `${number}%`;
 // element holds. A list's or tabs' `index`; a table's `row` and `column`; a diff's `line` (which of its +, - and context
 // lines, from 0), that line's `old` and `new` numbers (the one it has) and its `text`; an input's or textarea's `value`;
 // a tree node's `path` (its ids from the root), and for `toggle` whether it's now `open`. A view's keys and its close
-// action get just `view`. It's what the user typed or chose: treat it as data.
-export type ViewEvent = { view: string; id?: string; event?: "action" | "change" | "toggle"; index?: number; row?: number; column?: number; line?: number; old?: number; new?: number; text?: string; value?: string; path?: string[]; open?: boolean };
+// action get just `view`. A piece of modisa's chrome says its `slot` instead (see slots, below). It's what the user typed
+// or chose: treat it as data.
+export type ViewEvent = {
+  view?: string;
+  id?: string;
+  event?: "action" | "change" | "toggle";
+  index?: number;
+  row?: number;
+  column?: number;
+  line?: number;
+  old?: number;
+  new?: number;
+  text?: string;
+  value?: string;
+  path?: string[];
+  open?: boolean;
+} & Partial<SlotEvent>;
 export const VIEW_LIMITS = { perPlugin: 4, perSession: 8, elements: 5000, depth: 40, megabytes: 2, blitsPerSecond: 60 };
+
+// ---------- slots: what a plugin puts in modisa's own chrome (UI 4) ----------
+// examples/plugins/CHROME.md is the reference. A piece goes before or after what modisa draws in a slot, or replaces it
+// where the user lets it (config.toml's [slots]: with no entry, the first plugin by name that asks does). Its text is
+// Lines, as in views, so it follows the user's theme. Setting the same slot, id and pane (or tab, or space) again
+// replaces a piece; it goes when that pane's process, tab or space does, and when the plugin stops.
+export type Slot = "status.left" | "status.right" | "status.agents" | "status.panes" | "status.git" | "status.theme" | "tab" | "space" | "pane.title" | "pane.top_right" | "pane.bottom_left" | "pane.bottom_right" | "agent.row" | "sidebar" | "sidebar.agents" | "menu.pane" | "menu.tab" | "menu.space" | "palette";
+type Place = "before" | "after";
+// `id`: names the piece among this plugin's in the slot (1–40 characters). `order`: lower first among pieces at the same
+// place (then by plugin name, then id). `action`: runs on a click. `hide_below`: not drawn when the terminal is narrower.
+type PieceCommon = { id: string; order?: number; action?: string; hide_below?: { width: number } };
+type ForPane = { pane: string; instance: string }; // a pane's process: the piece goes when it does
+// A sidebar row: a Line; as { spans, … } it can also run an `action`, or focus a `pane` (named with its `instance`).
+export type SidebarLine = ViewLine | (LineObject & { action?: string; pane?: string; instance?: string });
+type Rows = { lines: SidebarLine[] } | { line: SidebarLine }; // at most 30
+export type SlotPiece = PieceCommon &
+  (
+    | { slot: "status.left" | "status.right"; position?: Place; line: ViewLine }
+    | { slot: "status.agents" | "status.panes" | "status.git" | "status.theme"; position?: Place | "replace"; line: ViewLine }
+    | { slot: "tab"; tab: string; position?: Place | "replace"; line: ViewLine } // a tab's id
+    | { slot: "space"; space: string; position?: Place | "replace"; line: ViewLine } // a space's name
+    | ({ slot: "pane.title"; position?: Place | "replace"; line: ViewLine } & ForPane)
+    | ({ slot: "pane.top_right" | "pane.bottom_left" | "pane.bottom_right"; position?: Place; line: ViewLine } & ForPane)
+    | ({ slot: "agent.row"; position?: Place | "replace" } & ForPane & ({ line: ViewLine } | { lines: ViewLine[] })) // at most 3
+    | ({ slot: "sidebar"; position?: Place; title?: string } & (Rows | { element: ViewNode | Child; height: number })) // height: 1–30 rows
+    | ({ slot: "sidebar.agents"; position?: "replace"; title?: string } & (Rows | { element: ViewNode | Child; height?: number }))
+    | ({ slot: "menu.pane"; title: string; action: string } & (ForPane | {})) // no pane: every pane's menu
+    | { slot: "menu.tab"; tab?: string; title: string; action: string }
+    | { slot: "menu.space"; space?: string; title: string; action: string }
+    | { slot: "palette"; title: string; action: string; line?: ViewLine }
+  );
+// A piece as modisa keeps it (ui.state), and as clients get it: a replacing one that's drawn `replaces`.
+export type SlotState = { plugin: string; run: string; slot: Slot; id: string; position: Place | "replace"; order: number; pane?: string; instance?: string; tab?: string; space?: string; line?: ViewLine; lines?: SidebarLine[]; element?: ViewNode; height?: number; title?: string; action?: string; hide_below?: { width: number }; replaces?: boolean };
+// What a piece tells the action it runs (call.ui, a ViewEvent): its slot and id, what it's for (pane and instance, tab,
+// space; a menu entry for every one adds the one it was opened on), and for a sidebar section's lines `row`, the one
+// clicked. A sidebar element's elements say what a view's do (`id` the element's), with `slot` and `piece`, the piece's
+// id. A toast's button gives { slot: "toast", id } (the toast's id, if it had one).
+export type SlotEvent = { slot: Slot | "toast"; id?: string; piece?: string; pane?: string; instance?: string; tab?: string; space?: string; row?: number };
+export const SLOT_LIMITS = { pieces: 500, lineCells: 200, rows: 3, sidebarRows: 30, perSecond: 30 };
 
 // Elements, as functions or JSX: `Layout({ direction: "horizontal", constraints: [Length(34), Fill(1)] }, List({…}), Diff({…}))`,
 // or in a .tsx file `<Layout direction="horizontal"><List … /><Diff … /></Layout>`, with Bun's JSX as it comes or with
@@ -373,7 +430,7 @@ export class Client {
 
   /**
    * Bind this connection to the plugin modisa started, offering actions to `modisa plugin run <name> <action>`,
-   * the command palette, and the status segments, sidebar rows and menu entries that name them.
+   * the command palette, and the pieces (status segments, sidebar rows, menu entries, …) and views that name them.
    */
   async hello(actions: Record<string, Action> = {}, token = Bun.env.MODISA_PLUGIN_TOKEN) {
     if (!token) throw new ModisaError("no $MODISA_PLUGIN_TOKEN: modisa starts plugins (modisa plugin link), not a shell", "usage");
@@ -389,7 +446,15 @@ export class Client {
    * (errors: rate_limited, no_such_action). Everything is cleared when the plugin stops.
    */
   readonly ui = {
-    /** A status bar segment (up to 4); clicking it runs `action`. */
+    /**
+     * A piece in modisa's own chrome (see SlotPiece, and examples/plugins/CHROME.md): before or after what modisa draws
+     * in a slot, or in its place where the user lets it. Setting the same slot, id and pane (tab, space) again replaces
+     * it. At most SLOT_LIMITS.pieces; clients draw updates at most 30 times a second, however many there are.
+     */
+    slot: (piece: SlotPiece) => this.request<true>("ui.slot.set", "element" in piece ? { ...piece, element: one(nodes(flat([piece.element]))) } : piece),
+    /** Take this plugin's pieces away: those matching all that's given (nothing given: all of them). How many went. */
+    clearSlot: (which: { slot?: Slot; id?: string; pane?: string; tab?: string; space?: string } = {}) => this.request<number>("ui.slot.clear", which),
+    /** A status bar segment (up to 4); clicking it runs `action`. A status.right piece with its text named "<plugin>: …". */
     status: (id: string, text: string, options: { tone?: Tone; action?: string } = {}) => this.request<UiState>("ui.status.set", { id, text, ...options }),
     clearStatus: (id: string) => this.request<UiState>("ui.status.clear", { id }),
     /** This plugin's sidebar section; a row runs its `action`, or focuses its `pane`. */
@@ -400,8 +465,12 @@ export class Client {
     clearBadge: (pane: string) => this.request<UiState>("ui.badge.clear", { pane }),
     /** Entries in the pane context menu; the action gets the pane it was opened on as `call.target` ({ pane, instance }). */
     menu: (items: MenuItem[]) => this.request<UiState>("ui.menu.set", { items }),
-    /** A toast in every attached client (a system notification too, if the user has those on); a few per 10s. */
-    toast: (text: string, options: { tone?: Tone; system?: boolean } = {}) => this.request<true>("ui.toast", { text, ...options }),
+    /**
+     * A toast in every attached client (a system notification too, if the user has those on); a few per 10s. Its
+     * `lines` are rich text (at most 3; `text` is then what older clients show), its `actions` buttons (at most 3, each
+     * running one of this plugin's actions with call.ui { slot: "toast", id }), `timeout` how long it stays (1–60 s, in ms).
+     */
+    toast: (text: string, options: { tone?: Tone; system?: boolean; lines?: ViewLine[]; actions?: { title: string; action: string }[]; timeout?: number; id?: string } = {}) => this.request<true>("ui.toast", { text, ...options }),
     /** Close this plugin's popup, if one is open. */
     closePopup: () => this.request<true>("ui.popup.close"),
     /** What this plugin shows now. */
@@ -603,7 +672,7 @@ export function checkSession() {
     for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(100)) if (await ok()) return;
     throw new Error(`timed out waiting for ${what}`);
   };
-  /** What the plugin shows in the TUI now (status, sidebar, badges, menu, palette actions). */
+  /** What the plugin shows in the TUI now (its pieces, status, sidebar, badges, menu, views, palette actions). */
   const ui = () => json<UiState>("plugin", "ui", plugin);
   return { plugin, session, data, modisa, json, until, ui };
 }

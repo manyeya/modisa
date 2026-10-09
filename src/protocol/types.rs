@@ -193,8 +193,78 @@ pub struct WorkspaceView {
 pub type PluginUiView = Value;
 
 // The plugin UI a client understands, sent with attach: the server sends plugins' UI only to clients at this version or
-// later, so an older client never gets what it can't draw. 3: views as examples/plugins/VIEWS.md says them.
-pub const PLUGIN_UI: u32 = 3;
+// later, so an older client never gets what it can't draw. 3: views as examples/plugins/VIEWS.md says them. 4: slots
+// (View.slots) in place of status segments, sidebar sections, badges and menu entries.
+pub const PLUGIN_UI: u32 = 4;
+
+// A plugin's piece of modisa's own chrome (UI 4, examples/plugins/CHROME.md), as the server holds it from ui.slot.set,
+// cleaned and checked, once it has decided who replaces what. Clients get the session's pieces as View.slots; a toast is
+// one sent once, as plugin.toast (`slot` "toast": `lines`, `actions`, `timeout`).
+//
+// `position` is what the plugin asked for; `replaces` is the server's answer: true on the one "replace" piece per slot
+// (per pane, tab or space where the slot is per something) that draws instead of modisa, as [slots] in config.toml (or
+// the first plugin by name) decides. A "replace" piece without it lost: it isn't drawn, and only says who asked.
+// Content (`line`, `lines`, `element`) is UI 3's (examples/plugins/VIEWS.md), kept as the JSON the server checked.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SlotPiece {
+    pub plugin: String,
+    pub run: String,  // the run that set it: its action goes to that run, or is refused once the plugin has restarted
+    pub slot: String, // status.left, status.agents, tab, space, pane.title, agent.row, sidebar, menu.pane, palette, toast, …
+    pub id: String,   // the piece among its plugin's in the slot
+    pub position: SlotPosition,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub replaces: bool,
+    pub order: i64, // lower first among pieces at one place; then by plugin, then id
+    // what it's about, in a slot that's per something: a pane's process, a tab (its id) or a space (its name)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element: Option<Value>, // a sidebar section's (or the AGENTS list's) UI 3 element…
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u16>, // …and the rows it takes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>, // a menu or palette entry's text; a sidebar section's title
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hide_below: Option<HideBelow>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<SlotButton>, // a toast's buttons
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>, // a toast's, in ms
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SlotPosition {
+    Before,
+    #[default]
+    After,
+    Replace,
+}
+
+// not drawn while the terminal is narrower
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HideBelow {
+    pub width: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SlotButton {
+    pub title: String,
+    pub action: String,
+}
 
 // Everything a client needs to draw the session.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -204,9 +274,18 @@ pub struct View {
     pub panes: Vec<PaneInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugins: Option<Vec<PluginUiView>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<SlotPiece>,
     #[serde(default)]
     pub paused: bool,
 }
+
+// The slots a plugin puts pieces in (examples/plugins/CHROME.md), and those it can draw instead of modisa in, where the
+// user lets it (config.toml's [slots]).
+pub const SLOTS: &[&str] = &[
+    "status.left", "status.right", "status.agents", "status.panes", "status.git", "status.theme", "tab", "space", "pane.title", "pane.top_right", "pane.bottom_left", "pane.bottom_right", "agent.row", "sidebar", "sidebar.agents", "menu.pane", "menu.tab", "menu.space", "palette",
+];
+pub const REPLACEABLE: &[&str] = &["status.agents", "status.panes", "status.git", "status.theme", "tab", "space", "pane.title", "agent.row", "sidebar.agents"];
 
 
 #[cfg(test)]

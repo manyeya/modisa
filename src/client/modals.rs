@@ -6,11 +6,11 @@ use std::rc::Rc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Position;
-use ratatui::style::{Color, Modifier};
+use ratatui::style::{Color, Modifier, Style};
 use serde_json::json;
 use tokio::sync::oneshot;
 
-use super::design::{fit, floating, mix};
+use super::design::{color, fit, floating, mix};
 use super::draw::{Canvas, Hit};
 use super::{App, Shared};
 use crate::config::themes::Theme;
@@ -35,6 +35,7 @@ pub struct ListItem {
     pub danger: bool,
     pub buttons: Vec<ListButton>,
     pub context: Option<Rc<dyn Fn(i32, i32)>>, // its right-click menu
+    pub line: Option<ratatui::text::Line<'static>>, // drawn in place of its description (a plugin's palette entry's line)
 }
 
 impl ListItem {
@@ -751,10 +752,15 @@ fn draw_list(app: &mut App, c: &mut Canvas) {
         let desc_room = room as i64 - width(&name) as i64 - 3;
         if let Some(d) = item.description.as_ref().filter(|_| desc_room >= 4) {
             x = c.spans(x, f.y, &[("  ".into(), th.dim, false)], Some(&bg), 2);
-            let dim_hit = mix(th.dim, th.accent, 0.6);
-            let spans = highlight(&fit(d, desc_room as usize), &query, th.dim, &dim_hit, false);
-            let owned: Vec<(String, &str, bool)> = spans.iter().map(|(t, col, b)| (t.clone(), *col, *b)).collect();
-            c.spans(x, f.y, &owned, Some(&bg), desc_room as usize);
+            if let Some(l) = &item.line {
+                let base = Style::new().fg(color(th.dim)).bg(color(&bg));
+                super::slots::put(c, x, f.y, &super::slots::fit_line(l.clone(), desc_room as usize), desc_room as usize, base);
+            } else {
+                let dim_hit = mix(th.dim, th.accent, 0.6);
+                let spans = highlight(&fit(d, desc_room as usize), &query, th.dim, &dim_hit, false);
+                let owned: Vec<(String, &str, bool)> = spans.iter().map(|(t, col, b)| (t.clone(), *col, *b)).collect();
+                c.spans(x, f.y, &owned, Some(&bg), desc_room as usize);
+            }
         }
         let mut rx = f.x + f.w - 1 - buttons_width as i32 - if key_width > 0 { key_width as i32 + 2 } else { 0 };
         if !right.is_empty() {

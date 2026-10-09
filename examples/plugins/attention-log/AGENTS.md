@@ -43,23 +43,41 @@ repository, or, for a plugin in a subdirectory, say in the repository's README w
 
 ## Showing things in modisa's TUI
 
-A plugin can put a little into the TUI; modisa draws it in the user's theme and names the plugin on every piece, so
-nothing a plugin shows can pass for modisa's own. Everything is cleared when the plugin stops.
+A plugin can put things into every part of modisa's own screen; modisa draws them in the user's theme and attributes
+every piece to the plugin, so nothing a plugin shows can pass for modisa's own. Everything is cleared when the plugin
+stops. The reference is modisa's `examples/plugins/CHROME.md`.
 
-- From the library, after `hello`:
-  - `modisa.ui.status(id, text, { tone, action })`: a segment in the status row (up to 4); clicking runs `action`.
-  - `modisa.ui.sidebar(title, rows)`: the plugin's section in the sidebar (up to 40 rows; the sidebar shows 8 of a
-    section, or all that fit when the user's `[sidebar] agents` names the plugin, putting its section in place of
-    modisa's agent list). A row runs its `action`, or focuses its `pane`; a row's `pane` comes with that pane's
-    `instance`, so a click reaches that process or says it's gone. A row is `text` in one `tone`, or `spans`:
-    `{ text, tone, bold }` pieces and `{ icon: "claude-code" }`, an agent's mark, which modisa draws in its brand
-    colour. Give `text` and a plain `tone` with spans too: an older modisa ignores spans and shows those.
-  - `modisa.ui.badge(pane, instance, text, tone)`: a label on a pane's border, for that process only.
-  - `modisa.ui.menu(items)`: entries in the pane context menu (up to 8).
-  - `modisa.ui.toast(text, { tone, system })`: a passing message in every attached client (3 every 10s).
-  - `clearStatus`, `clearSidebar`, `clearBadge` and `closePopup` take them away; `modisa.ui.state()` is what shows now.
-- Tones are `fg`, `dim`, `accent`, `warn`, and the agent states' `working`, `blocked`, `done` and `idle`, mapped to
-  the user's theme. Text loses control characters and escape sequences and is cut to fit.
+- `modisa.ui.slot({ slot, id, … })` puts a piece in a slot, after (or `position: "before"`) what modisa draws there:
+  - `status.left`, `status.right`: the status row. `{ slot: "status.right", id: "usage", line: [span("5h ", "$dim"),
+    span("43%", "bold $warn")], action: "details" }`
+  - `pane.title`, `pane.top_right`, `pane.bottom_left`, `pane.bottom_right`: a pane's border, for its process (`pane`
+    and `instance`; the piece goes when that process does). `agent.row`: up to 3 `lines` under an agent in the
+    sidebar's AGENTS list. `tab` (a tab's id), `space` (a space's name): the tab bar.
+  - `sidebar`: a section of the plugin's own: `lines` (up to 30 rows; a row `{ spans, action }` runs its own action,
+    `{ spans, pane, instance }` focuses that process), or a view `element` (a Sparkline, a Gauge, a List…) and the
+    `height` it takes (1 to 30 rows), under its `title`.
+  - `menu.pane`, `menu.tab`, `menu.space`, `palette`: entries (`title`, `action`) in the right-click menus and the
+    command palette; a menu entry with no `pane` (`tab`, `space`) is in every one's menu.
+  - Text is the same Spans and Lines as views (`span`, `line`, `icon`; styles like `"bold $warn"` with the theme's
+    tokens). A line is cut at 200 cells; a plugin has at most 500 pieces.
+  - Setting the same slot and `id` (and `pane`, `tab` or `space`) again replaces the piece; `modisa.ui.clearSlot({
+    slot, id, pane })` takes away what matches (nothing given: everything). Updates are drawn at most 30 times a
+    second, however often you send them.
+  - `position: "replace"` asks to draw instead of modisa (in `status.agents`, `status.panes`, `status.git`,
+    `status.theme`, `tab`, `space`, `pane.title`, `agent.row`, and `sidebar.agents`, the AGENTS list itself). The
+    user decides: `[slots]` in config.toml names who may (`"agent.row" = "radar"`, or `"builtin"` for nobody); with no
+    entry, the first plugin by name that asks does. A replacing piece that isn't let isn't drawn at all, so check
+    `modisa.ui.state()` (`slots[].replaces`) or `modisa plugin list`.
+  - A piece's `action` gets `call.ui`: `{ slot, id, pane?, instance?, tab?, space?, row? }` (`row`: the line of a
+    sidebar section clicked), and a menu entry the pane it was opened on as `call.target`.
+- `modisa.ui.toast(text, { tone, system, lines, actions, timeout })`: a passing message in every attached client (3
+  every 10s); `lines` rich text (up to 3), `actions` up to 3 buttons (`{ title, action }`), `timeout` in ms.
+- The older calls still work, as slots: `modisa.ui.status(id, text, { tone, action })` (a `status.right` piece, up to
+  4), `modisa.ui.sidebar(title, rows)`, `modisa.ui.badge(pane, instance, text, tone)` (a `pane.title` piece),
+  `modisa.ui.menu(items)` (up to 8), and `clearStatus`, `clearSidebar`, `clearBadge`. `closePopup` closes the
+  plugin's popup; `modisa.ui.state()` is what shows now.
+- Tones (the older calls' colours) are `fg`, `dim`, `accent`, `warn`, and the agent states' `working`, `blocked`,
+  `done` and `idle`, mapped to the user's theme. Text loses control characters and escape sequences and is cut to fit.
 - An `action` must be one the plugin offered in `hello`. Offer them in `plugin.json` too, with titles, so they're listed
   in the command palette:
   `"actions": [{ "id": "clear", "title": "Clear the log" }]`.
@@ -73,13 +91,14 @@ nothing a plugin shows can pass for modisa's own. Everything is cleared when the
   move a key in `[plugin_keys]` in config.toml.
 - An action taken from a menu entry, key or palette entry gets the pane it was taken on as `call.target`
   (`{ pane, instance }`), apart from its params, already checked to be that pane's current process.
-- Limits: updates are rate-limited (10 a second, bursts of 30) and so is the whole session's (30 a second across its
-  plugins); a session also shows at most 12 status segments, 6 sidebar sections, 24 menu entries and 4 plugins' badges
-  on one pane across all its plugins, first come first served. Over a limit a call fails with `rate_limited` or an
-  error: show less, or less often, rather than retrying in a loop.
+- Limits: the older calls, views and a sidebar `element` are rate-limited (10 a second, bursts of 30) and so is the
+  whole session's (30 a second across its plugins); with the older calls a session also shows at most 12 status
+  segments, 6 sidebar sections, 24 menu entries and 4 plugins' badges on one pane across all its plugins, first come
+  first served. Over a limit a call fails with `rate_limited` or an error: show less, or less often, rather than
+  retrying in a loop.
 - The plugin runs with the session's server, also when the user attaches from another machine: its UI is drawn by
   whichever client is attached. While a client is disconnected it shows none of it; a client too old to draw plugin UI
-  gets none, and a popup can't open in it.
+  gets none (one from before slots shows only what the older calls set), and a popup can't open in it.
 
 ## Views: whole screens of your own
 

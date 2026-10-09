@@ -363,6 +363,7 @@ pub struct Config {
     pub command: Vec<CommandConfig>,
     pub hook: Vec<HookConfig>,
     pub remote_command: String,
+    pub slots: IndexMap<String, String>, // slot → who draws it: "builtin" (modisa) or a plugin that asks to replace it
 }
 
 pub fn defaults() -> Config {
@@ -391,6 +392,7 @@ pub fn defaults() -> Config {
         command: vec![],
         hook: vec![],
         remote_command: "modisa".into(),
+        slots: IndexMap::new(),
     }
 }
 
@@ -490,6 +492,13 @@ run_foreign = "ask"
 # "<plugin>.<action or pane>" = "K", or "" to turn one off.
 # [plugin_keys]
 # "attention-log.log" = "A"
+
+# Plugins add to modisa's status row, tabs, pane borders, sidebar and menus. Where one asks to draw instead of modisa,
+# say who may: a plugin's name, or "builtin" for modisa's own. With no entry, the first plugin (by name) that asks does;
+# modisa plugin list shows who holds what. [sidebar] agents is "sidebar.agents". The slots: examples/plugins/CHROME.md.
+# [slots]
+# "agent.row" = "radar"
+# "pane.title" = "builtin"
 
 # modisa's own keys (after the prefix): "<action>" = "K", or a list of keys, or "" for none. An action set here
 # loses its default keys; the keyboard guide (prefix ?) names every action. x (close pane), d (detach) and escape
@@ -670,6 +679,7 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         command: get("command").and_then(Value::as_array).map(|c| c.iter().filter_map(|e| typed(Some(e))).collect()).unwrap_or_default(),
         hook: get("hook").and_then(Value::as_array).map(|h| h.iter().filter_map(|e| typed(Some(e))).collect()).unwrap_or_default(),
         remote_command: typed(get("remote_command")).unwrap_or(d.remote_command),
+        slots: entries(get("slots")),
     }
 }
 
@@ -767,6 +777,12 @@ fn value_end<'a, S: AsRef<str>>(lines: &'a [S], at: usize, mut text: &'a str) ->
     }
 }
 
+// A key as TOML writes it: bare when it can be, else quoted (a dotted key like "agent.row" would be a table of its own).
+fn toml_key(key: &str) -> String {
+    let bare = !key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if bare { key.to_string() } else { Value::from(key).to_string() }
+}
+
 fn header(l: &str) -> bool {
     l.trim_start().starts_with('[')
 }
@@ -804,7 +820,7 @@ pub fn find_key<S: AsRef<str>>(lines: &[S], table: Option<&str>, key: Option<&st
 pub fn with_value(source: &str, table: Option<&str>, key: &str, value: &Value) -> Result<String, String> {
     let mut lines: Vec<String> = source.split('\n').map(String::from).collect();
     let Some(KeyAt { start, end, at }) = find_key(&lines, table, Some(key)) else {
-        return Ok(format!("{}\n\n[{}]\n{key} = {}\n", source.trim_end(), table.unwrap_or_default(), literal(value)));
+        return Ok(format!("{}\n\n[{}]\n{} = {}\n", source.trim_end(), table.unwrap_or_default(), toml_key(key), literal(value)));
     };
     if let Some(at) = at {
         let (lead, stop, comment) = {
@@ -818,7 +834,7 @@ pub fn with_value(source: &str, table: Option<&str>, key: &str, value: &Value) -
         while last > start && lines[last - 1].trim().is_empty() {
             last -= 1;
         }
-        lines.insert(last, format!("{key} = {}", literal(value)));
+        lines.insert(last, format!("{} = {}", toml_key(key), literal(value)));
     }
     let result = lines.join("\n");
     let check = parse_toml(&result).ok();
@@ -997,8 +1013,9 @@ mod tests {
         assert_eq!(find_key(&lines, Some("plugin_keys"), Some("radar.log")), Some(KeyAt { start: 1, end: 4, at: Some(2) }));
         assert_eq!(find_key(&lines, Some("plugin_keys"), Some("radar.lo")).unwrap().at, None);
         assert_eq!(find_key(&lines, Some("keys"), None), None);
-        // a new dotted key would be a table of its own: refused rather than written wrong
-        assert!(with_value(source, Some("plugin_keys"), "new.key", &json!("D")).unwrap_err().contains("edit it by hand"));
+        // a new dotted key is quoted, so it isn't a table of its own
+        assert_eq!(with_value(source, Some("plugin_keys"), "new.key", &json!("D")).unwrap(), format!("{source}\"new.key\" = \"D\"\n"));
+        assert_eq!(parse(&with_value("", Some("slots"), "agent.row", &json!("radar")).unwrap()), json!({ "slots": { "agent.row": "radar" } }));
     }
 
     #[test]
@@ -1029,7 +1046,7 @@ mod tests {
         let user = parse_toml(
             "prefix = \"C-a\"\ntheme = 5\nshiny = true\n[sidebar]\nwidth = 30.0\ngit = false\nlogos = \"maybe\"\n[notify]\nblocked = [\"toast\", \"pager\"]\nworking = \"x\"\n\
              [sound]\nvolume = 1\n[agents.claude]\nlaunch = \"claude --model opus\"\n[agents]\nbad = 3\n[[plugin]]\nrun = \"p1\"\n[[plugin]]\nnope = 1\n\
-             [plugin_keys]\n\"a.b\" = \"Y\"\n\"c.d\" = 3\n[keys]\nzoom = \"f\"\nhelp = 3\n",
+             [plugin_keys]\n\"a.b\" = \"Y\"\n\"c.d\" = 3\n[keys]\nzoom = \"f\"\nhelp = 3\n[slots]\n\"agent.row\" = \"radar\"\n\"pane.title\" = 1\n",
         )
         .unwrap();
         let cfg = merge(&user);
@@ -1041,6 +1058,7 @@ mod tests {
         assert_eq!(serde_json::to_value(&cfg.agents).unwrap(), json!({ "claude": { "launch": "claude --model opus" } }));
         assert_eq!(cfg.plugin, [PluginEntry { run: "p1".into() }]);
         assert_eq!(cfg.plugin_keys, IndexMap::from([("a.b".to_string(), "Y".to_string())]));
+        assert_eq!(cfg.slots, IndexMap::from([("agent.row".to_string(), "radar".to_string())]));
         assert_eq!(Value::Object(cfg.keys.clone()), json!({ "zoom": "f", "help": 3 })); // keys.rs reports what's wrong in it
         let mut git = parse_toml("[sidebar]\ngit = false\n[git]\nstatus = true\n").unwrap();
         assert!(merge(&git).git.status); // [git] has the last word
@@ -1067,7 +1085,7 @@ mod tests {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
         let ts = ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys"];
-        let since = ["actions", "root_keys", "modes", "command", "hook", "remote_command"]; // the Rust build's, then the TS's last
+        let since = ["actions", "root_keys", "modes", "command", "hook", "remote_command", "slots"]; // the Rust build's, with the TS's last among them
         assert_eq!(fields, [&ts[..], &since[..]].concat());
         assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false }));
         assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [], "unread": false, "click": "none" }));

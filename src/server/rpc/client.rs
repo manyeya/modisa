@@ -7,7 +7,7 @@ use crate::core::layout::{Axis, Dir, Rect};
 use crate::protocol::conn::{b64, error, unb64, RpcResult};
 use crate::protocol::schema::Params;
 use crate::server::session::SpawnOpts;
-use crate::server::{understands_plugins, understands_views, Server};
+use crate::server::{understands_plugins, understands_slots, understands_views, Server};
 
 pub fn route(method: &str) -> Option<Handler> {
     Some(Handler::Sync(match method {
@@ -38,15 +38,19 @@ fn attach(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
     }
     srv.emit("client.attached", json!({}));
     let client = &srv.clients[&c];
+    let (plugins, views, slots) = (understands_plugins(client), understands_views(client), understands_slots(client));
     let mut v = serde_json::to_value(srv.s.view()).unwrap();
     v["paused"] = json!(srv.mail.paused);
-    if understands_plugins(client) {
-        v["plugins"] = srv.plugin_ui();
+    if plugins {
+        v["plugins"] = srv.plugin_ui(!slots);
     } else if let Some(o) = v.as_object_mut() {
         o.remove("plugins");
     }
-    if understands_views(client) {
+    if views {
         v["views"] = srv.plugin_views();
+    }
+    if slots {
+        v["slots"] = srv.slots();
     }
     v["session"] = json!(srv.session);
     v["prompts"] = json!(srv.prompts.keys().collect::<Vec<_>>());

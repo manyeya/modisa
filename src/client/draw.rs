@@ -3,12 +3,12 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 use ratatui::style::{Modifier, Style};
+use ratatui::text::Line;
 use ratatui::Frame;
-use serde_json::json;
 
 use super::design::{agent_graph, agent_mark, agent_task, color, fit, mix, sidebar_budget, sidebar_columns, tab_window, GraphRow};
-use super::plugin_ui::{list_of, plugin_ui, span_text};
-use super::{modals, tone_color, App};
+use super::slots::{self, Seg, SlotElem, Strip};
+use super::{modals, App};
 use crate::config::BorderStyle;
 use crate::core::layout::{display_rects, panes as tree_panes, Rect};
 use crate::core::text::width;
@@ -27,16 +27,15 @@ pub enum Hit {
     Veil,                            // the screen behind a dialog: a click dismisses it
     Modal(String),                   // something in a dialog: what it chooses (modals.rs)
     Inert,                           // part of a dialog that does nothing, but isn't the veil
-    // a plugin's status segment or sidebar row: focus the pane's process it names, or run its action (plugin_ui.rs)
-    Plugin { plugin: String, run: String, action: Option<String>, pane: Option<String>, instance: Option<String> },
     PluginFold(String), // a plugin's sidebar heading: fold its section
-    View { view: String, key: String, part: i32 }, // an element of a plugin's view; part: a list's row, or what it is (views/)
+    View { view: String, key: String, part: i32 }, // an element of a plugin's view or sidebar section; part: a list's row, or what it is (views/)
+    Slot(Box<slots::SlotHit>), // a plugin's piece of the chrome: run its action (slots.rs); without one, it only says whose it is
 }
 
 impl Hit {
     // what gets the hand pointer
     pub fn clickable(&self) -> bool {
-        !matches!(self, Hit::Pane(_) | Hit::Veil | Hit::Inert | Hit::SidebarEdge | Hit::Border(_)) && !matches!(self, Hit::View { part, .. } if *part == super::views::build::SCROLLS)
+        !matches!(self, Hit::Pane(_) | Hit::Veil | Hit::Inert | Hit::SidebarEdge | Hit::Border(_)) && !matches!(self, Hit::View { part, .. } if *part == super::views::build::SCROLLS) && !matches!(self, Hit::Slot(s) if s.action.is_none())
     }
 }
 
@@ -152,15 +151,17 @@ pub fn render(app: &mut App, f: &mut Frame) {
     app.height = size.height as i32;
     let mut hits = std::mem::take(&mut app.hits);
     hits.clear();
+    let mut elems = std::mem::take(&mut app.slot_elems);
     let mut c = Canvas { buf: f.buffer_mut(), hits: &mut hits, hover: app.hover, w: size.width as i32, h: size.height as i32 };
     c.fill(Rect { x: 0, y: 0, w: c.w, h: c.h }, app.th.bg);
     let mut cursor = None;
     if app.ready() {
         cursor = panes(app, &mut c);
         tabs(app, &mut c);
-        sidebar(app, &mut c);
+        sidebar(app, &mut c, &mut elems);
         status(app, &mut c);
     }
+    app.slot_elems = elems;
     // plugins' views over all that; the top one has the keyboard, unless a dialog is open over it
     if !app.views.is_empty() {
         cursor = super::views::draw(app, &mut c);
@@ -169,6 +170,7 @@ pub fn render(app: &mut App, f: &mut Frame) {
         cursor = modals::draw(app, &mut c);
     }
     toasts(app, &mut c);
+    slots::tooltip(app, &mut c);
     app.hits = hits;
     if let Some(at) = cursor {
         f.set_cursor_position(at);
@@ -179,9 +181,9 @@ pub fn render(app: &mut App, f: &mut Frame) {
 
 fn panes(app: &App, c: &mut Canvas) -> Option<Position> {
     let th = &app.th;
+    let ctx = slots::ctx(app);
     let a = app.area();
     let t = app.tab();
-    let view = app.view.as_ref().unwrap();
     let rs = display_rects(&t.tree, a, &t.focused, t.zoomed);
     let mut cursor = None;
     for (id, r) in &rs {
@@ -196,12 +198,21 @@ fn panes(app: &App, c: &mut Canvas) -> Option<Position> {
         let exited = if i.status == "exited" { format!(" [exited {}]", i.exit_code.map(|c| c.to_string()).unwrap_or("?".into())) } else { String::new() };
         // driven from another terminal (pane attach), at its size: typing here doesn't reach it
         let elsewhere = if i.takeover == Some(true) { " [attached elsewhere]" } else { "" };
-        let badges = plugin_badges(view, i);
         let name = i.name.as_ref().map(|n| format!("@{n}")).unwrap_or(i.title.clone());
-        let title = fit(&format!(" {} {name}{agent_tag}{exited}{elsewhere}{badges} ", if focused { "◆" } else { "◇" }), (r.w - 4).max(0) as usize);
+        // its title: its name, agent and state, with plugins' pieces around them or a plugin's instead
+        let room = (r.w - 4).max(0) as usize;
+        let mut title = Strip::default();
+        title.text(format!(" {} ", if focused { "◆" } else { "◇" }), Style::new());
+        title.append(slots::label(&ctx, &slots::around(app, "pane.title", |p| slots::of_pane(p, i)), &format!("{name}{agent_tag}"), room));
+        title.text(format!("{exited}{elsewhere} "), Style::new());
+        title.fit(room);
         let title_color = if focused { th.focus } else { st.map(|s| app.state_color(s)).unwrap_or(th.dim) };
-        c.border(*r, app.cfg.panes.border, border, Some(th.bg), Some((&title, title_color)));
+        c.border(*r, app.cfg.panes.border, border, Some(th.bg), None);
         c.hit(*r, Hit::Border(id.clone()));
+        if r.w > 4 && r.h >= 2 {
+            title.draw(c, r.x + 2, r.y, Style::new().fg(color(title_color)).bg(color(th.bg)), room);
+        }
+        slots::border(app, &ctx, c, *r, i, title.width(), border);
         let inner = Rect { x: r.x + 1, y: r.y + 1, w: r.w - 2, h: r.h - 2 };
         if let Some(p) = app.panes.get(id) {
             let area = ratatui::layout::Rect::new(inner.x.max(0) as u16, inner.y.max(0) as u16, inner.w.max(0) as u16, inner.h.max(0) as u16).intersection(c.buf.area);
@@ -213,19 +224,6 @@ fn panes(app: &App, c: &mut Canvas) -> Option<Position> {
         c.hit(inner, Hit::Pane(id.clone()));
     }
     cursor
-}
-
-// plugins' badges, only for the process they were set for
-fn plugin_badges(view: &crate::protocol::types::View, i: &PaneInfo) -> String {
-    let mut out = String::new();
-    for p in view.plugins.iter().flatten() {
-        for b in p["badges"].as_array().into_iter().flatten() {
-            if b["pane"] == json!(i.id) && b["instance"] == json!(i.instance) {
-                out += &format!(" [{}: {}]", p["plugin"].as_str().unwrap_or(""), b["text"].as_str().unwrap_or(""));
-            }
-        }
-    }
-    out
 }
 
 // ---------- the top row: the space button, the current space's tabs, and new-tab / overflow controls ----------
@@ -243,15 +241,26 @@ pub fn tab_label(app: &App, t: &TabView) -> String {
 
 fn tabs(app: &App, c: &mut Canvas) {
     let th = &app.th;
+    let ctx = slots::ctx(app);
     let y = app.metrics().top - 1;
     c.fill(Rect { x: 0, y, w: c.w, h: 1 }, th.bar);
     let ws = app.ws();
     let hover = (th.fg, th.border);
     // The workspace is a compact chip, not a column aligned with the sidebar. Keep its arrow visible even when a long
-    // workspace name needs truncation.
-    let brand_width = (width(&ws.name) as i32 + 6).min(24).min((c.w - 16).max(1));
-    let brand = if brand_width >= 6 { format!(" ◈ {} ▸ ", fit(&ws.name, (brand_width - 6) as usize)) } else { fit(&format!(" {}", ws.name), brand_width as usize) };
-    let mut x = c.button(0, y, &brand, brand_width, th.bg, th.focus, hover, Hit::Action("workspace-picker"));
+    // workspace name needs truncation. Plugins' pieces sit around the name, or one in its place.
+    let space = slots::around(app, "space", |p| p.space.as_deref() == Some(ws.name.as_str()));
+    let most = if space.before.is_empty() && space.after.is_empty() && space.instead.is_none() { 24 } else { 40 };
+    let brand_width = (slots::label(&ctx, &space, &ws.name, usize::MAX).width() as i32 + 6).min(most).min((c.w - 16).max(1));
+    let mut brand = Strip::default();
+    if brand_width >= 6 {
+        brand.text(" ◈ ", Style::new());
+        brand.append(slots::label(&ctx, &space, &ws.name, (brand_width - 6) as usize));
+        brand.text(" ▸ ", Style::new());
+    } else {
+        brand.text(fit(&format!(" {}", ws.name), brand_width as usize), Style::new());
+    }
+    brand.pad(brand_width as usize);
+    let mut x = slots::button(app, c, 0, y, &Seg { strip: brand, fg: th.bg.into(), bg: th.focus.into(), hit: Some(Hit::Action("workspace-picker")), plugin: false });
     x += 1;
     let available = (c.w - brand_width - 10).max(1) as usize; // 2 for the active tab's ✕
     let win = tab_window(ws.tabs.len(), ws.active, available);
@@ -262,13 +271,19 @@ fn tabs(app: &App, c: &mut Canvas) {
         let unread = app.cfg.notify.unread && t.unread && !on && !blocked; // [notify] unread: marked until looked at
         let suffix = format!("{}{}{}", if t.zoomed { " [Z]" } else { "" }, if blocked { format!(" {}", app.icon(AgentState::Blocked)) } else { String::new() }, if unread { " •" } else { "" });
         let prefix = format!(" {}:", i + 1);
-        let name = tab_label(app, t);
-        let text = format!("{prefix}{}{suffix} ", fit(&name, win.width.saturating_sub(width(&prefix) + width(&suffix) + 2)));
+        // its name, with plugins' pieces around it or a plugin's instead
+        let pieces = slots::around(app, "tab", |p| p.tab.as_deref() == Some(t.id.as_str()));
+        let mut text = Strip::default();
+        text.text(prefix.clone(), Style::new());
+        text.append(slots::label(&ctx, &pieces, &tab_label(app, t), win.width.saturating_sub(width(&prefix) + width(&suffix) + 2)));
+        text.text(format!("{suffix} "), Style::new());
         // sized to the label so tabs sit side by side; window.width only caps long names. Clicking the tab you're on
         // renames it.
-        let w = (win.width as i32 - 1).min(width(&text) as i32);
+        let w = (win.width as i32 - 1).min(text.width() as i32).max(0) as usize;
+        text.fit(w);
+        text.pad(w);
         let fg = if blocked { th.warn } else if on || unread { th.fg } else { th.dim };
-        x += c.button(x, y, &text, w, fg, if on { th.border } else { th.bar }, hover, Hit::Tab(i));
+        x += slots::button(app, c, x, y, &Seg { strip: text, fg: fg.into(), bg: (if on { th.border } else { th.bar }).into(), hit: Some(Hit::Tab(i)), plugin: false });
         if on {
             x += c.button(x, y, "✕ ", 2, th.dim, th.border, hover, Hit::Action("close-tab"));
         }
@@ -284,12 +299,12 @@ fn tabs(app: &App, c: &mut Canvas) {
 
 // ---------- the sidebar: a compact navigator ----------
 
-struct Side {
-    x: i32,
-    y: i32, // the next free row
-    w: i32,
-    cw: usize, // its content's width
-    end: i32,  // the first row it can't use (the footer's)
+pub struct Side {
+    pub x: i32,
+    pub y: i32, // the next free row
+    pub w: i32,
+    pub cw: usize, // its content's width
+    pub end: i32,  // the first row it can't use (the footer's)
 }
 
 fn row_bg(app: &App, c: &Canvas, r: Rect, selected: bool) -> String {
@@ -298,7 +313,7 @@ fn row_bg(app: &App, c: &Canvas, r: Rect, selected: bool) -> String {
 }
 
 // a row of the sidebar: its tint, its hit, and where its body starts (after a two-cell gutter)
-fn side_row(app: &App, c: &mut Canvas, s: &mut Side, height: i32, selected: bool, hit: Option<Hit>) -> (i32, i32, String) {
+pub fn side_row(app: &App, c: &mut Canvas, s: &mut Side, height: i32, selected: bool, hit: Option<Hit>) -> (i32, i32, String) {
     let r = Rect { x: s.x, y: s.y, w: s.w - 1, h: height };
     let bg = row_bg(app, c, r, selected);
     c.fill(r, &bg);
@@ -318,7 +333,7 @@ fn side_action(app: &App, c: &mut Canvas, s: &mut Side, label: &str, hint: &str,
     c.text(x + w, y, &right, app.th.dim, Some(&bg), Modifier::empty(), s.cw);
 }
 
-fn sidebar(app: &App, c: &mut Canvas) {
+fn sidebar(app: &App, c: &mut Canvas, elems: &mut std::collections::HashMap<String, SlotElem>) {
     let th = &app.th;
     let m = app.metrics();
     let w = m.side;
@@ -337,21 +352,13 @@ fn sidebar(app: &App, c: &mut Canvas) {
     let mut s = Side { x: 0, y: top + 1, w, cw: (w - 4).max(0) as usize, end: top + height - 5 };
     let agents = app.sorted_agents();
     let budget = sidebar_budget(height, agents.len());
-    // a plugin the config names in [sidebar] agents takes the AGENTS list's place and its room, while it shows a section;
-    // otherwise (not installed, stopped, nothing to show) modisa's own list is there as ever
-    let plugins = plugin_ui(app);
-    let takeover = (!app.cfg.sidebar.agents.is_empty()).then(|| plugins.iter().position(|p| p["plugin"] == app.cfg.sidebar.agents.as_str() && p["sidebar"].is_object())).flatten();
-    match takeover {
-        Some(i) => plugin_section(app, c, &mut s, &plugins[i], budget.lines),
+    // a plugin that replaces the AGENTS list (sidebar.agents: the server says who, [sidebar] agents included) takes the
+    // list's place and its room; otherwise (not installed, stopped, nothing to show) modisa's own list is there as ever
+    match slots::pieces(app, "sidebar.agents", |p| p.replaces).into_iter().next() {
+        Some(p) => slots::agents_instead(app, c, &mut s, p, budget.lines, elems),
         None => agent_list(app, c, &mut s, &agents, budget.lines),
     }
-    for (i, p) in plugins.iter().enumerate() {
-        if !p["sidebar"].is_object() || Some(i) == takeover {
-            continue;
-        }
-        s.y += 1;
-        plugin_section(app, c, &mut s, p, 8);
-    }
+    slots::sections(app, c, &mut s, elems);
     // the footer: a rule, then the shortcuts; one blank row under it
     let mut f = Side { x: 0, y: top + height - 5, w, cw: s.cw, end: c.h };
     c.text(0, f.y, &format!("  {}", "─".repeat(s.cw)), th.border, Some(th.bar), Modifier::empty(), (w - 1) as usize);
@@ -385,7 +392,8 @@ fn agent_list(app: &App, c: &mut Canvas, s: &mut Side, agents: &[PaneInfo], line
             (t.id.clone(), agents.iter().filter(|p| mine.contains(&p.id)).cloned().collect())
         })
         .collect();
-    let graph = agent_graph(&tabs, ws.active, &app.collapsed_tabs, lines);
+    let ctx = slots::ctx(app);
+    let graph = agent_graph(&tabs, ws.active, &app.collapsed_tabs, lines, |p: &PaneInfo| slots::agent_rows(app, &ctx, p).height());
     let focused = &app.tab().focused;
     let trunk = mix(th.border, th.dim, 0.35);
     // a lane per tab, git-graph style; the active tab's at full strength, the others' quieter
@@ -438,7 +446,8 @@ fn agent_list(app: &App, c: &mut Canvas, s: &mut Side, agents: &[PaneInfo], line
                 c.spans(x, y, &spans, Some(&bg), cw);
             }
             GraphRow::Agent { tab, agent: pane, graph } => {
-                // an agent: its branch off the trunk, its mark, its name and state; under them the task its title names
+                // an agent: its branch off the trunk, its mark, its name and state; under them the task its title names.
+                // Plugins' lines go above and below them, by the trunk, or a plugin's lines in their place.
                 let ag = pane.agent.as_ref().unwrap();
                 let selected = pane.id == *focused;
                 let col = state_color(ag.state);
@@ -450,7 +459,8 @@ fn agent_list(app: &App, c: &mut Canvas, s: &mut Side, agents: &[PaneInfo], line
                 let task = agent_task(pane.terminal_title.as_deref().or(Some(&pane.title)), &[pane.name.as_deref(), Some(&ag.harness)]);
                 let meta = if !task.is_empty() { task } else if pane.name.is_some() { ag.harness.clone() } else { String::new() };
                 let (ml, mr) = sidebar_columns(&meta, label(ag.state), wd);
-                let (x, y, bg) = side_row(app, c, s, 2, selected, Some(Hit::FocusPane(pane.id.clone())));
+                let rows = slots::agent_rows(app, &ctx, &pane);
+                let (x, mut y, bg) = side_row(app, c, s, rows.height() as i32, selected, Some(Hit::FocusPane(pane.id.clone())));
                 let base = if matches!(ag.state, AgentState::Done | AgentState::Idle) { th.dim } else { th.fg };
                 let [g1, g2] = if rails { graph } else { ["  ", "  "] };
                 let mut g1c = g1.chars();
@@ -460,8 +470,33 @@ fn agent_list(app: &App, c: &mut Canvas, s: &mut Side, agents: &[PaneInfo], line
                     Some((t, b)) => (t.to_string(), b.to_string()),
                     None => (mark.glyph.clone(), " ".to_string()),
                 };
-                c.spans(x, y, &[(a, &trunk, false), (b, &branch, false), (top, &mark.color, false), (gap.clone(), base, false), (nl, base, selected), (nr, col, false)], Some(&bg), cw);
-                c.spans(x, y + 1, &[(g2.to_string(), &trunk, false), (bottom, &mark.color, false), (gap, base, false), (ml, th.dim, false), (mr, col, false)], Some(&bg), cw);
+                let style = Style::new().fg(color(base)).bg(color(&bg));
+                let under = 2 + mark.cells; // a plugin's line beside an agent's starts under its name
+                for (l, p) in &rows.before {
+                    c.text(x, y, if rails { "│ " } else { "  " }, &trunk, Some(&bg), Modifier::empty(), 2);
+                    slots::draw_line(c, x + under as i32, y, l, p, cw.saturating_sub(under), style);
+                    y += 1;
+                }
+                match &rows.instead {
+                    Some(lines) => {
+                        for (k, (l, p)) in lines.iter().enumerate() {
+                            let g = if k == 0 { vec![(a.clone(), trunk.as_str(), false), (b.clone(), branch.as_str(), false)] } else { vec![(g2.to_string(), trunk.as_str(), false)] };
+                            c.spans(x, y, &g, Some(&bg), 2);
+                            slots::draw_line(c, x + 2, y, l, p, cw.saturating_sub(2), style);
+                            y += 1;
+                        }
+                    }
+                    None => {
+                        c.spans(x, y, &[(a, &trunk, false), (b, &branch, false), (top, &mark.color, false), (gap.clone(), base, false), (nl, base, selected), (nr, col, false)], Some(&bg), cw);
+                        c.spans(x, y + 1, &[(g2.to_string(), &trunk, false), (bottom, &mark.color, false), (gap, base, false), (ml, th.dim, false), (mr, col, false)], Some(&bg), cw);
+                        y += 2;
+                    }
+                }
+                for (l, p) in &rows.after {
+                    c.text(x, y, g2, &trunk, Some(&bg), Modifier::empty(), 2);
+                    slots::draw_line(c, x + under as i32, y, l, p, cw.saturating_sub(under), style);
+                    y += 1;
+                }
             }
         }
     }
@@ -470,148 +505,114 @@ fn agent_list(app: &App, c: &mut Canvas, s: &mut Side, agents: &[PaneInfo], line
     }
 }
 
-// A plugin's section, at most `rows` of its rows: click its heading to fold it, a row to run its action or focus its pane.
-// It's headed by the plugin's name on its own row, so it can't pass for one of modisa's however narrow the sidebar; the
-// title the plugin chose goes under it.
-fn plugin_section(app: &App, c: &mut Canvas, s: &mut Side, plugin: &serde_json::Value, rows: usize) {
-    let th = &app.th;
-    let name = plugin["plugin"].as_str().unwrap_or("");
-    let run = plugin["run"].as_str().unwrap_or("");
-    let section = &plugin["sidebar"];
-    let items = list_of(section, "rows");
-    let folded = app.collapsed_plugins.contains(name);
-    if s.y >= s.end {
-        return;
-    }
-    // the count is of rows that do something (focus a pane, run an action), not a plugin's headers and spacing
-    let doing = items.iter().filter(|x| x["pane"].is_string() || x["action"].is_string()).count();
-    let (left, right) = sidebar_columns(&format!("{} {name}", if folded { "▸" } else { "▾" }), &(if doing > 0 { doing } else { items.len() }).to_string(), s.cw);
-    let (x, y, bg) = side_row(app, c, s, 1, false, Some(Hit::PluginFold(name.to_string())));
-    c.spans(x, y, &[(left, th.dim, true), (right, th.dim, false)], Some(&bg), s.cw);
-    if folded || s.y >= s.end {
-        return;
-    }
-    c.text(s.x + 2, s.y, &fit(section["title"].as_str().unwrap_or(""), s.cw), th.dim, Some(th.bar), Modifier::empty(), s.cw);
-    s.y += 1;
-    for item in items.iter().take(rows) {
-        if s.y >= s.end {
-            return;
-        }
-        let some = |k: &str| item[k].as_str().map(String::from);
-        let hit = Hit::Plugin { plugin: name.into(), run: run.into(), action: some("action"), pane: some("pane"), instance: some("instance") };
-        let (x, y, bg) = side_row(app, c, s, 1, false, Some(hit));
-        let tone = item["tone"].as_str().unwrap_or("fg");
-        let spans = list_of(item, "spans");
-        if spans.is_empty() {
-            c.text(x, y, &fit(item["text"].as_str().unwrap_or(""), s.cw), tone_color(app, tone), Some(&bg), Modifier::empty(), s.cw);
-        } else {
-            let st = span_text(app, spans, tone, s.cw);
-            let refs: Vec<(String, &str, bool)> = st.iter().map(|(t, col, b)| (t.clone(), col.as_str(), *b)).collect();
-            c.spans(x, y, &refs, Some(&bg), s.cw);
-        }
-    }
-}
-
 // ---------- the bottom row ----------
 
 // The bottom row: sidebar toggle, new agent and agent counts on the left; pane count, theme and the active space's git
-// on the right. [status] and [git] choose which of them show.
+// on the right. [status] and [git] choose which of them show. Plugins' pieces go after modisa's left-hand segments
+// (status.left), before its right-hand ones (status.right), and around or instead of its counts, pane count, theme and
+// git (status.agents, status.panes, status.theme, status.git).
 fn status(app: &App, c: &mut Canvas) {
     let th = &app.th;
+    let ctx = slots::ctx(app);
     let y = c.h - 1;
     c.fill(Rect { x: 0, y, w: c.w, h: 1 }, th.bar);
-    let hover = (th.fg, th.border);
     let count = tree_panes(&app.tab().tree).len();
     let agents = app.sorted_agents();
     let blocked = agents.iter().filter(|p| p.agent.as_ref().unwrap().state == AgentState::Blocked).count();
     let running = agents.iter().filter(|p| p.agent.as_ref().unwrap().state == AgentState::Working).count();
-    let mut x = 0;
-    if let Some(mode) = &app.mode {
-        // the key mode it's in: its keys work alone until escape
-        let text = format!(" {mode} ");
-        x += c.text(x, y, &text, th.bg, Some(th.accent), Modifier::BOLD, width(&text));
-    }
     let side = app.side_width() > 0;
-    let seg = |c: &mut Canvas, x: &mut i32, text: &str, fg: &str, bg: &str, hit: Hit| *x += c.button(*x, y, text, width(text) as i32, fg, bg, hover, hit);
-    seg(c, &mut x, if side { " ◧ sidebar " } else { " ◨ sidebar " }, if side { th.bg } else { th.fg }, if side { th.focus } else { th.border }, Hit::Action("toggle-sidebar"));
-    seg(c, &mut x, " + agent ", th.focus, th.border, Hit::Action("new-agent"));
+    let own = |text: &str, fg: &str, bg: &str, hit: Hit| Seg::own(text, fg, bg, Some(hit));
+    let mut left = vec![
+        own(if side { " ◧ sidebar " } else { " ◨ sidebar " }, if side { th.bg } else { th.fg }, if side { th.focus } else { th.border }, Hit::Action("toggle-sidebar")),
+        own(" + agent ", th.focus, th.border, Hit::Action("new-agent")),
+    ];
+    if let Some(mode) = &app.mode {
+        left.insert(0, Seg::own(&format!(" {mode} "), th.bg, th.accent, None)); // the key mode it's in, until escape
+    }
     if c.w >= 100 && app.cfg.status.agents {
-        seg(c, &mut x, &format!(" {} {running} working ", app.icon(AgentState::Working)), th.focus, th.bar, Hit::Action("working-agents"));
-        seg(c, &mut x, &format!(" {} {blocked} need you ", app.icon(AgentState::Blocked)), if blocked > 0 { th.warn } else { th.dim }, th.bar, Hit::Action("blocked-agents"));
+        let counts = vec![
+            own(&format!(" {} {running} working ", app.icon(AgentState::Working)), th.focus, th.bar, Hit::Action("working-agents")),
+            own(&format!(" {} {blocked} need you ", app.icon(AgentState::Blocked)), if blocked > 0 { th.warn } else { th.dim }, th.bar, Hit::Action("blocked-agents")),
+        ];
+        left.extend(slots::wrap(app, &ctx, "status.agents", counts));
     }
-    // plugins' segments while there's room; modisa's own come first, and the right side keeps its space
-    if c.w >= 110 {
-        let mut room = c.w - 100;
-        for p in plugin_ui(app) {
-            let (name, run) = (p["plugin"].as_str().unwrap_or(""), p["run"].as_str().unwrap_or(""));
-            for st in list_of(p, "status") {
-                let text = format!(" {name}: {} ", fit(st["text"].as_str().unwrap_or(""), 24)); // named, so it can't pass for modisa's own
-                let w = width(&text) as i32;
-                if w > room {
-                    break;
-                }
-                room -= w;
-                let hit = Hit::Plugin { plugin: name.into(), run: run.into(), action: st["action"].as_str().map(String::from), pane: None, instance: None };
-                seg(c, &mut x, &text, tone_color(app, st["tone"].as_str().unwrap_or("fg")), th.bar, hit);
-            }
-        }
-    }
-    // right: a newer release, the pane count, the theme, then the active space's git
+    left.extend(slots::segs(app, &ctx, "status.left"));
+    // right: plugins' pieces, a newer release, the pane count, the theme, then the active space's git
     let view = app.view.as_ref().unwrap();
-    let mut right: Vec<(String, &str, &str, Hit)> = vec![];
+    let mut right = slots::segs(app, &ctx, "status.right");
     if view.paused && c.w >= 120 {
-        right.push((" PAUSED ".into(), th.warn, th.bar, Hit::Action("toggle-messaging")));
+        right.push(own(" PAUSED ", th.warn, th.bar, Hit::Action("toggle-messaging")));
     }
     if let Some(u) = &app.update {
-        right.push((format!(" ↑ {} ", u.version), th.bg, th.warn, Hit::Action("update-modisa")));
+        right.push(own(&format!(" ↑ {} ", u.version), th.bg, th.warn, Hit::Action("update-modisa")));
     }
     if c.w >= 50 && app.cfg.status.panes {
-        right.push((format!(" {count} {} ", if count == 1 { "pane" } else { "panes" }), th.fg, th.bar, Hit::Action("pane-picker")));
+        let panes = own(&format!(" {count} {} ", if count == 1 { "pane" } else { "panes" }), th.fg, th.bar, Hit::Action("pane-picker"));
+        right.extend(slots::wrap(app, &ctx, "status.panes", vec![panes]));
     }
     if c.w >= 60 && app.cfg.status.theme {
-        right.push((format!(" ◐ {} ", app.cfg.theme), th.dim, th.bar, Hit::Action("theme-picker")));
+        let theme = own(&format!(" ◐ {} ", app.cfg.theme), th.dim, th.bar, Hit::Action("theme-picker"));
+        right.extend(slots::wrap(app, &ctx, "status.theme", vec![theme]));
     }
     // Where the repository stands: its name, the branch (in the done colour when clean and in step with its upstream),
-    // ↑ commits to push, ↓ commits to pull, ● files changed.
-    let mut git: Vec<(String, &str, bool)> = vec![];
-    if let Some(g) = app.cfg.git.status.then(|| app.ws().git.as_ref()).flatten().filter(|_| c.w >= 60) {
-        let clean = g.changes == 0 && g.ahead.unwrap_or(0) == 0 && g.behind.unwrap_or(0) == 0 && g.ahead.is_some();
-        if app.cfg.git.repo {
-            git.push((format!(" {}", fit(&g.repo, 24)), th.fg, false));
-        }
-        git.push((format!(" ⎇ {}", fit(&g.branch, 24)), if clean { th.done } else { th.dim }, false));
-        if let Some(a) = g.ahead.filter(|a| *a > 0 && app.cfg.git.counts) {
-            git.push((format!(" ↑{a}"), th.working, false));
-        }
-        if let Some(b) = g.behind.filter(|b| *b > 0 && app.cfg.git.counts) {
-            git.push((format!(" ↓{b}"), th.warn, false));
-        }
-        if g.changes > 0 && app.cfg.git.changes {
-            git.push((format!(" ●{}", g.changes), th.accent, false));
-        }
-        git.push((" ".into(), th.dim, false));
+    // ↑ commits to push, ↓ commits to pull, ● files changed. Plugins' pieces there show outside a repository too.
+    if app.cfg.git.status && c.w >= 60 {
+        let git = app.ws().git.as_ref().map(|g| {
+            let clean = g.changes == 0 && g.ahead.unwrap_or(0) == 0 && g.behind.unwrap_or(0) == 0 && g.ahead.is_some();
+            let mut git = Strip::default();
+            let mut put = |text: String, fg: &str| git.text(text, Style::new().fg(color(fg)));
+            if app.cfg.git.repo {
+                put(format!(" {}", fit(&g.repo, 24)), th.fg);
+            }
+            put(format!(" ⎇ {}", fit(&g.branch, 24)), if clean { th.done } else { th.dim });
+            if let Some(a) = g.ahead.filter(|a| *a > 0 && app.cfg.git.counts) {
+                put(format!(" ↑{a}"), th.working);
+            }
+            if let Some(b) = g.behind.filter(|b| *b > 0 && app.cfg.git.counts) {
+                put(format!(" ↓{b}"), th.warn);
+            }
+            if g.changes > 0 && app.cfg.git.changes {
+                put(format!(" ●{}", g.changes), th.accent);
+            }
+            put(" ".into(), th.dim);
+            Seg { strip: git, fg: th.dim.into(), bg: th.bar.into(), hit: None, plugin: false }
+        });
+        right.extend(slots::wrap(app, &ctx, "status.git", git.into_iter().collect()));
     }
-    let total: i32 = right.iter().map(|(t, ..)| width(t) as i32).sum::<i32>() + git.iter().map(|(t, ..)| width(t) as i32).sum::<i32>();
-    let mut rx = (c.w - total).max(x);
-    for (t, fg, bg, hit) in right {
-        rx += c.button(rx, y, &t, width(&t) as i32, fg, bg, hover, hit);
-    }
-    c.spans(rx, y, &git, Some(th.bar), (c.w - rx).max(0) as usize);
+    slots::row(app, c, y, left, right);
 }
 
 // ---------- toasts: a stack of cards at the top right, the newest on top ----------
 
+// A card: its text (a plugin's lines, when it sent rich text), under its title, and its buttons along the bottom.
 fn toasts(app: &App, c: &mut Canvas) {
+    let th = &app.th;
     let mut top = app.metrics().top;
     for t in &app.toasts {
-        let content = fit(&t.text, (c.w - 6).max(1) as usize);
-        let w = (width(&content).max(t.title.as_ref().map_or(0, |s| width(s) + 2)) + 4) as i32;
-        let r = Rect { x: c.w - 1 - w, y: top, w, h: 3 };
-        c.fill(r, app.th.bar);
+        let room = (c.w - 6).max(1) as usize;
+        let body: Vec<Line> = if t.lines.is_empty() { vec![Line::raw(fit(&t.text, room))] } else { t.lines.iter().map(|l| slots::fit_line(l.clone(), room)).collect() };
+        let buttons: Vec<(String, &Hit)> = t.buttons.iter().map(|(b, h)| (format!(" {} ", fit(b, 20)), h)).collect();
+        let row = buttons.iter().map(|(b, _)| width(b) + 1).sum::<usize>().saturating_sub(1);
+        let w = (body.iter().map(slots::line_width).max().unwrap_or(0).max(row.min(room)).max(t.title.as_ref().map_or(0, |s| width(s) + 2)) + 4) as i32;
+        let h = body.len() as i32 + 2 + !buttons.is_empty() as i32;
+        let r = Rect { x: c.w - 1 - w, y: top, w, h };
+        c.fill(r, th.bar);
         let title = t.title.as_ref().map(|s| format!(" {s} "));
-        c.border(r, BorderStyle::Rounded, t.color, Some(app.th.bar), title.as_deref().map(|s| (s, t.color)));
-        c.text(r.x + 2, r.y + 1, &content, app.th.fg, Some(app.th.bar), Modifier::empty(), (w - 4) as usize);
+        c.border(r, BorderStyle::Rounded, t.color, Some(th.bar), title.as_deref().map(|s| (s, t.color)));
+        for (k, l) in body.iter().enumerate() {
+            slots::put(c, r.x + 2, r.y + 1 + k as i32, l, (w - 4) as usize, Style::new().fg(color(th.fg)).bg(color(th.bar)));
+        }
         c.hit(r, Hit::Inert);
-        top += 3;
+        let mut x = r.x + 2;
+        for (b, hit) in buttons {
+            let cell = Rect { x, y: r.y + h - 2, w: width(&b) as i32, h: 1 };
+            let bg = if c.hovered(cell) { th.border.to_string() } else { mix(th.bar, th.fg, 0.1) };
+            let drawn = c.text(x, cell.y, &b, th.fg, Some(&bg), Modifier::empty(), (r.x + w - 2 - x).max(0) as usize);
+            if drawn > 0 {
+                c.hit(Rect { w: drawn, ..cell }, hit.clone());
+            }
+            x += drawn + 1;
+        }
+        top += h;
     }
 }

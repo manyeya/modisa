@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use super::keys::all_keys;
 use super::{find_key, one_js_char, parse_toml, themes, SOUND_NAMES};
+use crate::protocol::types::{REPLACEABLE, SLOTS};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -166,6 +167,7 @@ const SETTINGS: &[(&str, Schema)] = &[
             partial: true,
         }),
     ),
+    ("slots", Schema::Record(&STR)), // who draws each slot (examples/plugins/CHROME.md)
 ];
 
 const UNKNOWN: &str = "modisa has no such setting, so it's ignored";
@@ -357,6 +359,17 @@ pub fn check_config(source: &str) -> Vec<ConfigProblem> {
         at.push(Seg::Key(p.action));
         add(p.level, &at, p.message);
     }
+    // a slot no plugin draws instead of modisa in is ignored
+    for slot in user.get("slots").and_then(Value::as_object).into_iter().flat_map(|m| m.keys()) {
+        let why = if !SLOTS.contains(&slot.as_str()) {
+            format!("there's no slot {slot} (examples/plugins/CHROME.md lists them)")
+        } else if !REPLACEABLE.contains(&slot.as_str()) {
+            format!("plugins only add to {slot}: nothing replaces it")
+        } else {
+            continue;
+        };
+        add(Level::Warning, &[Seg::Key("slots".into()), Seg::Key(slot.clone())], why);
+    }
     problems.sort_by_key(|p| p.line.unwrap_or(0)); // stable: same-line problems keep their order
     problems
 }
@@ -426,6 +439,8 @@ mod tests {
             ("[[plugin]]\nrun = \"\"\n[[plugin]]\nfoo = 1\n", json!([["error", "plugin.0.run", "Too small: expected string to have >=1 characters", null], ["error", "plugin.1.run", "Invalid input: expected string, received undefined", null], ["warning", "plugin.1.foo", UNKNOWN, null]])),
             ("plugin = [1]\n", json!([["error", "plugin.0", "Invalid input: expected object, received number", 1]])),
             ("[plugin_keys]\n\"a.b\" = 3\n", json!([["error", "plugin_keys.a.b", "Invalid input: expected string, received number", 2]])),
+            ("[slots]\n\"agent.row\" = \"radar\"\n\"pane.title\" = \"builtin\"\n", json!([])),
+            ("[slots]\n\"agent.row\" = 3\n\"status.left\" = \"x\"\n\"nope\" = \"x\"\n", json!([["error", "slots.agent.row", "Invalid input: expected string, received number", 2], ["warning", "slots.status.left", "plugins only add to status.left: nothing replaces it", 3], ["warning", "slots.nope", "there's no slot nope (examples/plugins/CHROME.md lists them)", 4]])),
             ("keys = \"x\"\n", json!([["error", "keys", "Invalid input: expected record, received string", 1]])),
             ("[keys]\nzoom = [\"a\", 3]\n", json!([["error", "keys.zoom", "Invalid input", 2], ["error", "keys.zoom", "a key is a string (\"K\"), or a list of them", 2]])),
             ("[keys]\nzoom = \"ctrl-z\"\nhelp = \"g\"\nsettings = \"g\"\nnope = \"q\"\n", json!([["error", "keys.zoom", "\"ctrl-z\" isn't a key: one character (H is shift+h), or left, right, up, down, home, end, pageup, pagedown or f1 to f12", 2], ["error", "keys.settings", "g is given to help too; the last one wins", 4], ["warning", "keys.nope", "there's no action nope (the keyboard guide, prefix ?, lists them)", 5]])),

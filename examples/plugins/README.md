@@ -303,11 +303,12 @@ These work only on a plugin's bound connection (after `plugin.hello`); from any 
 
 | Method | Params | |
 |---|---|---|
-| `ui.status.set` / `ui.status.clear` | `id`, `text`, `tone`, `action` / `id` | a status row segment |
+| `ui.slot.set` / `ui.slot.clear` | `slot`, `id`, `pane` + `instance` / `tab` / `space`, `position`, `order`, `line` / `lines` / `element` + `height`, `title`, `action`, `hide_below` / `slot`, `id`, `pane`, `tab`, `space` | a piece in modisa's own chrome: the status row, tabs, spaces, pane borders, agent rows, sidebar sections, the AGENTS list, menus, the palette ([CHROME.md](CHROME.md)) |
+| `ui.status.set` / `ui.status.clear` | `id`, `text`, `tone`, `action` / `id` | a status row segment (a `status.right` piece) |
 | `ui.sidebar.set` / `ui.sidebar.clear` | `title`, `rows[]` (`text`, `tone`, `spans`, `action`, `pane` + `instance`) | the plugin's sidebar section; `spans` are `{ text, tone, bold }` and `{ icon: <agent id> }` pieces |
-| `ui.badge.set` / `ui.badge.clear` | `pane`, `instance`, `text`, `tone` / `pane` | a label on a pane's border |
-| `ui.menu.set` | `items[]` (`id`, `title`, `action`) | pane context menu entries |
-| `ui.toast` | `text`, `tone`, `system` | a passing message in every attached client |
+| `ui.badge.set` / `ui.badge.clear` | `pane`, `instance`, `text`, `tone` / `pane` | a label on a pane's border (a `pane.title` piece) |
+| `ui.menu.set` | `items[]` (`id`, `title`, `action`) | pane context menu entries (`menu.pane` pieces) |
+| `ui.toast` | `text`, `tone`, `system`, `lines`, `actions`, `timeout`, `id` | a passing message in every attached client; `lines` rich text, `actions` buttons |
 | `ui.state` | `plugin` | what it shows now |
 | `plugin.pane.open` | `plugin`, `pane`, `params`, `from` | opens one of `plugin.json`'s `panes` |
 | `ui.popup.close` | — | closes the plugin's popup |
@@ -324,6 +325,13 @@ with `"ui":{"view","id","event",…}` beside the params: which view, which eleme
 list's `index`, a diff's `line`, an input's `value`, …). Its keys, and the user closing it (its `close` action), send
 just `"ui":{"view"}`. Views go only to clients that draw them (`attach` with `ui` 3 or later), on their own
 notifications (`plugin.view`, `plugin.view.closed`, `plugin.blit`), never in the session's `view`.
+
+**[CHROME.md](CHROME.md) is the whole of slots**: what each part of modisa's screen takes, and where a plugin may draw
+instead of modisa (the user decides, with `[slots]` in config.toml; with no entry, the first plugin by name that asks
+does). A piece is text in the user's theme (the same Spans and Lines as views), or in the sidebar a whole element.
+Its `action` runs with `"ui":{"slot","id",…}`: which slot, which piece, and what it's for (`pane` and `instance`, `tab`,
+`space`), plus `row` for a sidebar section's line. The client library's `ui.slot({ slot, id, … })` is typed slot by slot. Slots go
+only to clients that `attach` with `ui` 4 (older ones still draw what the older methods set).
 
 An `action` must be one the run offered in `plugin.hello`, or the call fails with `no_such_action`. A pane named with
 its `instance` that has closed or restarted fails with `pane_gone`. Too many updates fail with `rate_limited`; a popup

@@ -169,11 +169,22 @@ modisa plugin marketplace remove acme`) + p(
         [c("plugin dev <dir>"), "A throwaway session with the plugin running, to try it by hand."],
       ]) },
       { id: "tui", title: "In the TUI", html: ul([
-        `<strong>Status segments</strong>, a <strong>sidebar section</strong> whose rows run an action or focus a pane, <strong>badges</strong> on pane borders, entries in the <strong>pane menu</strong>, and <strong>toasts</strong>. A sidebar row can mix colours from your theme, bold, and agents' marks in their brand colours.`,
-        `${c('[sidebar] agents = "radar"')} in config.toml puts that plugin's section where modisa's agent list is, with all its room; when the plugin isn't running or shows nothing, modisa's list is back.`,
+        `Pieces in every part of modisa's own screen (<strong>slots</strong>, below): the status row, tabs, spaces, pane borders, agents' rows, sidebar sections, the pane, tab and space menus and the palette; and <strong>toasts</strong>, with rich text and buttons.`,
+        `${c('[sidebar] agents = "radar"')} in config.toml (or ${c('[slots] "sidebar.agents" = "radar"')}) puts that plugin's section where modisa's agent list is, with all its room; when the plugin isn't running or shows nothing, modisa's list is back.`,
         `<strong>Panes</strong> the plugin can open: a ${c("split")}, ${c("tab")} or ${c("zoomed")} pane that stays after the plugin stops, an ${c("overlay")} over the focused pane that gives focus back when it closes, or a ${c("popup")} over everything in the client that asked (${kbd("Ctrl+B")} ${kbd("x")} closes it).`,
         `Its actions are in the command palette. An action taken on a pane gets that pane, already checked to be the same process.`,
-        `Modisa draws everything in your theme and names the plugin on every piece, so nothing a plugin shows can pass for modisa's own. Each plugin, and a session's plugins together, can only show so much and update so often. It's all cleared when the plugin stops.`,
+        `Modisa draws everything in your theme and attributes every piece to its plugin, so nothing a plugin shows can pass for modisa's own. Each plugin can only show so much and update so often. It's all cleared when the plugin stops.`,
+      ]) },
+      { id: "slots", title: "Slots", html: p(
+        `A plugin puts text in your theme (the same spans and lines as views), or in the sidebar a whole element, <em>before</em> or <em>after</em> what modisa draws in a part of its screen, or <em>instead</em> of it. Adding is always allowed; replacing is yours to give: the first plugin (by name) that asks gets it unless ${c("[slots]")} names who may, or ${c('"builtin"')} for nobody. ${c("modisa plugin list")} shows who holds what and who asked. <a href="https://github.com/manyeya/modisa/blob/main/examples/plugins/CHROME.md">CHROME.md</a> has every slot.`,
+      ) + code("toml", `[slots]\n"agent.row" = "radar"      # radar's agent rows replace modisa's\n"pane.title" = "builtin"   # nobody replaces pane titles`) + code("ts", `await modisa.ui.slot({ slot: "agent.row", id: "ctx", pane: p.id, instance: p.instance, line: span("43%", "$warn") });
+await modisa.ui.slot({ slot: "status.right", id: "usage", line: [span("5h ", "$dim"), span("▂▃▅▇ 72%", "bold $warn")], action: "details" });
+await modisa.ui.slot({ slot: "sidebar", id: "chart", title: "Tokens", element: Sparkline({ data }), height: 3 });`) + table(["Slots", "Are"], [
+        [`${c("status.left")}, ${c("status.right")}; ${c("status.agents")}, ${c("status.panes")}, ${c("status.git")}, ${c("status.theme")}`, "the status row; modisa's own segments in it, which a plugin can wrap or replace"],
+        [`${c("tab")}, ${c("space")}`, "a tab's label and a space's chip in the tab bar"],
+        [`${c("pane.title")}, ${c("pane.top_right")}, ${c("pane.bottom_left")}, ${c("pane.bottom_right")}`, "a pane's border: its title, and the corners where modisa draws nothing"],
+        [`${c("agent.row")}, ${c("sidebar")}, ${c("sidebar.agents")}`, "an agent's rows in the AGENTS list, a plugin's own sidebar section, and the AGENTS list itself"],
+        [`${c("menu.pane")}, ${c("menu.tab")}, ${c("menu.space")}, ${c("palette")}`, "entries in the right-click menus and the command palette"],
       ]) },
       { id: "views", title: "Views", html: p(
         `For more than a segment or a row, a plugin opens a <strong>view</strong>: an element tree modisa draws in your theme, framed and named for the plugin, over everything or over one pane. The elements are <a href="https://ratatui.rs">ratatui</a>'s: constraint layouts, blocks around anything, its widgets, and a few modisa draws itself. It's written as JSX or plain function calls, and needs no program of its own. <a href="https://github.com/manyeya/modisa/blob/main/examples/plugins/VIEWS.md">VIEWS.md</a> has every element and field.`,

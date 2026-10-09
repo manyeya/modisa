@@ -24,12 +24,24 @@ use crate::protocol::types::{AgentState, IntegrationStatus};
 const HEIGHT: i32 = 32;
 const WIDTH: i32 = 100;
 const NAV: i32 = 18; // the side list's width
-pub const SECTIONS: [&str; 10] = ["theme", "general", "layout", "git", "indicators", "sound", "alerts", "agents", "integrations", "plugins"];
+pub const SECTIONS: [&str; 11] = ["theme", "general", "layout", "git", "indicators", "sound", "alerts", "agents", "integrations", "plugins", "slots"];
 const EVENTS: [(AgentState, &str); 3] = [(AgentState::Blocked, "needs you"), (AgentState::Done, "done"), (AgentState::Working, "started working")];
 const ALERTS: [(NotifyKind, &str, &str); 3] = [
     (NotifyKind::Toast, "toast", "A line in the top right corner of modisa"),
     (NotifyKind::System, "system notification", "Your desktop's notification, for when you're in another window"),
     (NotifyKind::Bell, "terminal bell", "The terminal's bell: a sound or a flash, as your terminal does it"),
+];
+// What a plugin can draw instead of modisa (examples/plugins/CHROME.md), and who does is [slots] in config.toml.
+const SLOTS: [(&str, &str, &str); 9] = [
+    ("agent.row", "agent rows", "An agent's rows in the sidebar's AGENTS list"),
+    ("sidebar.agents", "agents list", "The sidebar's AGENTS list, all of it"),
+    ("pane.title", "pane titles", "A pane's border title: its name, agent and state"),
+    ("tab", "tab labels", "A tab's name in the tab bar"),
+    ("space", "space chip", "The space's name at the left of the tab bar"),
+    ("status.agents", "agent counts", "The status row's working and need-you counts"),
+    ("status.panes", "pane count", "The status row's pane count"),
+    ("status.git", "git", "The status row's repository and branch"),
+    ("status.theme", "theme name", "The status row's theme name"),
 ];
 // prefixes that don't take a key shells and programs need (Ctrl+C, Ctrl+D, Ctrl+M is Enter, Ctrl+I is Tab…)
 const PREFIXES: [&str; 9] = ["a", "b", "g", "o", "q", "s", "t", "x", "y"];
@@ -44,7 +56,6 @@ pub enum Act {
     Channel,
     SidebarWidth,
     Logos,
-    AgentsList,
     Border,
     Style(IndicatorStyle),
     Sound(AgentState),
@@ -56,6 +67,7 @@ pub enum Act {
     Integrations(Vec<String>, bool), // ids, install (else remove)
     Plugin(String, bool), // name, running
     Plugins(&'static str), // the plugin manager, at one of its views
+    Slot(&'static str),    // who draws a slot
 }
 
 #[derive(Clone, Debug)]
@@ -141,7 +153,6 @@ fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
             choice("width", format!("{} columns", cfg.sidebar.width), Act::SidebarWidth, "Or drag its edge. It never takes more than a third of the terminal"),
             choice("agent logos", json!(cfg.sidebar.logos).as_str().unwrap_or("auto"), Act::Logos, "auto: agents' real logos where the terminal can show them. off: plain marks"),
             toggle("branch lines", cfg.sidebar.graph, Act::Flip(Some("sidebar"), "graph"), "Draw the AGENTS list as a git graph of its tabs; off: just the tab names over their agents"),
-            choice("agents list", if cfg.sidebar.agents.is_empty() { "modisa's" } else { &cfg.sidebar.agents }, Act::AgentsList, "A plugin whose sidebar section takes the AGENTS list's place"),
             heading("status row"),
             toggle("agent counts", cfg.status.agents, Act::Flip(Some("status"), "agents"), "How many agents are working and how many need you; click one to list them"),
             toggle("pane count", cfg.status.panes, Act::Flip(Some("status"), "panes"), "How many panes this tab has; click it to switch pane"),
@@ -228,6 +239,17 @@ fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
                 let hint = if i.status == "current" { "↵ remove" } else if i.status == "outdated" { "↵ update" } else { "↵ install" };
                 let note = Some(if i.kind == "lifecycle" { "state + session" } else { "session" }.to_string());
                 v.push(action(&i.name, status, tone, note, hint, Act::Integrations(vec![i.id.clone()], i.status != "current"), about));
+            }
+            v
+        }
+        // Who draws each part of modisa a plugin can draw instead: modisa (builtin), or one of the plugins that ask to.
+        // With nothing chosen, the first of them by name does.
+        "slots" => {
+            let mut v = vec![heading("drawn by")];
+            for (slot, label, about) in SLOTS {
+                let asking = super::slots::askers(app, slot);
+                let who = if asking.is_empty() { "No plugin asks to draw it".to_string() } else { format!("Asking to draw it: {}", asking.join(", ")) };
+                v.push(choice(label, slot_holder(app, slot), Act::Slot(slot), &format!("{about}. builtin: modisa's own. {who}")));
             }
             v
         }
@@ -345,6 +367,23 @@ fn relayout(app: &App) {
     app.notify_server("area", json!({ "area": area }));
 }
 
+// who draws a slot: [slots] says, else the plugin the server chose, else modisa
+fn slot_holder(app: &App, slot: &str) -> String {
+    app.cfg.slots.get(slot).cloned().or_else(|| super::slots::holder(app, slot).map(String::from)).unwrap_or_else(|| "builtin".into())
+}
+
+// modisa, and each plugin that asks to draw it
+// ponytail: once chosen, a slot can't go back to "the first that asks" from here; taking its line out of config.toml does
+fn slot_choices(app: &App, slot: &str) -> Vec<String> {
+    let mut v = vec!["builtin".to_string()];
+    for p in super::slots::askers(app, slot).into_iter().chain(app.cfg.slots.get(slot).cloned()) {
+        if !v.contains(&p) {
+            v.push(p);
+        }
+    }
+    v
+}
+
 fn sound_options() -> Vec<&'static str> {
     std::iter::once("off").chain(super::sound::SOUNDS.iter().copied()).collect()
 }
@@ -374,19 +413,6 @@ fn step(app: &mut App, s: &mut Settings, act: &Act, by: i64) {
             let now = json!(app.cfg.sidebar.logos).as_str().unwrap_or("auto").to_string();
             save(app, Some("sidebar"), "logos", json!(cycle(&["auto", "on", "off"], &now, by)));
             tokio::task::spawn_local(super::setup_logos(app.shared()));
-        }
-        Act::AgentsList => {
-            // a plugin showing a sidebar section can take the AGENTS list's place
-            let current = app.cfg.sidebar.agents.clone();
-            let showing: Vec<String> = super::plugin_ui::plugin_ui(app).iter().filter(|p| p["sidebar"].is_object()).filter_map(|p| p["plugin"].as_str().map(String::from)).collect();
-            let mut takers: Vec<&str> = vec![""];
-            for t in showing.iter().map(String::as_str).chain([current.as_str()]) {
-                if !takers.contains(&t) {
-                    takers.push(t);
-                }
-            }
-            let next = cycle(&takers, &current, by).to_string();
-            save(app, Some("sidebar"), "agents", json!(next));
         }
         Act::Border => {
             let now = json!(app.cfg.panes.border).as_str().unwrap_or("single").to_string();
@@ -426,6 +452,11 @@ fn step(app: &mut App, s: &mut Settings, act: &Act, by: i64) {
         Act::Number(key, lo, hi) => {
             let now = if *key == "max_hops" { app.cfg.messaging.max_hops } else { app.cfg.messaging.per_minute };
             save(app, Some("messaging"), key, json!((now + by).clamp(*lo, *hi)));
+        }
+        Act::Slot(slot) => {
+            let choices = slot_choices(app, slot);
+            let next = cycle(&choices.iter().map(String::as_str).collect::<Vec<_>>(), &slot_holder(app, slot), by).to_string();
+            save(app, Some("slots"), slot, json!(next));
         }
         _ => {
             let _ = s;
@@ -860,4 +891,31 @@ fn thumb(total: usize, shown: usize, first: usize, height: usize) -> Option<(usi
     let size = ((shown as f64 / total as f64) * height as f64).round().max(1.0) as usize;
     let top = ((first as f64 / (total - shown).max(1) as f64) * (height - size) as f64).round() as usize;
     Some((top, size))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_slots_section_says_who_draws_each_and_who_asks_to() {
+        let asks = |plugin: &str, replaces: bool| json!({ "plugin": plugin, "run": "r", "slot": "agent.row", "id": "x", "pane": "p1", "instance": "p1i", "position": "replace", "replaces": replaces, "lines": ["mine"] });
+        let a = crate::client::slots::tests::app(120, 30, json!([asks("radar", true), asks("atlas", false)]));
+        let mut app = a.borrow_mut();
+        let s = Settings::new(&app, "slots");
+        let section = |app: &App| rows(app, &s, SECTIONS.iter().position(|x| *x == "slots").unwrap());
+        let row = |app: &App, slot: &'static str| section(app).into_iter().find(|r| r.act == Act::Slot(slot)).unwrap();
+        let value = |r: Row| if let Kind::Choice { value } = r.kind { value } else { unreachable!() };
+        let agents = row(&app, "agent.row");
+        assert!(agents.about.contains("Asking to draw it: atlas, radar"), "{}", agents.about);
+        assert_eq!(value(agents), "radar"); // the server chose it: nothing in [slots] says otherwise
+        assert_eq!(slot_choices(&app, "agent.row"), ["builtin", "atlas", "radar"]);
+        let titles = row(&app, "pane.title");
+        assert!(titles.about.contains("No plugin asks"));
+        assert_eq!(value(titles), "builtin");
+        app.cfg.slots.insert("agent.row".into(), "builtin".into());
+        assert_eq!(value(row(&app, "agent.row")), "builtin");
+        app.cfg.slots.insert("agent.row".into(), "gone".into()); // a plugin that's stopped asking stays a choice while it's chosen
+        assert_eq!(slot_choices(&app, "agent.row"), ["builtin", "atlas", "radar", "gone"]);
+    }
 }

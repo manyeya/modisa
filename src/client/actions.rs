@@ -1,9 +1,10 @@
 // Everything the user can do by name: prefix keys, the command palette, menus and buttons all run these. Each runs as a
 // task of its own, so it can wait on a dialog; a failure is a toast.
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use super::draw::tab_label;
 use super::plugin_ui::{focused_target, plugin_key, plugin_keys, plugin_ui, run_plugin_action};
+use super::slots;
 use crate::config::keys::KeyState;
 use super::modals::{self, confirm, list, menu, pick, prompt, ListButton, ListItem, ListOptions};
 use super::{quit, reload, Shared};
@@ -119,7 +120,7 @@ fn run_named_at(shared: &Shared, name: &str, depth: usize) {
             return warn(format!("{plugin} isn't running"));
         };
         let target = focused_target(&app);
-        return run_plugin_action(&app, plugin, &run, action, json!({}), target, None);
+        return run_plugin_action(&app, plugin, &run, action, json!({}), target, None, None);
     }
     let (list, command) = {
         let app = shared.borrow();
@@ -289,6 +290,7 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
         }
         "palette" => {
             let agents = agent_list(shared).await?;
+            let entries = slots::entries(&shared.borrow(), "palette", |_| true);
             let items: Vec<ListItem> = {
                 let app = shared.borrow();
                 let mut items: Vec<ListItem> = ACTION_IDS.iter().filter(|k| **k != "palette" && !k.starts_with("agent-")).map(|k| ListItem::new(label(k), "", *k).key(app.key_for(k).unwrap_or_default())).collect();
@@ -300,6 +302,14 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
                         items.push(ListItem::new(format!("{name}: {}", a["title"].as_str().unwrap_or("")), desc, format!("plugin:{name}:{run}:{}", a["id"].as_str().unwrap_or(""))));
                     }
                 }
+                // plugins' entries (the palette slot), each with its line beside it
+                let ctx = slots::ctx(&app);
+                for (i, p) in entries.0.iter().enumerate() {
+                    let line = slots::lines(&ctx, p).into_iter().next();
+                    let text: String = line.iter().flat_map(|l| l.spans.iter().map(|s| s.content.as_ref())).collect();
+                    items.push(ListItem { line, ..ListItem::new(format!("{}: {}", p.plugin, p.title.as_deref().unwrap_or(&p.id)), text, format!("slot:{i}")) });
+                }
+                // the user's [[command]]s and [actions] lists
                 for c in &app.cfg.command {
                     let key = if c.key.is_empty() { c.root.clone() } else { c.key.clone() };
                     items.push(ListItem::new(c.name.clone(), c.run.clone(), format!("named:{}", c.name)).key(key));
@@ -311,6 +321,11 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
                 items
             };
             let Some(v) = pick(shared, "Commands", items, None).await else { return Ok(()) };
+            if let Some(p) = entries.chosen(&v) {
+                let app = shared.borrow();
+                slots::run(&app, p, Map::new(), focused_target(&app)); // for the pane focused now
+                return Ok(());
+            }
             if let Some(h) = v.strip_prefix("agent:") {
                 return launch_agent(shared, h).await;
             }
@@ -318,7 +333,7 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
                 let parts: Vec<&str> = rest.splitn(3, ':').collect();
                 let app = shared.borrow();
                 let target = focused_target(&app); // the target is the pane focused now, not when the action finishes
-                run_plugin_action(&app, parts[0], parts.get(1).unwrap_or(&""), parts.get(2).unwrap_or(&""), json!({}), target, None);
+                run_plugin_action(&app, parts[0], parts.get(1).unwrap_or(&""), parts.get(2).unwrap_or(&""), json!({}), target, None, None);
                 return Ok(());
             }
             if v == "kill" {
@@ -544,10 +559,20 @@ fn space_menu_now(shared: &Shared, index: usize, x: i32, y: i32) {
     if shared.borrow().modal.is_some() {
         return;
     }
+    let entries = slots::entries(&shared.borrow(), "menu.space", |p| p.space.as_deref() == Some(name.as_str()));
     let s = shared.clone();
     tokio::task::spawn_local(async move {
-        let options = vec![("Switch to space", "Enter", "switch", false), ("Rename space", "r", "rename", false), ("Delete space", "d", "delete", true)];
-        match menu(&s, &format!("Space · {name}"), options, x, y).await.as_deref() {
+        // plugins' entries: theirs before go first, the rest before Delete
+        let (before, after) = (entries.named(true), entries.named(false));
+        let mut options: Vec<(&str, &str, &str, bool)> = before.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)).collect();
+        options.extend([("Switch to space", "Enter", "switch", false), ("Rename space", "r", "rename", false)]);
+        options.extend(after.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)));
+        options.push(("Delete space", "d", "delete", true));
+        let chosen = menu(&s, &format!("Space · {name}"), options, x, y).await;
+        if let Some(p) = chosen.as_deref().and_then(|v| entries.chosen(v)) {
+            return slots::run(&s.borrow(), p, Map::from_iter([("space".to_string(), json!(name))]), None);
+        }
+        match chosen.as_deref() {
             Some("switch") => call(&s, "selectWorkspace", json!({ "index": index })),
             Some("rename") => rename_space(&s, index).await,
             Some("delete") => delete_space(&s, index).await,
@@ -569,17 +594,27 @@ fn tab_menu_now(shared: &Shared, index: usize, x: i32, y: i32) {
         if app.modal.is_some() {
             return;
         }
-        app.ws().tabs.get(index).map(|t| (tab_label(&app, t), t.focused.clone()))
+        app.ws().tabs.get(index).map(|t| (tab_label(&app, t), t.focused.clone(), t.id.clone()))
     }) else {
         return;
     };
+    let entries = slots::entries(&shared.borrow(), "menu.tab", |p| p.tab.as_deref() == Some(t.2.as_str()));
     let s = shared.clone();
     tokio::task::spawn_local(async move {
         if request(&s, "cmd", json!({ "name": "selectTab", "args": { "index": index } })).await.is_err() {
             return;
         }
-        let options = vec![("Rename tab", "r", "rename-tab", false), ("Pane menu", "p", "pane", false), ("Close tab", "x", "close-tab", true)];
-        match menu(&s, &format!("Tab · {}", t.0), options, x, y).await.as_deref() {
+        // plugins' entries: theirs before go first, the rest before Close tab
+        let (before, after) = (entries.named(true), entries.named(false));
+        let mut options: Vec<(&str, &str, &str, bool)> = before.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)).collect();
+        options.extend([("Rename tab", "r", "rename-tab", false), ("Pane menu", "p", "pane", false)]);
+        options.extend(after.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)));
+        options.push(("Close tab", "x", "close-tab", true));
+        let chosen = menu(&s, &format!("Tab · {}", t.0), options, x, y).await;
+        if let Some(p) = chosen.as_deref().and_then(|v| entries.chosen(v)) {
+            return slots::run(&s.borrow(), p, Map::from_iter([("tab".to_string(), json!(t.2))]), None);
+        }
+        match chosen.as_deref() {
             Some("pane") => context_menu(&s, &t.1, x, y),
             Some(a) => run(&s, a),
             None => {}
@@ -605,17 +640,17 @@ fn context_menu_now(shared: &Shared, pane: &str, x: i32, y: i32) {
     }) else {
         return;
     };
-    // plugins' entries, before Close pane: each runs its plugin's action for this pane's process
-    let extra: Vec<(String, String)> = plugin_ui(&shared.borrow())
-        .iter()
-        .flat_map(|p| {
-            let (name, run) = (p["plugin"].as_str().unwrap_or("").to_string(), p["run"].as_str().unwrap_or("").to_string());
-            p["menu"].as_array().into_iter().flatten().map(move |m| (format!("{name}: {}", m["title"].as_str().unwrap_or("")), format!("plugin:{name}:{run}:{}", m["action"].as_str().unwrap_or(""))))
-        })
-        .collect();
+    let entries = {
+        let app = shared.borrow();
+        let info = app.info(pane);
+        slots::entries(&app, "menu.pane", |p| info.is_some_and(|i| slots::of_pane(p, i)))
+    };
     let (s, pane) = (shared.clone(), pane.to_string());
     tokio::task::spawn_local(async move {
-        let mut options = vec![
+        // plugins' entries: theirs before go first, the rest before Close pane
+        let (before, after) = (entries.named(true), entries.named(false));
+        let mut options: Vec<(&str, &str, &str, bool)> = before.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)).collect();
+        options.extend([
             ("Focus pane", "Enter", "focus", false),
             ("Split right", "v", "split-right", false),
             ("Split down", "-", "split-down", false),
@@ -629,18 +664,23 @@ fn context_menu_now(shared: &Shared, pane: &str, x: i32, y: i32) {
             (if title.1 { "Hide sidebar" } else { "Show sidebar" }, "b", "toggle-sidebar", false),
             ("Change theme", "t", "theme-picker", false),
             (if title.3 { "Unmute this pane" } else { "Mute this pane" }, "", "mute", false),
-        ];
-        options.extend(extra.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)));
+        ]);
+        options.extend(after.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)));
         options.push(("Close pane", "x", "close-pane", true));
         let Some(action) = menu(&s, &title.0, options, x, y).await else { return };
         if s.borrow().info(&pane).is_none() {
             return;
         }
+        if let Some(p) = entries.chosen(&action) {
+            let target = Some((pane.clone(), title.2.clone())).filter(|(_, i)| !i.is_empty());
+            let on = Map::from_iter([("pane".to_string(), json!(pane)), ("instance".to_string(), json!(title.2))]);
+            return slots::run(&s.borrow(), p, on, target);
+        }
         // a plugin's entry runs its action for this pane
         if let Some(rest) = action.strip_prefix("plugin:") {
             let parts: Vec<&str> = rest.splitn(3, ':').collect();
             let target = Some((pane.clone(), title.2.clone())).filter(|(_, i)| !i.is_empty());
-            run_plugin_action(&s.borrow(), parts[0], parts.get(1).unwrap_or(&""), parts.get(2).unwrap_or(&""), json!({}), target, None);
+            run_plugin_action(&s.borrow(), parts[0], parts.get(1).unwrap_or(&""), parts.get(2).unwrap_or(&""), json!({}), target, None, None);
             return;
         }
         // Complete target selection before running actions that use the active pane.

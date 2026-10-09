@@ -276,8 +276,11 @@ fn copy_key(app: &mut App, k: &KeyEvent) {
 
 // ---------- the pointer ----------
 
-fn hit_at(app: &App, x: i32, y: i32) -> Option<Hit> {
-    app.hits.iter().rev().find(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h).map(|(_, h)| h.clone())
+// What's under (x, y). A plugin's piece without an action only says whose it is: a click goes to what's under it, as a
+// right click does under any piece.
+fn hit_at(app: &App, x: i32, y: i32, right: bool) -> Option<Hit> {
+    let takes = |h: &Hit| !matches!(h, Hit::Slot(s) if right || s.action.is_none());
+    app.hits.iter().rev().find(|(r, h)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && takes(h)).map(|(_, h)| h.clone())
 }
 
 // One place decides the pointer shape (OSC 22): the move arrows over a pane border or the sidebar's edge (or while
@@ -467,7 +470,7 @@ fn mouse(shared: &Shared, m: MouseEvent) {
             _ => return,
         }
     }
-    let hit = hit_at(&app, x, y);
+    let hit = hit_at(&app, x, y, false);
     // a plugin's popup: its program gets the mouse over its terminal; nothing outside it takes a click
     if super::plugin_ui::popup(&app).is_some() {
         if let Some(Hit::Pane(id)) = &hit {
@@ -501,6 +504,10 @@ fn mouse(shared: &Shared, m: MouseEvent) {
             (MouseEventKind::Down(MouseButton::Left), Some(Hit::View { view, key, part })) => {
                 let (view, key, part) = (view.clone(), key.clone(), *part);
                 views::click(&mut app, &view, &key, part);
+            }
+            (MouseEventKind::Down(MouseButton::Left), Some(Hit::Slot(h))) => {
+                let h = h.clone();
+                super::slots::clicked(&mut app, &h); // a toast's button, over a view
             }
             (MouseEventKind::ScrollUp | MouseEventKind::ScrollDown, _) => {
                 let under: Vec<Hit> = app.hits.iter().rev().filter(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h).map(|(_, h)| h.clone()).collect();
@@ -565,10 +572,8 @@ fn mouse(shared: &Shared, m: MouseEvent) {
                     app.dirty();
                 }
                 Some(Hit::FocusPane(p)) => app.call("focusPane", json!({ "pane": p })),
-                Some(Hit::Plugin { plugin, run, action, pane, instance }) => {
-                    drop(app);
-                    super::plugin_ui::clicked(shared, &plugin, &run, action.as_deref(), pane.as_deref(), instance.as_deref());
-                }
+                Some(Hit::Slot(h)) => super::slots::clicked(&mut app, &h),
+                Some(Hit::View { view, key, part }) => super::slots::element_click(&mut app, &view, &key, part),
                 Some(Hit::PluginFold(name)) => {
                     if !app.collapsed_plugins.remove(&name) {
                         app.collapsed_plugins.insert(name);
@@ -596,7 +601,7 @@ fn mouse(shared: &Shared, m: MouseEvent) {
                 _ => {}
             }
         }
-        MouseEventKind::Down(MouseButton::Right) => match hit {
+        MouseEventKind::Down(MouseButton::Right) => match hit_at(&app, x, y, true) {
             Some(Hit::Tab(i)) => {
                 drop(app);
                 actions::tab_menu(shared, i, x, y);
@@ -631,6 +636,11 @@ fn mouse(shared: &Shared, m: MouseEvent) {
         }
         MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
             let up = matches!(m.kind, MouseEventKind::ScrollUp);
+            if let Some(Hit::View { .. }) = hit {
+                // a plugin's sidebar element
+                let under: Vec<Hit> = app.hits.iter().rev().filter(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h).map(|(_, h)| h.clone()).collect();
+                return super::slots::element_wheel(&mut app, &under, if up { -3 } else { 3 });
+            }
             let (Some(Hit::Pane(id)) | Some(Hit::Border(id))) = hit else { return };
             let alt = app.panes.get(&id).map(|p| p.screen.mode()).filter(|m| m.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL));
             if let Some(mode) = alt {

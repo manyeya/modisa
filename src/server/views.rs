@@ -147,7 +147,7 @@ fn number(v: &Value, at: &str) -> RpcResult<f64> {
 }
 
 // a whole number from lo to hi
-fn int(v: &Value, at: &str, lo: f64, hi: f64) -> Check {
+pub fn int(v: &Value, at: &str, lo: f64, hi: f64) -> Check {
     let f = number(v, at)?;
     if f.fract() != 0.0 || !(lo..=hi).contains(&f) {
         return Err(invalid(at, format!("Invalid input: expected a whole number from {lo} to {hi}")));
@@ -180,7 +180,7 @@ fn numbers(v: &Value, at: &str, n: usize) -> Check {
 }
 
 // an object with only the keys it may have
-fn object<'a>(v: &'a Value, at: &str, keys: &[&str]) -> RpcResult<&'a Map<String, Value>> {
+pub fn object<'a>(v: &'a Value, at: &str, keys: &[&str]) -> RpcResult<&'a Map<String, Value>> {
     let m = v.as_object().ok_or_else(|| expected(at, "object", v))?;
     if let Some(k) = m.keys().find(|k| !keys.contains(&k.as_str())) {
         return Err(invalid(at, format!("Unrecognized key: \"{k}\"")));
@@ -236,7 +236,7 @@ fn span(v: &Value, at: &str) -> Check {
     }
 }
 
-fn line(v: &Value, at: &str) -> Check {
+pub fn line(v: &Value, at: &str) -> Check {
     match v {
         Value::Array(_) => each(v, at, span)?,
         Value::Object(m) if m.contains_key("spans") => {
