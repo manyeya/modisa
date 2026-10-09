@@ -574,6 +574,7 @@ impl Session {
                 .collect(),
             panes: self.panes.values().map(|p| p.info.clone()).collect(),
             plugins: None,
+            slots: vec![],
             paused: false,
         }
     }

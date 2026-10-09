@@ -235,6 +235,7 @@ pub struct Config {
     pub plugin_keys: IndexMap<String, String>, // "<plugin>.<action or pane>" → key ("" turns it off); outranks plugin.json
     pub keys: Map<String, Value>, // action → its key(s) after the prefix, in place of modisa's ("" for none): see keys.rs
     pub remote_command: String,
+    pub slots: IndexMap<String, String>, // slot → who draws it: "builtin" (modisa) or a plugin that asks to replace it
 }
 
 pub fn defaults() -> Config {
@@ -258,6 +259,7 @@ pub fn defaults() -> Config {
         plugin_keys: IndexMap::new(),
         keys: Map::new(),
         remote_command: "modisa".into(),
+        slots: IndexMap::new(),
     }
 }
 
@@ -495,6 +497,7 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         plugin_keys: entries(get("plugin_keys")),
         keys: get("keys").and_then(Value::as_object).cloned().unwrap_or_default(),
         remote_command: typed(get("remote_command")).unwrap_or(d.remote_command),
+        slots: entries(get("slots")),
     }
 }
 
@@ -592,6 +595,12 @@ fn value_end<'a, S: AsRef<str>>(lines: &'a [S], at: usize, mut text: &'a str) ->
     }
 }
 
+// A key as TOML writes it: bare when it can be, else quoted (a dotted key like "agent.row" would be a table of its own).
+fn toml_key(key: &str) -> String {
+    let bare = !key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if bare { key.to_string() } else { Value::from(key).to_string() }
+}
+
 fn header(l: &str) -> bool {
     l.trim_start().starts_with('[')
 }
@@ -629,7 +638,7 @@ pub fn find_key<S: AsRef<str>>(lines: &[S], table: Option<&str>, key: Option<&st
 pub fn with_value(source: &str, table: Option<&str>, key: &str, value: &Value) -> Result<String, String> {
     let mut lines: Vec<String> = source.split('\n').map(String::from).collect();
     let Some(KeyAt { start, end, at }) = find_key(&lines, table, Some(key)) else {
-        return Ok(format!("{}\n\n[{}]\n{key} = {}\n", source.trim_end(), table.unwrap_or_default(), literal(value)));
+        return Ok(format!("{}\n\n[{}]\n{} = {}\n", source.trim_end(), table.unwrap_or_default(), toml_key(key), literal(value)));
     };
     if let Some(at) = at {
         let (lead, stop, comment) = {
@@ -643,7 +652,7 @@ pub fn with_value(source: &str, table: Option<&str>, key: &str, value: &Value) -
         while last > start && lines[last - 1].trim().is_empty() {
             last -= 1;
         }
-        lines.insert(last, format!("{key} = {}", literal(value)));
+        lines.insert(last, format!("{} = {}", toml_key(key), literal(value)));
     }
     let result = lines.join("\n");
     let check = parse_toml(&result).ok();
@@ -822,8 +831,9 @@ mod tests {
         assert_eq!(find_key(&lines, Some("plugin_keys"), Some("radar.log")), Some(KeyAt { start: 1, end: 4, at: Some(2) }));
         assert_eq!(find_key(&lines, Some("plugin_keys"), Some("radar.lo")).unwrap().at, None);
         assert_eq!(find_key(&lines, Some("keys"), None), None);
-        // a new dotted key would be a table of its own: refused rather than written wrong
-        assert!(with_value(source, Some("plugin_keys"), "new.key", &json!("D")).unwrap_err().contains("edit it by hand"));
+        // a new dotted key is quoted, so it isn't a table of its own
+        assert_eq!(with_value(source, Some("plugin_keys"), "new.key", &json!("D")).unwrap(), format!("{source}\"new.key\" = \"D\"\n"));
+        assert_eq!(parse(&with_value("", Some("slots"), "agent.row", &json!("radar")).unwrap()), json!({ "slots": { "agent.row": "radar" } }));
     }
 
     #[test]
@@ -877,7 +887,7 @@ mod tests {
     fn the_config_serializes_with_the_ts_field_names() {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-        assert_eq!(fields, ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys", "remote_command"]);
+        assert_eq!(fields, ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys", "remote_command", "slots"]);
         assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false }));
         assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [] }));
         assert_eq!(v["sound"], json!({ "volume": 0.7, "blocked": "chime", "done": "success", "working": "loading" }));

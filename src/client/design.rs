@@ -158,9 +158,9 @@ pub fn sidebar_budget(height: i32, agents: usize) -> Budget {
 }
 
 // The space's agents as a git graph: its tabs are commits on one trunk, each tab's agents branch off under it. A tab row
-// is one line, an agent two (the graph's cells for each in `graph`), a rail one; rails between tabs only when
-// everything else fits. Too tall, and every tab but the active one folds; still too tall, and it's cut, `hidden` agents
-// behind the overflow row.
+// is one line, an agent `tall` (two, and plugins' lines; the graph's cells for its first two in `graph`), a rail one;
+// rails between tabs only when everything else fits. Too tall, and every tab but the active one folds; still too tall,
+// and it's cut, `hidden` agents behind the overflow row.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GraphRow<T> {
     Tab { tab: usize, node: &'static str, open: bool },
@@ -173,7 +173,7 @@ pub struct Graph<T> {
     pub hidden: usize,
 }
 
-pub fn agent_graph<T: Clone>(tabs: &[(String, Vec<T>)], active: usize, collapsed: &std::collections::HashSet<String>, lines: usize) -> Graph<T> {
+pub fn agent_graph<T: Clone>(tabs: &[(String, Vec<T>)], active: usize, collapsed: &std::collections::HashSet<String>, lines: usize, tall: impl Fn(&T) -> usize) -> Graph<T> {
     let build = |fold_others: bool, rails: bool| {
         let mut rows = vec![];
         for (i, (id, agents)) in tabs.iter().enumerate() {
@@ -193,7 +193,8 @@ pub fn agent_graph<T: Clone>(tabs: &[(String, Vec<T>)], active: usize, collapsed
         }
         rows
     };
-    let height = |rows: &[GraphRow<T>]| rows.iter().map(|r| if matches!(r, GraphRow::Agent { .. }) { 2 } else { 1 }).sum::<usize>();
+    let row_height = |r: &GraphRow<T>| if let GraphRow::Agent { agent, .. } = r { tall(agent) } else { 1 };
+    let height = |rows: &[GraphRow<T>]| rows.iter().map(row_height).sum::<usize>();
     let mut rows = build(false, true);
     if height(&rows) > lines {
         rows = build(false, false);
@@ -207,8 +208,7 @@ pub fn agent_graph<T: Clone>(tabs: &[(String, Vec<T>)], active: usize, collapsed
     // cut, leaving a line for the overflow row
     let mut kept = vec![];
     for r in &rows {
-        let h = if matches!(r, GraphRow::Agent { .. }) { 2 } else { 1 };
-        if height(&kept) + h > lines.saturating_sub(1) {
+        if height(&kept) + row_height(r) > lines.saturating_sub(1) {
             break;
         }
         kept.push(r.clone());
@@ -321,11 +321,11 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        assert_eq!(draw(agent_graph(&tabs, 0, &HashSet::new(), 20)), ["◉0", "├─│ x", "├─│ y", "|", "○1+", "|", "●2", "╰─  z"]);
-        assert_eq!(draw(agent_graph(&tabs, 0, &HashSet::from(["a".to_string()]), 20)), ["◉0+", "|", "○1+", "|", "●2", "╰─  z"]);
-        assert_eq!(draw(agent_graph(&tabs, 2, &HashSet::new(), 9)), ["●0", "├─│ x", "├─│ y", "○1+", "◉2", "╰─  z"]);
-        assert_eq!(draw(agent_graph(&tabs, 2, &HashSet::new(), 5)), ["●0+", "○1+", "◉2", "╰─  z"]);
-        let cut = agent_graph(&[("a".to_string(), vec!["x", "y", "w"])], 0, &HashSet::new(), 4);
+        assert_eq!(draw(agent_graph(&tabs, 0, &HashSet::new(), 20, |_| 2)), ["◉0", "├─│ x", "├─│ y", "|", "○1+", "|", "●2", "╰─  z"]);
+        assert_eq!(draw(agent_graph(&tabs, 0, &HashSet::from(["a".to_string()]), 20, |_| 2)), ["◉0+", "|", "○1+", "|", "●2", "╰─  z"]);
+        assert_eq!(draw(agent_graph(&tabs, 2, &HashSet::new(), 9, |_| 2)), ["●0", "├─│ x", "├─│ y", "○1+", "◉2", "╰─  z"]);
+        assert_eq!(draw(agent_graph(&tabs, 2, &HashSet::new(), 5, |_| 2)), ["●0+", "○1+", "◉2", "╰─  z"]);
+        let cut = agent_graph(&[("a".to_string(), vec!["x", "y", "w"])], 0, &HashSet::new(), 4, |_| 2);
         assert_eq!(cut.hidden, 2);
         assert_eq!(draw(cut), ["◉0", "├─│ x"]);
     }

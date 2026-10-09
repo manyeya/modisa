@@ -14,6 +14,7 @@ pub mod pane;
 pub mod plugin_ui;
 pub mod plugins;
 pub mod settings;
+pub mod slots;
 pub mod sound;
 pub mod views;
 
@@ -50,11 +51,14 @@ pub struct ClientPane {
     pub screen: Screen,
 }
 
+#[derive(Default)]
 pub struct Toast {
     pub id: u64,
     pub text: String,
     pub color: &'static str,
     pub title: Option<String>,
+    pub lines: Vec<ratatui::text::Line<'static>>, // a plugin's rich text, in place of `text`
+    pub buttons: Vec<(String, Hit)>,             // what its buttons say, and what pressing one does
 }
 
 // A pane border (or the sidebar's edge) being dragged.
@@ -100,6 +104,7 @@ pub struct App {
     pub collapsed_tabs: HashSet<String>, // tabs (by id) whose agents the user folded in the sidebar's graph
     pub collapsed_plugins: HashSet<String>, // plugins' sidebar sections the user folded
     pub views: Vec<views::OpenView>, // plugins' views open now, in the order they opened: the last is on top
+    pub slot_elems: HashMap<String, slots::SlotElem>, // what the user did in plugins' sidebar elements
     pub animating: bool, // a spinner is showing: frames come on their own
     pub prompt_ids: HashSet<u64>, // open permission prompts
     pub hits: Vec<(Rect, Hit)>, // what the last frame put where, topmost last
@@ -121,6 +126,52 @@ pub struct App {
 }
 
 impl App {
+    // A client in a terminal `size` cells big, before it has connected.
+    pub fn new(opts: ClientOptions, cfg: Config, size: (i32, i32), me: Weak<RefCell<App>>, redraw: Rc<Notify>, quit: Rc<Notify>) -> App {
+        App {
+            opts,
+            conn: None,
+            view: None,
+            th: *theme(&cfg),
+            prefix: parse_prefix(&cfg.prefix),
+            bindings: bindings(&cfg),
+            sidebar: cfg.sidebar.visible,
+            cfg,
+            panes: HashMap::new(),
+            prefix_armed: false,
+            copy_mode: false,
+            term_focused: true,
+            reported_focus: None,
+            modal: None,
+            search: None,
+            resizing: None,
+            selecting: None,
+            toasts: vec![],
+            collapsed_tabs: HashSet::new(),
+            collapsed_plugins: HashSet::new(),
+            views: vec![],
+            slot_elems: HashMap::new(),
+            animating: false,
+            prompt_ids: HashSet::new(),
+            hits: vec![],
+            hover: None,
+            pointer_shape: "default",
+            width: size.0,
+            height: size.1,
+            quitting: None,
+            restarting: false,
+            restarted_by_us: false,
+            update: None,
+            logos: None,
+            cell_guess: 1.2,
+            me,
+            redraw,
+            quit,
+            toast_seq: 0,
+            connecting: false,
+        }
+    }
+
     // this terminal's cell height in ems of its font: where a logo's halves meet
     pub fn cell_ems(&self) -> f64 {
         match crossterm::terminal::window_size() {
@@ -228,13 +279,23 @@ impl App {
     }
 
     pub fn toast_from(&mut self, text: &str, color: &'static str, ms: Option<u64>, title: Option<String>) {
+        self.show_toast(Toast { text: text.to_string(), color, title, ..Default::default() }, ms);
+    }
+
+    pub fn show_toast(&mut self, mut t: Toast, ms: Option<u64>) {
         if self.quitting.is_some() {
             return;
         }
-        let ms = ms.unwrap_or(if color == self.th.warn || color == self.th.blocked { 10_000 } else { 5_000 });
+        let ms = ms.unwrap_or(if t.color == self.th.warn || t.color == self.th.blocked { 10_000 } else { 5_000 });
         self.toast_seq += 1;
         let id = self.toast_seq;
-        self.toasts.insert(0, Toast { id, text: text.to_string(), color, title });
+        t.id = id;
+        for (_, h) in &mut t.buttons {
+            if let Hit::Slot(s) = h {
+                s.toast = Some(id); // pressed, a button takes its toast away
+            }
+        }
+        self.toasts.insert(0, t);
         self.toasts.truncate(TOASTS);
         let me = self.me.clone();
         tokio::task::spawn_local(async move {
@@ -352,11 +413,13 @@ fn notify(app: &mut App, state: AgentState, text: &str) {
 }
 
 // What a toast someone sent may do besides showing: a system notification and a sound only if it asked and the user has
-// that kind on for some event. The sound is the one for the event its tone is, else the first event's that plays.
+// that kind on for some event. The sound is the one for the event its tone is, else the first event's that plays. A
+// plugin's can be rich text, with buttons and its own timeout (slots.rs).
 fn sent_toast(app: &mut App, d: &Value) {
     let (plugin, text, tone) = (d["plugin"].as_str().unwrap_or(""), d["text"].as_str().unwrap_or(""), d["tone"].as_str().unwrap_or("fg"));
-    let c = tone_color(app, tone);
-    app.toast_from(text, c, None, Some(plugin.to_string()));
+    let color = tone_color(app, tone);
+    let (lines, buttons, ms) = slots::toast(app, d);
+    app.show_toast(Toast { text: text.to_string(), color, title: Some(plugin.to_string()), lines, buttons, ..Default::default() }, ms);
     let events = [AgentState::Blocked, AgentState::Done, AgentState::Working];
     let on = |kind: NotifyKind| events.iter().copied().filter(|e| app.cfg.notify.kinds(*e).contains(&kind)).collect::<Vec<_>>();
     if d["system"].as_bool() == Some(true) && !on(NotifyKind::System).is_empty() {
@@ -483,6 +546,8 @@ fn set_view(app: &mut App, v: View) {
     if popup_gone {
         modals::close(app, None);
     }
+    slots::keep_elems(app);
+    views::animate(app); // a spinner in a plugin's sidebar section
     // Older servers could leave a selected, empty workspace after a spawn error. Keep server indices intact and move
     // back to a workspace that has a terminal.
     let v = app.view.as_ref().unwrap();
@@ -580,6 +645,7 @@ async fn attach(shared: &Shared, spawn: bool) -> crate::protocol::conn::RpcResul
                 views::clear_views(&mut a);
                 if let Some(v) = a.view.as_mut() {
                     v.plugins = None;
+                    v.slots.clear();
                 }
                 a.dirty();
             }
@@ -703,49 +769,7 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
     let size = terminal.size().unwrap_or_default();
     let redraw = Rc::new(Notify::new());
     let quit_signal = Rc::new(Notify::new());
-    let shared: Shared = Rc::new_cyclic(|me| {
-        RefCell::new(App {
-            opts,
-            conn: None,
-            view: None,
-            th: *theme(&cfg),
-            prefix: parse_prefix(&cfg.prefix),
-            bindings: bindings(&cfg),
-            sidebar: cfg.sidebar.visible,
-            cfg,
-            panes: HashMap::new(),
-            prefix_armed: false,
-            copy_mode: false,
-            term_focused: true,
-            reported_focus: None,
-            modal: None,
-            search: None,
-            resizing: None,
-            selecting: None,
-            toasts: vec![],
-            collapsed_tabs: HashSet::new(),
-            collapsed_plugins: HashSet::new(),
-            views: vec![],
-            animating: false,
-            prompt_ids: HashSet::new(),
-            hits: vec![],
-            hover: None,
-            pointer_shape: "default",
-            width: size.width as i32,
-            height: size.height as i32,
-            quitting: None,
-            restarting: false,
-            restarted_by_us: false,
-            update: None,
-            logos: None,
-            cell_guess: 1.2,
-            me: me.clone(),
-            redraw: redraw.clone(),
-            quit: quit_signal.clone(),
-            toast_seq: 0,
-            connecting: false,
-        })
-    });
+    let shared: Shared = Rc::new_cyclic(|me| RefCell::new(App::new(opts, cfg, (size.width as i32, size.height as i32), me.clone(), redraw.clone(), quit_signal.clone())));
     // which graphics protocol the terminal speaks, for plugins' images: asked before anything else reads it or is waiting
     // on what the client writes
     views::image::start(&shared);

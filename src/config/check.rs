@@ -121,6 +121,7 @@ const SETTINGS: &[(&str, Schema)] = &[
     ("plugin", Schema::Array(&Schema::Object { fields: &[("run", Schema::Str { min: 1 })], partial: false })),
     ("plugin_keys", Schema::Record(&STR)),
     ("keys", Schema::Record(&Schema::Keys)),
+    ("slots", Schema::Record(&STR)), // who draws each slot (examples/plugins/CHROME.md)
 ];
 
 const UNKNOWN: &str = "modisa has no such setting, so it's ignored";
