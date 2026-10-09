@@ -8,41 +8,41 @@ is `"bold $accent on $bar"`, a colour is `$token`, `#rrggbb`, a name or `0`–`2
 ## Themes
 
 ```toml
-theme = "tokyonight"                               # one theme
-theme = { dark = "tokyonight", light = "github-light" }   # follow the terminal's light or dark background
+theme = "tokyonight"                                     # one theme
+theme = { dark = "tokyonight", light = "github-light" }  # by the terminal's own background
 ```
 
-With `dark`/`light`, modisa asks the terminal for its background colour when a client starts and whenever the
-terminal says its colour scheme changed (CSI ? 2031, Ghostty, kitty, iTerm2, WezTerm) or regains focus, and uses the
-matching theme.
+With `dark` and `light`, a client asks the terminal for its background colour when it starts and takes the matching
+theme. (A terminal switching between light and dark while modisa runs is noticed when a client next attaches.) Light
+built-ins: `catppuccin-latte`, `github-light`, `tokyonight-day`, `solarized-light`, `gruvbox-light`, and the
+`bearded-milkshake-*` ones.
 
-A theme of your own is a file in `~/.config/modisa/themes/<name>.toml`, used by its name:
+A theme of your own is a file in `~/.config/modisa/themes/<name>.toml`, used by its name, and changes to it show at
+once:
 
 ```toml
-inherits = "catppuccin-mocha"   # optional: start from another theme
-bg = "#11111b"
-accent = "#f5c2e7"
-# every token: bg bar fg dim border focus accent warn working blocked done idle
-# and the roles, each a style, defaulting to the tokens:
-[roles]
-"tab.active" = "bold $fg on $bg"
+inherits = "catppuccin-mocha"   # what it starts from: a built-in theme or another of yours (default tokyonight)
+bg = "#11111b"                  # any of: bg bar fg dim border focus accent warn working blocked done idle
+accent = "#f5c2e7"              # each "#rrggbb", or "$token" for one of the theme it starts from
+
+[roles]                         # how parts of the chrome look over the tokens: "[bold] <colour> [on <colour>]"
+"tab.active" = "bold $bg on $accent"
 "tab.inactive" = "$dim on $bar"
+status = "$fg on #000000"
+sidebar = "$fg on $bar"
+"sidebar.selected" = "on #2a2b3d"
 "pane.border" = "$border"
 "pane.border.focused" = "$focus"
-"pane.title" = "$fg"
-"sidebar" = "$fg on $bar"
-"sidebar.selected" = "on $border"
-"status" = "$fg on $bar"
-"selection" = "on #2a2b3d"
-"menu" = "$fg on $bar"
-"menu.selected" = "bold $bg on $accent"
-"toast" = "$fg on $bar"
+"pane.title" = "$dim"
+menu = "$fg on $bar"
+"menu.selected" = "on $accent"
+toast = "$fg on $bar"
 ```
 
-`modisa theme import <file>` turns another app's colour scheme into a modisa theme (written to the themes directory,
-named after the file): Ghostty theme files, iTerm2 `.itermcolors`, Alacritty `.toml`, kitty `.conf`, Windows
-Terminal JSON, base16/base24 YAML. `modisa theme list` lists built-in and installed themes, `modisa theme show
-<name>` prints one as a file to start from.
+Role colours are `#rrggbb` or `$token` (of the theme the file makes). `modisa theme list` lists the themes,
+`modisa theme show <name>` prints one as a file to start from, and `modisa theme import <file> [--name n]` makes another
+app's colour scheme a modisa theme: Ghostty theme files, iTerm2 `.itermcolors`, Alacritty `.toml`, kitty `.conf`,
+Windows Terminal JSON, base16/base24 YAML. `modisa config check` reports a theme file it can't read.
 
 ## Formats
 

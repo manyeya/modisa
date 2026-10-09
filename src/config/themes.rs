@@ -1,5 +1,10 @@
-// Built-in colour themes for the TUI.
+// Colour themes for the TUI: the built-in ones, and the user's own (themes/<name>.toml in the config directory, each
+// over another with `inherits`, every token and the roles of modisa's chrome its to set).
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
+
 use serde::Serialize;
+use serde_json::Value;
 
 use super::Config;
 
@@ -27,6 +32,11 @@ pub const THEMES: &[(&str, Theme)] = &[
     ("gruvbox", Theme { bg: "#282828", bar: "#1d2021", fg: "#ebdbb2", dim: "#928374", border: "#504945", focus: "#fabd2f", accent: "#fabd2f", warn: "#fe8019", blocked: "#fb4934", working: "#fabd2f", done: "#83a598", idle: "#b8bb26" }),
     ("nord", Theme { bg: "#2e3440", bar: "#242933", fg: "#eceff4", dim: "#616e88", border: "#434c5e", focus: "#88c0d0", accent: "#88c0d0", warn: "#ebcb8b", blocked: "#bf616a", working: "#ebcb8b", done: "#81a1c1", idle: "#a3be8c" }),
     ("dracula", Theme { bg: "#282a36", bar: "#21222c", fg: "#f8f8f2", dim: "#6272a4", border: "#44475a", focus: "#bd93f9", accent: "#bd93f9", warn: "#f1fa8c", blocked: "#ff5555", working: "#f1fa8c", done: "#8be9fd", idle: "#50fa7b" }),
+    ("catppuccin-latte", Theme { bg: "#eff1f5", bar: "#e6e9ef", fg: "#4c4f69", dim: "#8c8fa1", border: "#bcc0cc", focus: "#8839ef", accent: "#8839ef", warn: "#df8e1d", blocked: "#d20f39", working: "#df8e1d", done: "#1e66f5", idle: "#40a02b" }),
+    ("github-light", Theme { bg: "#ffffff", bar: "#f6f8fa", fg: "#24292f", dim: "#6e7781", border: "#d0d7de", focus: "#0969da", accent: "#8250df", warn: "#9a6700", blocked: "#cf222e", working: "#bf8700", done: "#0969da", idle: "#1a7f37" }),
+    ("tokyonight-day", Theme { bg: "#e1e2e7", bar: "#d0d5e3", fg: "#3760bf", dim: "#848cb5", border: "#a8aecb", focus: "#2e7de9", accent: "#9854f1", warn: "#8c6c3e", blocked: "#f52a65", working: "#8c6c3e", done: "#007197", idle: "#587539" }),
+    ("solarized-light", Theme { bg: "#fdf6e3", bar: "#eee8d5", fg: "#586e75", dim: "#93a1a1", border: "#d3cbb7", focus: "#268bd2", accent: "#6c71c4", warn: "#b58900", blocked: "#dc322f", working: "#b58900", done: "#268bd2", idle: "#859900" }),
+    ("gruvbox-light", Theme { bg: "#fbf1c7", bar: "#f2e5bc", fg: "#3c3836", dim: "#928374", border: "#d5c4a1", focus: "#b57614", accent: "#8f3f71", warn: "#af3a03", blocked: "#9d0006", working: "#b57614", done: "#076678", idle: "#79740e" }),
     // Bearded Theme (github.com/BeardedBear/bearded-theme, MIT): its UI and level colours mapped onto these roles.
     ("bearded-arc", Theme { bg: "#1c2433", bar: "#181f2c", fg: "#d0d7e4", dim: "#707786", border: "#3c4353", focus: "#8196b5", accent: "#b78aff", warn: "#ff955c", blocked: "#e35535", working: "#69c3ff", done: "#3cec85", idle: "#707786" }),
     ("bearded-arc-eolstorm", Theme { bg: "#222a38", bar: "#1e2531", fg: "#d8dde7", dim: "#777d8a", border: "#424a57", focus: "#9dacc3", accent: "#b78aff", warn: "#ff955c", blocked: "#e35535", working: "#69c3ff", done: "#3cec85", idle: "#777d8a" }),
@@ -95,9 +105,184 @@ pub const THEMES: &[(&str, Theme)] = &[
 ];
 
 pub fn find_theme(name: &str) -> Option<&'static Theme> {
-    THEMES.iter().find(|(n, _)| *n == name).map(|(_, t)| t)
+    THEMES.iter().find(|(n, _)| *n == name).map(|(_, t)| t).or_else(|| CUSTOM.read().ok()?.iter().find(|c| c.name == name).map(|c| c.theme))
 }
 
+// The terminal's own background is light: theme = { dark, light } then takes the light one. The client says so when it
+// starts (it asks the terminal, before it paints its own background).
+pub static LIGHT: AtomicBool = AtomicBool::new(false);
+
 pub fn theme(c: &Config) -> &'static Theme {
-    find_theme(&c.theme).or_else(|| find_theme("tokyonight")).expect("tokyonight is built in")
+    find_theme(active_name(c)).or_else(|| find_theme("tokyonight")).expect("tokyonight is built in")
+}
+
+// The name of the theme in use: the light one of a pair on a light terminal.
+pub fn active_name(c: &Config) -> &str {
+    match &c.theme_light {
+        Some(light) if LIGHT.load(Ordering::Relaxed) => light,
+        _ => &c.theme,
+    }
+}
+
+// Every theme there is, built-in first, by name.
+pub fn all() -> Vec<(String, &'static Theme)> {
+    let mut out: Vec<(String, &'static Theme)> = THEMES.iter().map(|(n, t)| (n.to_string(), t)).collect();
+    out.extend(CUSTOM.read().map(|c| c.iter().map(|c| (c.name.to_string(), c.theme)).collect::<Vec<_>>()).unwrap_or_default());
+    out
+}
+
+// ---------- the user's own themes, and roles ----------
+
+// How one part of modisa's chrome looks, over what the tokens give it: a theme file's [roles].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Role {
+    pub fg: Option<&'static str>,
+    pub bg: Option<&'static str>,
+    pub bold: bool,
+}
+
+pub const ROLES: &[&str] = &["tab.active", "tab.inactive", "pane.border", "pane.border.focused", "pane.title", "sidebar", "sidebar.selected", "status", "menu", "menu.selected", "toast"];
+const TOKENS: [&str; 12] = ["bg", "bar", "fg", "dim", "border", "focus", "accent", "warn", "blocked", "working", "done", "idle"];
+
+struct Custom {
+    name: &'static str,
+    theme: &'static Theme,
+    roles: Vec<(&'static str, Role)>,
+}
+
+// ponytail: a theme loaded is kept for good (its strings must live as long as the built-in ones); each reload of a
+// changed file keeps a few hundred bytes more
+static CUSTOM: RwLock<Vec<Custom>> = RwLock::new(Vec::new());
+
+fn leak(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+pub fn themes_dir() -> String {
+    format!("{}/themes", *super::CONFIG_DIR)
+}
+
+fn hex(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn token_of(t: &Theme, name: &str) -> Option<&'static str> {
+    Some(match name {
+        "bg" => t.bg,
+        "bar" => t.bar,
+        "fg" => t.fg,
+        "dim" => t.dim,
+        "border" => t.border,
+        "focus" => t.focus,
+        "accent" => t.accent,
+        "warn" => t.warn,
+        "blocked" => t.blocked,
+        "working" => t.working,
+        "done" => t.done,
+        "idle" => t.idle,
+        _ => return None,
+    })
+}
+
+// "#rrggbb", or "$token" of the theme it's over
+fn colour(v: &str, base: &Theme) -> Result<&'static str, String> {
+    if hex(v) {
+        return Ok(leak(v.to_lowercase()));
+    }
+    v.strip_prefix('$').and_then(|t| token_of(base, t)).ok_or_else(|| format!("{v:?} isn't #rrggbb or a $token ({})", TOKENS.join(", ")))
+}
+
+// "bold $accent on #1a1b26"
+fn role(v: &str, t: &Theme) -> Result<Role, String> {
+    let mut r = Role::default();
+    let mut words = v.split_whitespace();
+    while let Some(w) = words.next() {
+        match w {
+            "bold" => r.bold = true,
+            "on" => r.bg = Some(colour(words.next().ok_or("\"on\" needs a colour after it")?, t)?),
+            c if r.fg.is_none() => r.fg = Some(colour(c, t)?),
+            c => return Err(format!("{c:?}: one foreground colour, then \"on\" and the background")),
+        }
+    }
+    Ok(r)
+}
+
+// One theme file's settings over `base`: its tokens, then its roles (whose $tokens are its own).
+fn build(file: &Value, base: &Theme) -> Result<(Theme, Vec<(&'static str, Role)>), String> {
+    let mut t = *base;
+    let table = file.as_object().ok_or("a theme file is a table")?;
+    for (k, v) in table {
+        if k == "inherits" || k == "roles" {
+            continue;
+        }
+        let Some(slot) = (match k.as_str() {
+            "bg" => Some(&mut t.bg),
+            "bar" => Some(&mut t.bar),
+            "fg" => Some(&mut t.fg),
+            "dim" => Some(&mut t.dim),
+            "border" => Some(&mut t.border),
+            "focus" => Some(&mut t.focus),
+            "accent" => Some(&mut t.accent),
+            "warn" => Some(&mut t.warn),
+            "blocked" => Some(&mut t.blocked),
+            "working" => Some(&mut t.working),
+            "done" => Some(&mut t.done),
+            "idle" => Some(&mut t.idle),
+            _ => None,
+        }) else {
+            return Err(format!("{k} isn't a theme's token ({}), inherits or roles", TOKENS.join(", ")));
+        };
+        *slot = colour(v.as_str().ok_or_else(|| format!("{k} is a colour, \"#rrggbb\""))?, base).map_err(|e| format!("{k}: {e}"))?;
+    }
+    let mut roles = vec![];
+    for (k, v) in file.get("roles").and_then(Value::as_object).into_iter().flatten() {
+        let name = ROLES.iter().find(|r| **r == k.as_str()).ok_or_else(|| format!("roles.{k} isn't one of {}", ROLES.join(", ")))?;
+        roles.push((*name, role(v.as_str().ok_or_else(|| format!("roles.{k} is a style, like \"bold $fg on $bar\""))?, &t).map_err(|e| format!("roles.{k}: {e}"))?));
+    }
+    Ok((t, roles))
+}
+
+// The themes directory read again (a theme over another of the user's is read after it): the problems, by file.
+pub fn load_custom() -> Vec<(String, String)> {
+    let mut files: Vec<(String, Value)> = vec![];
+    let mut problems = vec![];
+    let mut paths: Vec<_> = std::fs::read_dir(themes_dir()).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "toml")).collect();
+    paths.sort();
+    for path in paths {
+        let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| super::parse_toml(&t).map_err(|e| e.message)) {
+            Ok(_) if THEMES.iter().any(|(n, _)| *n == name) => problems.push((name, format!("a built-in theme is called {}: rename the file", path.display()))),
+            Ok(m) => files.push((name, Value::Object(m))),
+            Err(e) => problems.push((name, e)),
+        }
+    }
+    let mut loaded: Vec<Custom> = vec![];
+    // a file over another of the user's waits for it; what's left when nothing more loads is a loop or a missing one
+    while !files.is_empty() {
+        let before = files.len();
+        files.retain(|(name, file)| {
+            let over = file.get("inherits").and_then(Value::as_str).unwrap_or("tokyonight");
+            let base = THEMES.iter().find(|(n, _)| *n == over).map(|(_, t)| t).or_else(|| loaded.iter().find(|c| c.name == over).map(|c| c.theme));
+            let Some(base) = base else { return true };
+            match build(file, base) {
+                Ok((t, roles)) => loaded.push(Custom { name: leak(name.clone()), theme: Box::leak(Box::new(t)), roles }),
+                Err(e) => problems.push((name.clone(), e)),
+            }
+            false
+        });
+        if files.len() == before {
+            for (name, file) in files.drain(..) {
+                problems.push((name, format!("it inherits {}, which isn't a theme (or inherits it back)", file.get("inherits").and_then(Value::as_str).unwrap_or("?"))));
+            }
+        }
+    }
+    if let Ok(mut c) = CUSTOM.write() {
+        *c = loaded;
+    }
+    problems
+}
+
+// A theme's roles (none for a built-in one).
+pub fn roles(name: &str) -> Vec<(&'static str, Role)> {
+    CUSTOM.read().ok().and_then(|c| c.iter().find(|c| c.name == name).map(|c| c.roles.clone())).unwrap_or_default()
 }

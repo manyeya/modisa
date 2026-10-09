@@ -13,7 +13,7 @@ use super::design::{fit, mix};
 use super::draw::{Canvas, Hit};
 use super::modals::{matches, typed, ListItem};
 use super::{actions, App};
-use crate::config::themes::THEMES;
+use crate::config::themes;
 use crate::config::{save_setting, Config, IndicatorStyle, NotifyKind, CONFIG_PATH};
 use crate::core::layout::Rect;
 use crate::core::paths::HOME;
@@ -129,9 +129,9 @@ impl Settings {
 fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
     let cfg = &app.cfg;
     match SECTIONS[section] {
-        "theme" => THEMES
-            .iter()
-            .map(|(name, p)| Row { kind: Kind::Radio { current: *name == s.saved_theme, swatches: vec![p.focus, p.accent, p.working, p.blocked, p.done] }, label: name.to_string(), about: "Previewed as you move; ↵ or a click keeps it".into(), act: Act::Theme(name.to_string()) })
+        "theme" => themes::all()
+            .into_iter()
+            .map(|(name, p)| Row { kind: Kind::Radio { current: name == s.saved_theme, swatches: vec![p.focus, p.accent, p.working, p.blocked, p.done] }, label: name.clone(), about: "Previewed as you move; ↵ or a click keeps it".into(), act: Act::Theme(name) })
             .collect(),
         "general" => vec![
             heading("keyboard"),

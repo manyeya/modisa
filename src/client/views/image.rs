@@ -4,7 +4,7 @@
 // or at all), its alt text shows.
 use std::rc::Rc;
 use std::sync::{mpsc, OnceLock};
-use std::time::{Duration, Instant};
+
 
 use ratatui::layout::{Rect, Size};
 use ratatui::style::{Modifier, Style};
@@ -58,29 +58,7 @@ fn picker() -> &'static Picker {
 // until it's answered, on a thread that would go on reading the keyboard; a terminal that never answers (a bare pty)
 // gets half blocks instead.
 fn answers() -> bool {
-    use std::io::Write;
-    let mut out = std::io::stdout();
-    if out.write_all(b"\x1b[c").and_then(|_| out.flush()).is_err() {
-        return false;
-    }
-    let end = Instant::now() + Duration::from_millis(400);
-    let mut got = vec![];
-    // its reply is ESC [ ? … c
-    while !got.windows(3).position(|w| w == b"\x1b[?").is_some_and(|i| got[i..].contains(&b'c')) {
-        let left = end.saturating_duration_since(Instant::now()).as_millis() as i32;
-        let mut fd = libc::pollfd { fd: 0, events: libc::POLLIN, revents: 0 };
-        let mut b = [0u8; 64];
-        // the descriptor, not io::stdin(): its buffer would keep what comes after
-        if left <= 0 || unsafe { libc::poll(&mut fd, 1, left) } <= 0 {
-            return false;
-        }
-        let n = unsafe { libc::read(0, b.as_mut_ptr().cast(), b.len()) };
-        if n <= 0 {
-            return false;
-        }
-        got.extend_from_slice(&b[..n as usize]);
-    }
-    true
+    crate::client::probe().is_some()
 }
 
 // Ask the terminal which graphics protocol it speaks (once, before anything else reads it), and start the thread that

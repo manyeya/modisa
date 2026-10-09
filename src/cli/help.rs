@@ -90,6 +90,7 @@ setup
   modisa update                            install the newest release (then modisa restart); names brew or mise's command when they installed it
   modisa uninstall [--purge] [--yes]       remove integrations, sessions, state (and config with --purge), and install.sh's binary
   modisa version | --version               this version, and whether a newer one is out
+  modisa theme list | show <name> | import <file> [--name n]   themes: yours, one to start from, another app's scheme
   modisa profile export | import <file or URL> [--yes]   your whole setup in one file: config, themes, plugins
   modisa integration status | install|uninstall <agent|all>   (hooks + the modisa skill)
   modisa logos [status|install|uninstall]  agents' logos in the sidebar: a font, and your terminals told about it

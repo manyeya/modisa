@@ -35,7 +35,7 @@ use tokio::sync::{mpsc, Notify};
 use crate::cli::sessions::{ClientOptions, OnMessage};
 use crate::cli::update::Manifest;
 use crate::config::keys::{all_keys, Bindings, Mode};
-use crate::config::themes::{theme, Theme};
+use crate::config::themes::{theme, Role, Theme};
 use crate::config::{self, parse_prefix, Config, NotifyKind, Prefix};
 use crate::core::layout::{panes as tree_panes, Rect};
 use crate::core::paths::code_version;
@@ -96,7 +96,8 @@ pub struct App {
     pub root_keys: IndexMap<String, String>, // without the prefix
     pub modes: IndexMap<String, Mode>,
     pub mode: Option<String>,  // the key mode it's in
-    pub mode_at: Instant,      // its last key, for its timeout
+    pub mode_at: Instant,
+    pub roles: HashMap<&'static str, Role>, // the theme's [roles]: how parts of the chrome look over its tokens      // its last key, for its timeout
     pub panes: HashMap<String, ClientPane>,
     pub sidebar: bool,
     pub prefix_armed: bool,
@@ -148,6 +149,7 @@ impl App {
             modes: keys.modes,
             mode: None,
             mode_at: Instant::now(),
+            roles: crate::config::themes::roles(crate::config::themes::active_name(&cfg)).into_iter().collect(),
             sidebar: cfg.sidebar.visible,
             cfg,
             panes: HashMap::new(),
@@ -324,6 +326,7 @@ impl App {
 
     pub fn set_config(&mut self, cfg: Config) {
         self.th = *theme(&cfg);
+        self.roles = crate::config::themes::roles(crate::config::themes::active_name(&cfg)).into_iter().collect();
         self.prefix = parse_prefix(&cfg.prefix);
         let keys = all_keys(&cfg).0;
         (self.bindings, self.more_keys, self.root_keys, self.modes) = (keys.prefix, keys.more, keys.root, keys.modes);
@@ -345,6 +348,53 @@ impl App {
 
 // The theme's background as the terminal's default background (OSC 11), so the window padding a terminal draws around
 // its cells matches the TUI instead of framing it in the terminal's own colour; it gets its own back on exit (OSC 111).
+// What the terminal says to `query`, everything up to its answer to Primary Device Attributes, which is sent after it
+// and every terminal answers: None when nothing comes in a moment (a bare pty). Read from the descriptor before the input
+// thread starts, so nothing else is reading it.
+fn ask_terminal(query: &[u8]) -> Option<Vec<u8>> {
+    let mut out = std::io::stdout();
+    out.write_all(query).and_then(|_| out.write_all(b"\x1b[c")).and_then(|_| out.flush()).ok()?;
+    let end = Instant::now() + Duration::from_millis(400);
+    let mut got = vec![];
+    // the DA1 reply is ESC [ ? … c
+    while !got.windows(3).position(|w| w == b"\x1b[?").is_some_and(|i| got[i..].contains(&b'c')) {
+        let left = end.saturating_duration_since(Instant::now()).as_millis() as i32;
+        let mut fd = libc::pollfd { fd: 0, events: libc::POLLIN, revents: 0 };
+        let mut b = [0u8; 256];
+        // the descriptor, not io::stdin(): its buffer would keep what comes after
+        if left <= 0 || unsafe { libc::poll(&mut fd, 1, left) } <= 0 {
+            return None;
+        }
+        let n = unsafe { libc::read(0, b.as_mut_ptr().cast(), b.len()) };
+        if n <= 0 {
+            return None;
+        }
+        got.extend_from_slice(&b[..n as usize]);
+    }
+    Some(got)
+}
+
+// What the terminal said when the client started: its background colour (OSC 11), before the end of its answer to
+// Primary Device Attributes; None when it didn't answer at all. Asked once: the image picker reads it too.
+pub fn probe() -> Option<&'static [u8]> {
+    static ANSWER: std::sync::OnceLock<Option<Vec<u8>>> = std::sync::OnceLock::new();
+    ANSWER.get_or_init(|| ask_terminal(b"\x1b]11;?\x07")).as_deref()
+}
+
+// The terminal's background (OSC 11) is light; None when it doesn't say.
+fn terminal_is_light() -> Option<bool> {
+    let got = probe()?;
+    let text = String::from_utf8_lossy(&got);
+    let rgb = &text[text.find("]11;rgb:")? + 8..];
+    let channel = |s: &str| -> Option<f64> {
+        let hex: String = s.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+        Some(u32::from_str_radix(&hex, 16).ok()? as f64 / ((1u64 << (4 * hex.len().clamp(1, 4))) - 1) as f64)
+    };
+    let mut parts = rgb.split('/');
+    let (r, g, b) = (channel(parts.next()?)?, channel(parts.next()?)?, channel(parts.next()?)?);
+    Some(0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5)
+}
+
 fn paint_background(bg: &str) {
     let hex = bg.trim_start_matches('#');
     if hex.len() == 6 {
@@ -481,8 +531,14 @@ pub fn reload(app: &mut App, manual: bool) {
         let w = app.th.warn;
         return app.toast(&format!("config.toml: {e} (modisa config check)"), w);
     }
-    // unchanged: usually the settings page saving what it already applied
-    if serde_json::to_value(&next).ok() == serde_json::to_value(&app.cfg).ok() {
+    // unchanged: usually the settings page saving what it already applied (a theme file may have changed alone)
+    let problems = crate::config::themes::load_custom();
+    if let Some((name, problem)) = problems.first() {
+        let w = app.th.warn;
+        app.toast(&format!("themes/{name}.toml: {problem}"), w);
+    }
+    let roles: HashMap<&'static str, Role> = crate::config::themes::roles(crate::config::themes::active_name(&next)).into_iter().collect();
+    if serde_json::to_value(&next).ok() == serde_json::to_value(&app.cfg).ok() && *theme(&next) == app.th && roles == app.roles {
         if manual {
             let d = app.th.dim;
             app.toast("config unchanged", d);
@@ -808,6 +864,12 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
     let size = terminal.size().unwrap_or_default();
     let redraw = Rc::new(Notify::new());
     let quit_signal = Rc::new(Notify::new());
+    // the user's theme files, and whether the terminal's own background is light (theme = { dark, light }), asked before
+    // modisa paints its own over it
+    crate::config::themes::load_custom();
+    if let Some(light) = terminal_is_light() {
+        crate::config::themes::LIGHT.store(light, std::sync::atomic::Ordering::Relaxed);
+    }
     let shared: Shared = Rc::new_cyclic(|me| RefCell::new(App::new(opts, cfg, (size.width as i32, size.height as i32), me.clone(), redraw.clone(), quit_signal.clone())));
     // which graphics protocol the terminal speaks, for plugins' images: asked before anything else reads it or is waiting
     // on what the client writes

@@ -156,10 +156,10 @@ pub fn render(app: &mut App, f: &mut Frame) {
     c.fill(Rect { x: 0, y: 0, w: c.w, h: c.h }, app.th.bg);
     let mut cursor = None;
     if app.ready() {
-        cursor = panes(app, &mut c);
-        tabs(app, &mut c);
-        sidebar(app, &mut c, &mut elems);
-        status(app, &mut c);
+        cursor = in_role(app, &["pane.border", "pane.border.focused"], |app| panes(app, &mut c));
+        in_role(app, &["tab.inactive"], |app| tabs(app, &mut c));
+        in_role(app, &["sidebar"], |app| sidebar(app, &mut c, &mut elems));
+        in_role(app, &["status"], |app| status(app, &mut c));
     }
     app.slot_elems = elems;
     // plugins' views over all that; the top one has the keyboard, unless a dialog is open over it
@@ -167,14 +167,40 @@ pub fn render(app: &mut App, f: &mut Frame) {
         cursor = super::views::draw(app, &mut c);
     }
     if app.modal.is_some() {
-        cursor = modals::draw(app, &mut c);
+        cursor = in_role(app, &["menu", "menu.selected"], |app| modals::draw(app, &mut c));
     }
-    toasts(app, &mut c);
+    in_role(app, &["toast"], |app| toasts(app, &mut c));
     slots::tooltip(app, &mut c);
     app.hits = hits;
     if let Some(at) = cursor {
         f.set_cursor_position(at);
     }
+}
+
+// A part of the chrome drawn in its theme's roles (CUSTOMIZE.md, Themes): while `draw` runs, the tokens it's drawn with
+// are the roles' (a region's role: its text and background; pane.border*: the borders; menu.selected: what's chosen),
+// and they're the theme's again after.
+fn in_role<T>(app: &mut App, roles: &[&str], draw: impl FnOnce(&mut App) -> T) -> T {
+    let th = app.th;
+    for name in roles {
+        let Some(r) = app.roles.get(name).copied() else { continue };
+        match *name {
+            "pane.border" => app.th.border = r.fg.unwrap_or(th.border),
+            "pane.border.focused" => app.th.focus = r.fg.unwrap_or(th.focus),
+            "menu.selected" => app.th.focus = r.bg.or(r.fg).unwrap_or(th.focus),
+            "tab.inactive" => {
+                app.th.dim = r.fg.unwrap_or(th.dim);
+                app.th.bar = r.bg.unwrap_or(th.bar);
+            }
+            _ => {
+                app.th.fg = r.fg.unwrap_or(th.fg);
+                app.th.bar = r.bg.unwrap_or(th.bar);
+            }
+        }
+    }
+    let out = draw(app);
+    app.th = th;
+    out
 }
 
 // ---------- panes ----------
@@ -206,7 +232,7 @@ fn panes(app: &App, c: &mut Canvas) -> Option<Position> {
         title.append(slots::label(&ctx, &slots::around(app, "pane.title", |p| slots::of_pane(p, i)), &format!("{name}{agent_tag}"), room));
         title.text(format!("{exited}{elsewhere} "), Style::new());
         title.fit(room);
-        let title_color = if focused { th.focus } else { st.map(|s| app.state_color(s)).unwrap_or(th.dim) };
+        let title_color = if focused { th.focus } else { st.map(|s| app.state_color(s)).or(app.roles.get("pane.title").and_then(|r| r.fg)).unwrap_or(th.dim) };
         c.border(*r, app.cfg.panes.border, border, Some(th.bg), None);
         c.hit(*r, Hit::Border(id.clone()));
         if r.w > 4 && r.h >= 2 {
@@ -282,8 +308,10 @@ fn tabs(app: &App, c: &mut Canvas) {
         let w = (win.width as i32 - 1).min(text.width() as i32).max(0) as usize;
         text.fit(w);
         text.pad(w);
-        let fg = if blocked { th.warn } else if on || unread { th.fg } else { th.dim };
-        x += slots::button(app, c, x, y, &Seg { strip: text, fg: fg.into(), bg: (if on { th.border } else { th.bar }).into(), hit: Some(Hit::Tab(i)), plugin: false });
+        let active = app.roles.get("tab.active").copied().unwrap_or_default();
+        let fg = if blocked { th.warn } else if on { active.fg.unwrap_or(th.fg) } else if unread { th.fg } else { th.dim };
+        let bg = if on { active.bg.unwrap_or(th.border) } else { th.bar };
+        x += slots::button(app, c, x, y, &Seg { strip: text, fg: fg.into(), bg: bg.into(), hit: Some(Hit::Tab(i)), plugin: false });
         if on {
             x += c.button(x, y, "✕ ", 2, th.dim, th.border, hover, Hit::Action("close-tab"));
         }
@@ -308,7 +336,8 @@ pub struct Side {
 }
 
 fn row_bg(app: &App, c: &Canvas, r: Rect, selected: bool) -> String {
-    let rest = if selected { mix(app.th.bar, app.th.focus, 0.12) } else { app.th.bar.to_string() };
+    let picked = app.roles.get("sidebar.selected").and_then(|r| r.bg).map(String::from);
+    let rest = if selected { picked.unwrap_or_else(|| mix(app.th.bar, app.th.focus, 0.12)) } else { app.th.bar.to_string() };
     if c.hovered(r) { mix(&rest, app.th.fg, 0.07) } else { rest }
 }
 

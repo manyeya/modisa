@@ -28,6 +28,7 @@ pub mod plugin_install;
 pub mod plugin_marketplace;
 pub mod plugin_search;
 pub mod profile;
+pub mod theme;
 pub mod sessions;
 pub mod uninstall;
 pub mod update;
@@ -79,6 +80,7 @@ pub async fn run(argv: Vec<String>) -> i32 {
         Some("hook") => crate::integrations::hook::run_hook(arg(0), arg(1)).await, // run by agents' hooks: modisa hook <agent> <action>
         Some("config") => sessions::config_command(arg(0), &a).await,
         Some("__site-data") => site_data().await,
+        Some("theme") => theme::run(arg(0), arg(1), a.str("name")),
         Some("profile") => match arg(0) {
             Some("export") => profile::export(),
             Some("import") => profile::import(arg(1), a.switch("yes")).await,

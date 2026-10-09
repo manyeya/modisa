@@ -212,12 +212,24 @@ fn validate(schema: &Schema, value: Option<&Value>, path: &mut Vec<Seg>, out: &m
                 error(expected("boolean"));
             }
         }
+        Schema::Theme if matches!(value, Some(Value::Object(_))) => {
+            // { dark = "name", light = "name" }: which theme for a dark terminal and which for a light one
+            for (k, v) in value.and_then(Value::as_object).into_iter().flatten() {
+                path.push(Seg::Key(k.clone()));
+                if k == "dark" || k == "light" {
+                    validate(&Schema::Theme, Some(v), path, out);
+                } else {
+                    out.push(Issue { level: Level::Warning, path: path.clone(), message: "a theme pair has dark and light".into() });
+                }
+                path.pop();
+            }
+        }
         Schema::Str { .. } | Schema::Prefix | Schema::Theme => {
             let Some(Value::String(s)) = value else { return error(expected("string")) };
             match schema {
                 Schema::Str { min } if s.encode_utf16().count() < *min => error(format!("Too small: expected string to have >={min} characters")),
                 Schema::Prefix if !(s.starts_with("C-") && one_js_char(&s[2..]).is_some()) => error("C- and one key, like \"C-b\"".into()),
-                Schema::Theme if themes::find_theme(s).is_none() => {
+                Schema::Theme if themes::find_theme(s).is_none() && !std::path::Path::new(&format!("{}/{s}.toml", themes::themes_dir())).exists() => {
                     error(format!("there's no theme {} (the settings page lists them)", Value::from(s.as_str())))
                 }
                 _ => {}
@@ -352,6 +364,10 @@ pub fn check_config(source: &str) -> Vec<ConfigProblem> {
     }
     if user.get("sidebar").and_then(|s| s.get("git")).is_some() {
         add(Level::Warning, &[Seg::Key("sidebar".into()), Seg::Key("git".into())], "this moved: [git] status = false turns the branch off".into());
+    }
+    // the user's theme files, read as the TUI reads them
+    for (name, problem) in themes::load_custom() {
+        add(Level::Error, &[Seg::Key("themes".into()), Seg::Key(name)], problem);
     }
     // keys after the prefix, without it, and in modes, as modisa binds them (lists, commands and modes included)
     for (table, p) in all_keys(&super::merge(&user)).1 {

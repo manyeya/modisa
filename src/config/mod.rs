@@ -341,6 +341,8 @@ pub struct CommandConfig {
 pub struct Config {
     pub prefix: String,
     pub theme: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_light: Option<String>, // theme = { dark, light }: the one for a terminal with a light background
     pub mouse: Mouse,
     pub sidebar: Sidebar,
     pub status: Status,
@@ -370,6 +372,7 @@ pub fn defaults() -> Config {
     Config {
         prefix: "C-b".into(),
         theme: "ion".into(),
+        theme_light: None,
         mouse: Mouse { hover: true },
         sidebar: Sidebar { visible: true, width: 26, agents: String::new(), logos: Logos::Auto, graph: false },
         status: Status { agents: true, panes: true, theme: false },
@@ -655,7 +658,12 @@ pub fn merge(user: &Map<String, Value>) -> Config {
     }
     Config {
         prefix: typed(get("prefix")).unwrap_or(d.prefix),
-        theme: typed(get("theme")).unwrap_or(d.theme),
+        // theme = "name", or { dark = "name", light = "name" }
+        theme: match get("theme") {
+            Some(Value::Object(o)) => o.get("dark").or(o.get("light")).and_then(Value::as_str).map(String::from).unwrap_or(d.theme),
+            v => typed(v).unwrap_or(d.theme),
+        },
+        theme_light: get("theme").and_then(|t| t.get("light")).and_then(Value::as_str).map(String::from),
         mouse: overlay(d.mouse, get("mouse")),
         sidebar: overlay(d.sidebar, get("sidebar")),
         status: overlay(d.status, get("status")),
@@ -912,13 +920,31 @@ pub fn save_setting(table: Option<&str>, key: &str, value: &Value) -> Result<(),
 // Hot reload: poll the file once a second. Must run inside the LocalSet; like the TS's unref'd interval, it doesn't
 // keep the program alive.
 // ponytail: polling, not fs events; a change waits up to a second, and an edit undone within one tick goes unseen.
+// config.toml and the theme files: a change to any of them calls `on_change`.
 pub fn watch_config(on_change: impl Fn() + 'static) {
-    watch_file(CONFIG_PATH.clone(), on_change);
+    watch(
+        || {
+            let themes = std::fs::read_dir(themes::themes_dir()).into_iter().flatten().flatten().map(|e| e.path());
+            let mut files: Vec<_> = std::iter::once(std::path::PathBuf::from(&*CONFIG_PATH)).chain(themes).collect();
+            files.sort();
+            files.into_iter().map(|f| (stamp(&f.to_string_lossy()), f)).collect::<Vec<_>>()
+        },
+        on_change,
+    );
 }
 
+// a file's modification time, and its size for an edit within the mtime's resolution; None: no file
+fn stamp(path: &str) -> Option<(Option<std::time::SystemTime>, u64)> {
+    std::fs::metadata(path).ok().map(|m| (m.modified().ok(), m.len()))
+}
+
+#[cfg(test)]
 fn watch_file(path: String, on_change: impl Fn() + 'static) {
-    // its modification time, and its size for an edit within the mtime's resolution; None: no file
-    let stamp = move || std::fs::metadata(&path).ok().map(|m| (m.modified().ok(), m.len()));
+    watch(move || stamp(&path), on_change);
+}
+
+// `on_change` whenever what `stamp` says changes, asked every second
+fn watch<T: PartialEq + 'static>(stamp: impl Fn() -> T + 'static, on_change: impl Fn() + 'static) {
     let mut last = stamp();
     tokio::task::spawn_local(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));

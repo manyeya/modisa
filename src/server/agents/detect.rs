@@ -627,9 +627,9 @@ mod tests {
         std::fs::copy("/bin/sleep", &codex).unwrap();
         let mut child = std::process::Command::new(&codex).arg("5").spawn().unwrap();
         let pid = child.id() as i32;
-        // Linux: a moment after a spawn, its command line can still be empty
-        for _ in 0..100 {
-            if crate::platform::procs::info(pid).is_some_and(|i| !i.args.is_empty()) {
+        // Linux: a moment after a spawn the child can still be the parent's copy before its exec
+        for _ in 0..200 {
+            if crate::platform::procs::info(pid).is_some_and(|i| i.args.ends_with("codex 5")) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
