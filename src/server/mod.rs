@@ -52,12 +52,12 @@ pub struct Client {
 }
 
 // what a client can draw, by the plugin UI version it attached with (types.rs PLUGIN_UI): 1 status segments, sidebar
-// sections, badges, menu entries, popups and toasts; 2 views too
+// sections, badges, menu entries, popups and toasts; 3 views too (examples/plugins/VIEWS.md; 2's are gone)
 pub fn understands_plugins(c: &Client) -> bool {
     c.ui >= 1
 }
 pub fn understands_views(c: &Client) -> bool {
-    c.ui >= 2
+    c.ui >= 3
 }
 
 // A toast for the TUI, from a plugin (ui.toast) or anyone else (notify): `from` titles it, `source` is who's counted (a

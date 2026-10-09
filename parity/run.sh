@@ -12,6 +12,15 @@ rm -rf "$out" && mkdir -p "$out"
 git -C "$here" archive "$TS" src test examples package.json bun.lock bunfig.toml tsconfig.json | tar -x -C "$out"
 (cd "$out" && bun install --frozen-lockfile --silent)
 cp "$here/install.sh" "$out/install.sh" # this project's installer, which the update tests run
+# Tests that pin UI 2's views, which this build replaced with UI 3's (examples/plugins/VIEWS.md: PLUGIN_UI 3, client
+# library 11), skipped:
+# - plugin-views.test.ts, all of it: UI 2's elements (box, select, progress, …), and clients attaching with ui 2 to get views
+# - plugin-authoring.test.ts "every copy of the client library is the maintained one": `plugin sdk` prints library 11,
+#   the TypeScript build's copy is 10
+# - plugin-authoring.test.ts "the attention-log example passes plugin check…" and "the worktrees example passes plugin
+#   check…": the examples from git history vendor library 10, and plugin check wants this build's 11
+rm "$out/test/e2e/plugin-views.test.ts"
+perl -pi -e 's/^test\((?="(every copy of the client library|the attention-log example passes|the worktrees example passes))/test.skip(/' "$out/test/e2e/plugin-authoring.test.ts"
 # every way the suite starts modisa, pointed at the Rust binary
 find "$out/test" -name '*.ts' -exec perl -pi -e '
   s/\["bun", MAIN,/[process.env.MODISA_BIN!,/g;

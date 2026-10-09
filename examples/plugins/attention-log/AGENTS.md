@@ -86,50 +86,69 @@ nothing a plugin shows can pass for modisa's own. Everything is cleared when the
 For more than a segment or a row, a plugin opens a **view**: an element tree modisa draws in the user's theme, framed
 and titled with the plugin's name, over everything (`placement: "popup"`, the default) or over one pane
 (`placement: "overlay"`, `from: { pane, instance }`). It needs no program of its own: the plugin sends the tree, and
-sends it again when what it shows changes.
+sends it again when what it shows changes. The elements are [ratatui](https://ratatui.rs)'s: constraint layouts,
+blocks around anything, its widgets, and a few modisa draws itself. Every element and field is in
+[VIEWS.md](https://github.com/manyeya/modisa/blob/main/examples/plugins/VIEWS.md); `modisa plugin schema` has them
+as JSON Schema.
 
 ```tsx
 // plugin.tsx (and "run": ["bun", "plugin.tsx"] in plugin.json): Bun's JSX works as it comes. Without JSX, call the
-// functions: Box({ direction: "row" }, Text({}, "hi"))
-import { runPlugin, Box, Text, Gauge, Progress, Button, Input } from "./modisa-plugin";
+// functions: Layout({ direction: "horizontal", constraints: [Length(24), Fill(1)] }, List({ … }), Block({ … }, …))
+import { runPlugin, Block, Fill, Gauge, Input, Layout, Length, List, Text, span } from "./modisa-plugin";
 
 runPlugin(async (modisa) => {
-  await modisa.hello({
-    approve: (_params, call) => modisa.ui.toast(`approved: ${call.ui?.value ?? ""}`),
-    refresh: () => show(),
-  });
+  const agents = [{ name: "@coder", used: 0.23 }, { name: "@reviewer", used: 0.61 }];
+  let at = 0;
   const show = () =>
     modisa.ui.view("main", (
-      <Box gap={1}>
-        <Box direction="row" gap={2}><Gauge value={0.23} label="5h 23%" /><Gauge value={0.61} tone="warn" /></Box>
-        <Progress value={0.4} />
-        <Input key="why" placeholder="why?" action="approve" />
-        <Button label="Refresh" action="refresh" />
-      </Box>
-    ), { title: "Usage", keys: [{ key: "r", action: "refresh", description: "refresh" }], close: "refresh" });
+      <Layout direction="horizontal" constraints={[Length(24), Fill(1)]} spacing={1}>
+        <List id="agents" items={agents.map((a) => a.name)} selected={at} change="pick" block={{ title: "agents", border_type: "rounded" }} />
+        <Block title={agents[at]!.name} border_type="rounded" padding={[0, 1]}>
+          <Layout constraints={[Length(1), Length(2), Fill(1)]}>
+            <Text>context {span(`${Math.round(agents[at]!.used * 100)}%`, "bold $warn")}</Text>
+            <Gauge ratio={agents[at]!.used} gauge_style="$accent" />
+            <Input id="note" placeholder="a note…" action="note" />
+          </Layout>
+        </Block>
+      </Layout>
+    ), { title: "Agents", keys: [{ key: "r", action: "refresh", description: "refresh" }], close: "closed" });
+  await modisa.hello({
+    pick: (_params, call) => ((at = call.ui?.index ?? 0), show()),
+    note: (_params, call) => modisa.ui.toast(`noted: ${call.ui?.value ?? ""}`),
+    refresh: () => show(),
+    closed: () => {},
+  });
   await show();
 });
 ```
 
-- Elements: layout (`Box` with `direction`, `gap`, `padding`, `align`, `justify`, `border`, `title`; `Scroll` with
-  `sticky`), text (`Text` with `Span` and `Icon` inside, `Markdown`, `Code` with `filetype`, `Diff` of a unified diff,
-  `Table`, `BigText`), charts drawn at whatever size the layout gives them (`Progress`, `Sparkline`, `Chart` of
-  series, `Gauge`, `Heatmap`), your own pixels (`Raster` of cells, `Image` of a PNG), `Spinner`, and controls
-  (`Button`, `Input`, `Textarea`, `Select`, `Tabs`). Every element takes `key`, `width`, `height` (cells or "50%"),
-  `grow` and `shrink`. Colours are tones, so everything follows the user's theme. Syntax highlighting knows
-  TypeScript, JavaScript, Markdown and Zig; other filetypes show plain.
-- Controls run your actions: a Button's `action` when pressed, an Input's when Enter is pressed, a Textarea's on Ctrl+S
-  or Ctrl+Enter, a Select's `action` when one is chosen and `change` when the highlight moves, a Tabs' when it moves.
-  Each gets its `params`, and `call.ui`: `{ view, key, value, index }` (what's typed or chosen: data, not a command).
+- Elements: `Layout` (children in a `direction`, sized by `constraints`, or each child's `size`: `Length(n)`,
+  `Min(n)`, `Max(n)`, `Percentage(p)`, `Ratio(a, b)`, `Fill(weight)`), `Block` (a frame: `borders`, `border_type`,
+  `title`/`titles`, `padding`, `shadow`; any element also takes one as its `block`), `Text` (spans in lines, or a
+  program's coloured output as `ansi`; it scrolls with an `id`), `List`, `Table`, `Tabs`, `Tree`, `Gauge`,
+  `LineGauge`, `Sparkline`, `BarChart`, `Chart`, `Canvas`, `Calendar`, `Code` and `Diff` (highlighted; a diff can have
+  a line cursor and marked lines), `Markdown`, `BigText`, `Image` (PNG, JPEG or GIF), `Input`, `Textarea`, `Button`,
+  `Spinner`, `Fill`, `Clear`, and `Raster`.
+- Text is spans in lines: a string, `span("23%", "bold $warn")`, `icon("claude-code")` (an agent's mark), and
+  `line([...spans], { align })`. In JSX a Text's children are its spans, and a `\n` starts a line. A style is a string,
+  `"bold italic $accent on $bar"`, or `{ fg, bg, bold, … }`; `style("bold", late && "$warn")` puts one together.
+  Colours are the theme's tokens (`$fg`, `$dim`, `$accent`, `$warn`, `$working`, `$blocked`, `$done`, `$idle`, `$bar`,
+  …), so everything follows the user's theme; hex colours and names work too. Text loses control characters and
+  escape sequences (an `ansi` text keeps its colours).
+- Anything interactive or stateful needs an `id`: it's what keeps the user's selection, scroll and typing across
+  updates (while you don't change `selected` or `value`), what `focus` names, and what an action is told. An element
+  runs your actions with `call.ui`: `{ view, id, event, … }` and what it holds: a List's or Tabs' `index`, a Table's
+  `row` and `column`, a Diff's `line`, `old`, `new` and `text`, an Input's or Textarea's `value`, a Tree's `path`
+  (and `open`). `action` runs on Enter (an Input) or Ctrl+S (a Textarea), a click or a press; `change` when the
+  selection or text moves (an Input's at most every 150 ms); a Tree's `toggle` when a node opens or closes. It's what
+  the user typed or chose: data, not a command.
 - The view's `keys` bind keys while it has the keyboard ("j", "J", "enter", "S-tab", "C-s"); `description` shows them
-  on the frame. Tab moves between controls, Escape leaves a field and then closes the view, prefix x closes it too.
-  `close` names the action run when the user closes it. Close it yourself with `modisa.ui.closeView(id)`.
-- Updating a view keeps what the user typed, chose and scrolled to in elements with the same `key` (and the same
-  `value`/`selected` you sent before), and where focus is. Give every control a `key`.
+  in its footer. Tab moves between interactive elements, Escape (or prefix x) closes the view and runs its `close`
+  action. `focus` (an element's id) hands the keyboard to an element. Close it yourself with `modisa.ui.closeView(id)`.
 - `Raster` is a box of cells you paint: `rasterCells(columns, rows, (x, y) => [char, ink.tone("accent"), ink.rgb("#202020")])`.
-  `modisa.ui.blit(view, key, cells)` repaints one in place, up to 60 times a second: animation.
-- Limits: 4 views per plugin and 8 in a session, 5000 elements, 40 deep, 2 MB a view. Actions named anywhere in a view
-  must be offered in `hello`. A client too old to draw views doesn't get them.
+  `modisa.ui.blit(view, id, cells)` repaints the one with that `id` in place, up to 60 times a second: animation.
+- Limits: 4 views per plugin and 8 in a session, 5000 elements, 40 deep, 2 MB a view; an image at most 4 MB. Actions
+  named anywhere in a view must be offered in `hello`. A client too old to draw these views doesn't get them.
 
 ## Links
 

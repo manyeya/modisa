@@ -137,14 +137,14 @@ A Cell is a Text, or `{ "content": Text, "style": Style, "span": n }` (`span`: i
 
 ### sparkline
 
-`data` (numbers; `null` for a missing one), `max`, `direction` (`left_to_right`, `right_to_left`), `bar_set`
+`data` (whole numbers, 0 or more; `null` for a missing one), `max`, `direction` (`left_to_right`, `right_to_left`), `bar_set`
 (`nine_levels`, `three_levels`), `absent_symbol`, `absent_style`.
 
 ### bar_chart
 
 | Field | |
 |---|---|
-| `groups` | `[{ "label": Line, "bars": [{ "value": n, "label": Line, "text_value": "…", "style": Style, "value_style": Style }] }]`; or `data`: `[["label", value], …]` for one group |
+| `groups` | `[{ "label": Line, "bars": [{ "value": n, "label": Line, "text_value": "…", "style": Style, "value_style": Style }] }]`; or `data`: `[["label", value], …]` for one group. Values are whole numbers, 0 or more |
 | `direction` | `vertical` (default) or `horizontal` |
 | `bar_width`, `bar_gap`, `group_gap`, `max` | |
 | `bar_style`, `value_style`, `label_style` | |
@@ -252,8 +252,11 @@ else in half-blocks.
 
 ### raster
 
-A grid a plugin paints and repaints in place without resending the view (`ui.blit`): `columns`, `rows`, `cells`
-(base64: per cell a UTF-8 character then fg and bg as RGB; see `ui.blit`). For animation.
+A grid a plugin paints and repaints in place without resending the view: `id` (needed), `columns` (1–512), `rows`
+(1–256), `cells`: base64 of three little-endian u32 per cell, row by row: its character's code point (printable, one
+cell wide), then fg and bg, each `0x01000000` (the default), `0x02000000` + n (the theme's colour n of `fg`, `dim`,
+`accent`, `warn`, `working`, `blocked`, `done`, `idle`), or `0xRRGGBB`. `ui.blit` with `{ "view", "id", "cells" }`
+repaints it, cells of the same size. For animation.
 
 ## Styles
 
@@ -266,7 +269,7 @@ A Style is an object or a string.
 
 - Colours: a theme token (`$fg`, `$bg`, `$bar`, `$dim`, `$border`, `$focus`, `$accent`, `$warn`, `$working`,
   `$blocked`, `$done`, `$idle`), a hex colour (`#rrggbb`), a named one (`red`, `light-blue`, `gray`, …), an index
-  (`0`–`255`), or `reset`. Prefer tokens: they follow the user's theme, light or dark.
+  (`"0"`–`"255"`: a colour is always a string), or `reset`. Prefer tokens: they follow the user's theme, light or dark.
 - Modifiers (`true` to add, `false` to remove what's inherited): `bold`, `dim`, `italic`, `underlined`,
   `slow_blink`, `rapid_blink`, `reversed`, `hidden`, `crossed_out`.
 - In the string form: modifier names, a colour (the foreground), and `on <colour>` (the background).

@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 10;
+export const SDK_VERSION = 11;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -37,8 +37,8 @@ export type Snapshot = { protocol: number; epoch: string; seq: number; panes: Pa
 // `target` is the pane the user took the action from (a menu entry, key or palette entry), kept apart from params and
 // already checked by modisa to be that pane's current process. `link` is the URL the user Ctrl+clicked, when one of
 // the manifest's links matched it (modisa checks the pattern); treat it as data, never as a command. `ui` says which of
-// the plugin's views it came from and what the element held (an Input's text, a Select's chosen option); it's what the
-// user typed or chose, so treat it as data too.
+// the plugin's views it came from, which element and what it held (ViewEvent: an input's text, a list's choice); it's
+// what the user typed or chose, so treat it as data too.
 export type Action = (params: Record<string, unknown>, call: { invocation?: string; signal: AbortSignal; target?: { pane: string; instance: string }; link?: string; ui?: ViewEvent }) => unknown;
 
 // What a plugin shows in modisa's TUI (see Client.ui). Tones map to the user's theme: its text, dim, accent and
@@ -64,94 +64,206 @@ export type UiState = {
   views?: (ViewOptions & { plugin: string; run: string; id: string; title: string; keys: ViewKey[]; root: ViewNode; rev: number })[]; // the views open now
 };
 
-// ---------- views: element trees modisa draws for a plugin ----------
-// A size in cells, or a share of the parent ("50%"). Every element takes these, and `key`, which keeps what the user did
-// in it (typed, chose, scrolled) across updates and names it to the plugin when it's used.
-export type ViewSize = number | `${number}%`;
-export type ViewLayout = { key?: string; width?: ViewSize; height?: ViewSize; minWidth?: number; maxWidth?: number; minHeight?: number; maxHeight?: number; grow?: number; shrink?: number };
-export type ViewInline = string | { type: "span"; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; dim?: boolean; strike?: boolean; children?: ViewInline[] } | { type: "icon"; agent: string };
-export type ViewOption = { name: string; description?: string; value?: string };
-type ViewAct = { action?: string; params?: Record<string, unknown> };
-export type ViewNode = ViewLayout &
+// ---------- views: element trees modisa draws for a plugin (UI 3) ----------
+// examples/plugins/VIEWS.md is the wire format, field by field; `modisa plugin schema` has it as JSON Schema. Elements
+// are ratatui's own: constraint layouts, blocks around anything, ratatui's widgets, and a few modisa draws itself.
+
+// Colours: a theme token ($accent…: it follows the user's theme, light or dark, so prefer it), #rrggbb, a name (red,
+// light-blue, gray, …), an index ("0"–"255"), or reset.
+export type Token = "fg" | "bg" | "bar" | "dim" | "border" | "focus" | "accent" | "warn" | "working" | "blocked" | "done" | "idle";
+export type Color = `$${Token}` | `#${string}` | "reset" | (string & {});
+export type Modifier = "bold" | "dim" | "italic" | "underlined" | "slow_blink" | "rapid_blink" | "reversed" | "hidden" | "crossed_out";
+// "bold italic $accent on $bar" (modifiers, the foreground, `on` the background), or the same as an object, where
+// `false` takes away a modifier the style under it has.
+export type Style = string | ({ fg?: Color; bg?: Color; underline_color?: Color } & { [M in Modifier]?: boolean });
+export type Align = "left" | "center" | "right";
+// Text is spans in lines. A Span is a string, { text, style }, or { icon: "claude-code" } (an agent's mark in its colour).
+// A Line is a Span, an array of Spans, or { spans, style, align }. A Text is a string (\n starts a line), an array of
+// Lines, { lines, style, align }, or one Span or Line object. Escape sequences are taken out: show a program's coloured
+// output with Text's `ansi`.
+type SpanObject = { text: string; style?: Style } | { icon: string };
+type LineObject = { spans: ViewSpan[]; style?: Style; align?: Align };
+export type ViewSpan = string | SpanObject;
+export type ViewLine = ViewSpan | ViewSpan[] | LineObject;
+export type ViewText = string | SpanObject | LineObject | ViewLine[] | { lines: ViewLine[]; style?: Style; align?: Align };
+
+// Where an element goes in its layout: 12 cells (Length), "30%", "1/3" (Ratio), ">=5" (Min), "<=20" (Max), "*" or "2*"
+// (Fill: shares what's left, by weight). The functions below write them.
+export type Constraint = number | `${number}` | `${number}%` | `${number}/${number}` | `>=${number}` | `<=${number}` | "*" | `${number}*`;
+export const Length = (cells: number): Constraint => `${cells}`;
+export const Min = (cells: number): Constraint => `>=${cells}`;
+export const Max = (cells: number): Constraint => `<=${cells}`;
+export const Percentage = (percent: number): Constraint => `${percent}%`;
+export const Ratio = (a: number, b: number): Constraint => `${a}/${b}`;
+// (Fill, below, is both: Fill(2) the constraint, Fill({ symbol }) the element.)
+
+/** A span of text in a style: span("23%", "bold $warn"). */
+export const span = (text: string | number, style?: Style): ViewSpan => (style === undefined ? String(text) : { text: String(text), style });
+/** An agent's mark, in its colour: icon("claude-code"). */
+export const icon = (agent: string): ViewSpan => ({ icon: agent });
+/** A line of spans, with a style under them all and where it sits: line(["a ", span("b", "bold")], { align: "right" }). */
+export const line = (spans: ViewSpan | ViewSpan[], options: { style?: Style; align?: Align } = {}): ViewLine => ({ spans: [spans].flat(), ...options });
+/** A style from parts, leaving out those that are false: style("bold", late && "$warn", "on $bar"). */
+export const style = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(" ");
+
+export type BorderType = "plain" | "rounded" | "double" | "thick" | "light_double_dashed" | "heavy_double_dashed" | "light_triple_dashed" | "heavy_triple_dashed" | "light_quadruple_dashed" | "heavy_quadruple_dashed" | "quadrant_inside" | "quadrant_outside";
+// A Block: a frame around an element (its `block`), or an element of its own (Block, with a `child`).
+export type BlockFields = {
+  borders?: "all" | "none" | ("top" | "right" | "bottom" | "left")[];
+  border_type?: BorderType;
+  border_style?: Style;
+  title?: ViewLine;
+  titles?: { content: ViewLine; position?: "top" | "bottom"; align?: Align }[];
+  padding?: number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
+  style?: Style;
+  shadow?: boolean | { kind?: "dark_shade" | "medium_shade" | "light_shade" | "block" | "overlay"; offset?: [x: number, y: number]; style?: Style };
+  merge?: "replace" | "exact" | "fuzzy"; // where borders overlap (a layout's negative spacing)
+};
+// What any element can have: `id` names it (anything interactive or stateful needs one, and it's what `focus` and its
+// actions name); `size`, its constraint in its layout when the layout's `constraints` doesn't give one; a `block` around
+// it; its area's `style`; and `hide_below`, a size under which it isn't drawn.
+type Common = { id?: string; size?: Constraint; block?: BlockFields; style?: Style; hide_below?: { width?: number; height?: number } };
+// The actions an element runs: `action` (Enter, a click, a press), `change` (the selection or text moved on).
+type Acts = { action?: string; change?: string };
+export type Flex = "legacy" | "start" | "end" | "center" | "space_between" | "space_around" | "space_evenly";
+type HighlightSpacing = "always" | "when_selected" | "never";
+export type Row = ViewCell[] | { cells: ViewCell[]; style?: Style; height?: number; top_margin?: number; bottom_margin?: number };
+export type ViewCell = ViewText | { content: ViewText; style?: Style; span?: number };
+export type Bar = { value: number; label?: ViewLine; text_value?: string; style?: Style; value_style?: Style };
+export type Marker = "dot" | "block" | "bar" | "braille" | "half_block" | "quadrant" | "sextant" | "octant" | (string & {});
+export type Dataset = { name?: ViewLine; data: [x: number, y: number][]; graph_type?: "line" | "scatter" | "bar" | "area"; marker?: Marker; style?: Style; fill_to?: number };
+export type Axis = { title?: ViewLine; bounds?: [min: number, max: number]; labels?: ViewSpan[]; labels_align?: Align; style?: Style };
+export type Shape =
+  | { line: [x1: number, y1: number, x2: number, y2: number]; color?: Color }
+  | { rectangle: [x: number, y: number, width: number, height: number]; color?: Color }
+  | { circle: [x: number, y: number, radius: number]; color?: Color }
+  | { points: [x: number, y: number][]; color?: Color }
+  | { map: "low" | "high"; color?: Color }
+  | { text: ViewLine; at: [x: number, y: number] }
+  | { layer: true };
+export type TreeItem = { id: string; text: ViewLine; children?: TreeItem[] };
+export type ViewNode = Common &
   (
-    | { type: "box"; direction?: "row" | "column"; gap?: number; padding?: number; paddingX?: number; paddingY?: number; align?: "start" | "center" | "end" | "stretch"; justify?: "start" | "center" | "end" | "between" | "around" | "evenly"; wrap?: boolean; border?: boolean | "single" | "double" | "rounded" | "heavy"; title?: string; tone?: Tone; bg?: Tone; children?: ViewNode[] }
-    | { type: "scroll"; sticky?: "top" | "bottom"; children?: ViewNode[] }
-    | { type: "text"; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; dim?: boolean; strike?: boolean; wrap?: "word" | "char" | "none"; children?: ViewInline[] }
+    | { type: "layout"; direction?: "vertical" | "horizontal"; constraints?: Constraint[]; flex?: Flex; spacing?: number; margin?: number | [vertical: number, horizontal: number]; children?: ViewNode[] }
+    | { type: "text"; text?: ViewText; ansi?: string; align?: Align; wrap?: boolean | "trim"; scroll?: boolean | "bottom"; scrollbar?: boolean }
+    | ({ type: "block"; child?: ViewNode } & BlockFields)
+    | ({ type: "list"; items: (ViewLine | { content: ViewText; style?: Style })[]; selected?: number; highlight_style?: Style; highlight_symbol?: string; highlight_spacing?: HighlightSpacing; direction?: "top_to_bottom" | "bottom_to_top"; scroll_padding?: number } & Acts)
+    | ({ type: "table"; header?: Row; footer?: Row; rows: Row[]; widths?: Constraint[]; column_spacing?: number; flex?: Flex; select?: "row" | "cell" | "column" | "none"; selected?: number | [row: number, column: number]; row_highlight_style?: Style; column_highlight_style?: Style; cell_highlight_style?: Style; highlight_symbol?: string; highlight_spacing?: HighlightSpacing } & Acts)
+    | ({ type: "tabs"; titles: ViewLine[]; selected?: number; divider?: ViewSpan; padding?: [left: ViewSpan, right: ViewSpan]; highlight_style?: Style } & Acts)
+    | { type: "gauge"; ratio?: number; percent?: number; label?: ViewSpan; gauge_style?: Style; unicode?: boolean }
+    | { type: "line_gauge"; ratio?: number; percent?: number; label?: ViewSpan; filled_style?: Style; unfilled_style?: Style; filled_symbol?: string; unfilled_symbol?: string }
+    | { type: "sparkline"; data: (number | null)[]; max?: number; direction?: "left_to_right" | "right_to_left"; bar_set?: "nine_levels" | "three_levels"; absent_symbol?: string; absent_style?: Style }
+    | { type: "bar_chart"; groups?: { label?: ViewLine; bars: Bar[] }[]; data?: [label: string, value: number][]; direction?: "vertical" | "horizontal"; bar_width?: number; bar_gap?: number; group_gap?: number; max?: number; bar_style?: Style; value_style?: Style; label_style?: Style }
+    | { type: "chart"; datasets: Dataset[]; x_axis?: Axis; y_axis?: Axis; legend?: "top_right" | "top_left" | "top" | "left" | "right" | "bottom" | "bottom_left" | "bottom_right" | "none" }
+    | { type: "canvas"; x_bounds?: [min: number, max: number]; y_bounds?: [min: number, max: number]; marker?: Marker; background?: Color; shapes?: Shape[] }
+    | { type: "calendar"; year: number; month: number; events?: Record<string, Style>; month_header?: Style | false; weekday_header?: Style | false; surrounding?: Style | false; default_style?: Style }
+    | { type: "fill"; symbol?: string }
+    | { type: "clear" }
+    | { type: "code"; content: string; language?: string; line_numbers?: boolean | number; highlight?: number[]; wrap?: boolean; syntax_theme?: string }
+    | ({ type: "diff"; diff: string; language?: string; view?: "unified" | "split"; line_numbers?: boolean; cursor?: boolean; marks?: number[] } & Acts)
     | { type: "markdown"; content: string }
-    | { type: "code"; content: string; filetype?: string; lineNumbers?: boolean }
-    | ({ type: "diff"; diff: string; view?: "unified" | "split"; filetype?: string; lineNumbers?: boolean; cursor?: boolean; marks?: number[]; change?: string } & ViewAct)
-    | { type: "table"; rows: (string | ViewInline[])[][]; header?: boolean; border?: boolean }
-    | { type: "bigtext"; text: string; font?: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"; tone?: Tone }
-    | { type: "progress"; value: number; tone?: Tone }
-    | { type: "sparkline"; values: number[]; tone?: Tone; min?: number; max?: number }
-    | { type: "chart"; series: { values: number[]; tone?: Tone }[]; min?: number; max?: number }
-    | { type: "gauge"; value: number; tone?: Tone; label?: string }
-    | { type: "heatmap"; values: number[][]; tone?: Tone; min?: number; max?: number }
-    | { type: "raster"; key: string; columns: number; rows: number; cells: string }
-    | { type: "image"; png: string; alt?: string; fit?: "fit" | "cover" | "fill" }
-    | { type: "spinner"; tone?: Tone; label?: string }
-    | ({ type: "button"; label: string; tone?: Tone } & ViewAct)
-    | ({ type: "input"; placeholder?: string; value?: string; maxLength?: number } & ViewAct)
-    | ({ type: "textarea"; placeholder?: string; value?: string } & ViewAct)
-    | ({ type: "select"; options: ViewOption[]; selected?: number; change?: string } & ViewAct)
-    | ({ type: "tabs"; options: ViewOption[]; selected?: number } & ViewAct)
+    | { type: "big_text"; text: ViewText; pixel_size?: "full" | "half_height" | "half_width" | "quadrant" | "third_height" | "sextant" | "quarter_height" | "octant"; align?: Align }
+    | { type: "image"; data: string; alt?: string; resize?: "fit" | "crop" | "scale" }
+    | ({ type: "input"; value?: string; placeholder?: string; mask?: string } & Acts)
+    | ({ type: "textarea"; value?: string; placeholder?: string; line_numbers?: boolean } & Acts)
+    | ({ type: "tree"; items: TreeItem[]; open?: string[][]; selected?: string[]; highlight_style?: Style; highlight_symbol?: string; toggle?: string } & Acts)
+    | { type: "button"; label?: ViewLine; action?: string; focus_style?: Style }
+    | { type: "spinner"; label?: ViewLine; set?: "braille" | "dots" | "ascii" | "arrows" | "clock" | "circle" | "box" | "bounce" | "pulse" }
+    | { type: "raster"; id: string; columns: number; rows: number; cells: string }
   );
 // A key the view binds while it has focus: "j", "J", "enter", "S-tab", "C-s". Escape and Tab are modisa's.
 export type ViewKey = { key: string; action: string; params?: Record<string, unknown>; description?: string };
-// `focus`: the key of the element this update hands the keyboard to (the comment box just opened, say).
+// `focus`: the id of the element this update hands the keyboard to (the comment box just opened, say).
 export type ViewOptions = { title?: string; placement?: "popup" | "overlay"; width?: ViewSize; height?: ViewSize; from?: { pane: string; instance: string }; keys?: ViewKey[]; close?: string; focus?: string };
-// What a view's element tells its action (call.ui): the view, the element's key, an Input's text, a Select's choice.
-export type ViewEvent = { view: string; key?: string; value?: string; index?: number };
+// A view's size in cells, or a share of the terminal ("80%").
+export type ViewSize = number | `${number}%`;
+// What an element tells the action it runs (call.ui): the view, the element's id, what happened (`event`), and what the
+// element holds. A list's or tabs' `index`; a table's `row` and `column`; a diff's `line` (which of its +, - and context
+// lines, from 0), that line's `old` and `new` numbers (the one it has) and its `text`; an input's or textarea's `value`;
+// a tree node's `path` (its ids from the root), and for `toggle` whether it's now `open`. A view's keys and its close
+// action get just `view`. It's what the user typed or chose: treat it as data.
+export type ViewEvent = { view: string; id?: string; event?: "action" | "change" | "toggle"; index?: number; row?: number; column?: number; line?: number; old?: number; new?: number; text?: string; value?: string; path?: string[]; open?: boolean };
 export const VIEW_LIMITS = { perPlugin: 4, perSession: 8, elements: 5000, depth: 40, megabytes: 2, blitsPerSecond: 60 };
 
-// Elements, as functions or JSX: `Box({ direction: "row" }, Text({}, "hi"))`, or in a .tsx file
-// `<Box direction="row"><Text>hi</Text></Box>`, with Bun's JSX as it comes or with `/** @jsx h */`. A string inside a
-// Box becomes a Text.
-type Child = ViewNode | ViewInline | number | false | null | undefined | Child[];
-type Props<T extends ViewNode["type"]> = Omit<Extract<ViewNode, { type: T }>, "type" | "children"> & { children?: Child };
-const flat = (xs: Child[]): (ViewNode | ViewInline)[] => xs.flatMap((x) => (Array.isArray(x) ? flat(x) : x === null || x === undefined || x === false ? [] : typeof x === "number" ? [String(x)] : [x]));
-const nodes = (xs: Child[]): ViewNode[] => flat(xs).map((x) => (typeof x === "string" ? { type: "text" as const, children: [x] } : (x as ViewNode)));
-const inline = (xs: Child[]): ViewInline[] => flat(xs) as ViewInline[];
-const el = <T extends ViewNode["type"]>(type: T) => (props: Props<T> = {} as Props<T>, ...children: Child[]) => {
-  const { children: own, ...rest } = props as Props<T> & { children?: Child };
-  const kids = [...(own === undefined ? [] : [own]), ...children];
-  return { type, ...rest, ...(kids.length && { children: type === "text" ? inline(kids) : nodes(kids) }) } as unknown as Extract<ViewNode, { type: T }>;
-};
-export const Box = el("box"), Scroll = el("scroll"), Text = el("text"), Markdown = el("markdown"), Code = el("code"), Diff = el("diff"), Table = el("table");
-export const BigText = el("bigtext"), Progress = el("progress"), Sparkline = el("sparkline"), Chart = el("chart"), Gauge = el("gauge"), Heatmap = el("heatmap");
-export const Raster = el("raster"), Image = el("image"), Spinner = el("spinner"), Button = el("button"), Input = el("input"), Textarea = el("textarea"), Select = el("select"), Tabs = el("tabs");
-// inline pieces of a Text
-export const Span = (props: Omit<Extract<ViewInline, { type: "span" }>, "type" | "children"> & { children?: Child } = {}, ...children: Child[]): ViewInline => {
-  const { children: own, ...rest } = props;
-  return { type: "span", ...rest, children: inline([...(own === undefined ? [] : [own]), ...children]) };
-};
-export const Icon = ({ agent }: { agent: string }): ViewInline => ({ type: "icon", agent });
-export const Fragment = (_props: unknown, ...children: Child[]) => children;
-// JSX through React's automatic runtime (Bun's default) makes elements ({ type, props, key }), not nodes: this calls
-// their components, so a view can be written either way.
-function resolve(x: unknown): any {
-  if (Array.isArray(x)) return x.flatMap((y) => [resolve(y)].flat());
-  if (!x || typeof x !== "object") return x;
-  const e = x as { type?: unknown; props?: Record<string, unknown>; key?: unknown; children?: unknown[] };
-  if (e.props && typeof e.props === "object") {
-    const props: Record<string, unknown> = { ...e.props, ...(e.key !== null && e.key !== undefined && { key: String(e.key) }) };
-    if (typeof e.type === "function") return resolve(e.type(props));
-    if (typeof e.type === "string") return resolve(el(e.type as ViewNode["type"])(props as never));
-    return resolve(props.children ?? []); // a fragment
-  }
-  if (Array.isArray(e.children)) {
-    const kids = resolve(e.children) as Child[];
-    return { ...e, children: e.type === "text" || e.type === "span" ? inline(kids) : nodes(kids) };
-  }
-  return x;
+// Elements, as functions or JSX: `Layout({ direction: "horizontal", constraints: [Length(34), Fill(1)] }, List({…}), Diff({…}))`,
+// or in a .tsx file `<Layout direction="horizontal"><List … /><Diff … /></Layout>`, with Bun's JSX as it comes or with
+// `/** @jsx h */`. What goes inside one: a Layout's elements (a string becomes a Text), a Block's element (several are
+// stacked in a Layout), a Text's or BigText's spans (a "\n" in a string starts a line), a Button's or Spinner's label,
+// and the source of a Code, Markdown or Diff.
+type Child = ViewNode | ViewSpan | LineObject | number | boolean | null | undefined | Child[];
+type NodeOf<T extends ViewNode["type"]> = Extract<ViewNode, { type: T }>;
+const INSIDE = { text: "text", big_text: "text", button: "label", spinner: "label", code: "content", markdown: "content", diff: "diff" } as const;
+type Inside = typeof INSIDE;
+type Props<T extends ViewNode["type"]> = (T extends keyof Inside ? Omit<NodeOf<T>, "type" | Inside[T]> & Partial<Pick<NodeOf<T>, Inside[T] & keyof NodeOf<T>>> : Omit<NodeOf<T>, "type" | "children">) & { children?: Child };
+// JSX through React's automatic runtime (Bun's default) makes elements ({ type, props }), not nodes: this calls their
+// components, so a view can be written either way.
+function resolve(x: unknown): unknown {
+  const e = x as { type?: unknown; props?: Record<string, unknown> } | null;
+  if (!e || typeof e !== "object" || Array.isArray(e) || !e.props || typeof e.props !== "object") return x;
+  if (typeof e.type === "function") return resolve(e.type(e.props));
+  if (typeof e.type === "string") return el(e.type as ViewNode["type"])(e.props as never);
+  return e.props.children; // a fragment
 }
+// what's inside an element, its components called, arrays flattened, and nothing (null, false) left out
+const flat = (xs: unknown[]): any[] =>
+  xs.flatMap((x) => {
+    const r = resolve(x);
+    return Array.isArray(r) ? flat(r) : r === null || r === undefined || typeof r === "boolean" ? [] : typeof r === "number" ? [String(r)] : [r];
+  });
+const nodes = (xs: unknown[]): ViewNode[] => xs.map((x) => (typeof x === "string" ? { type: "text", text: x } : (x as ViewNode)));
+const one = (xs: ViewNode[]): ViewNode => (xs.length === 1 ? xs[0]! : { type: "layout", children: xs });
+// a Text from spans: a "\n" in a string, or a { spans } line, starts a line
+function lines(xs: (string | SpanObject | LineObject)[]): ViewText {
+  if (xs.every((x) => typeof x === "string")) return xs.join("");
+  const out: ViewLine[] = [];
+  let at: ViewSpan[] = [];
+  for (const x of xs) {
+    if (typeof x === "string") {
+      x.split("\n").forEach((part, i) => {
+        if (i) out.push(at), (at = []);
+        if (part) at.push(part);
+      });
+    } else if ("spans" in x) {
+      if (at.length) out.push(at), (at = []);
+      out.push(x);
+    } else at.push(x);
+  }
+  if (at.length) out.push(at);
+  return out;
+}
+const el = <T extends ViewNode["type"]>(type: T) => (props: Props<T> = {} as Props<T>, ...more: Child[]): NodeOf<T> => {
+  const { children, ...rest } = props as Props<T> & { children?: Child };
+  const xs = flat([children, ...more]);
+  if (!xs.length) return { type, ...rest } as unknown as NodeOf<T>;
+  const into = (INSIDE as Record<string, string>)[type];
+  const inside =
+    type === "layout" ? { children: nodes(xs) }
+    : type === "block" ? { child: one(nodes(xs)) }
+    : into === "text" ? { text: lines(xs) }
+    : into === "label" ? { label: xs.every((x) => typeof x === "string") ? xs.join("") : xs }
+    : into ? { [into]: xs.join("") }
+    : undefined;
+  if (!inside) throw new Error(`a ${type} has nothing inside it: give it its fields`);
+  return { type, ...rest, ...inside } as unknown as NodeOf<T>;
+};
+export const Layout = el("layout"), Block = el("block"), Text = el("text"), List = el("list"), Table = el("table"), Tabs = el("tabs");
+export const Gauge = el("gauge"), LineGauge = el("line_gauge"), Sparkline = el("sparkline"), BarChart = el("bar_chart"), Chart = el("chart"), Canvas = el("canvas"), Calendar = el("calendar");
+export const Clear = el("clear"), Code = el("code"), Diff = el("diff"), Markdown = el("markdown"), BigText = el("big_text"), Image = el("image");
+export const Input = el("input"), Textarea = el("textarea"), Tree = el("tree"), Button = el("button"), Spinner = el("spinner"), Raster = el("raster");
+/** Fill(weight): the constraint that shares what's left, by weight. Fill({ symbol, style }): the element that paints its area. */
+export function Fill(weight: number): Constraint;
+export function Fill(props?: Props<"fill">): NodeOf<"fill">;
+export function Fill(x?: number | Props<"fill">): Constraint | NodeOf<"fill"> {
+  return typeof x === "number" ? (x === 1 ? "*" : `${x}*`) : el("fill")(x);
+}
+export const Fragment = (props: { children?: Child } | null, ...children: Child[]) => [props?.children, ...children];
 /** The classic JSX factory, for `/** @jsx h *\/` and `/** @jsxFrag Fragment *\/` (or tsconfig's jsxFactory). */
 export function h(type: ((props: any, ...children: Child[]) => unknown) | ViewNode["type"], props: Record<string, unknown> | null, ...children: Child[]): any {
   return typeof type === "function" ? type(props ?? {}, ...children) : el(type)((props ?? {}) as never, ...children);
 }
 export declare namespace h {
   namespace JSX {
-    type Element = ViewNode | ViewInline | Child[];
+    type Element = ViewNode | ViewSpan | Child[];
     interface ElementChildrenAttribute {
       children: unknown;
     }
@@ -295,15 +407,15 @@ export class Client {
     /** What this plugin shows now. */
     state: () => this.request<UiState>("ui.state", { plugin: this.name ?? "" }),
     /**
-     * Open a view, or show something else in it: an element tree (see Box, Text, … below) that modisa draws in the
-     * user's theme, over everything (placement "popup", the default) or over the pane `from` (placement "overlay").
-     * Updating it keeps what the user typed, chose and scrolled to in elements with the same `key`. The actions its
+     * Open a view, or show something else in it: an element tree (see Layout, Block, List, … above) that modisa draws in
+     * the user's theme, over everything (placement "popup", the default) or over the pane `from` (placement "overlay").
+     * Updating it keeps what the user typed, chose and scrolled to in elements with the same `id`. The actions its
      * elements, `keys` and `close` name must be ones offered in hello. Limits: VIEW_LIMITS.
      */
-    view: (id: string, root: ViewNode | Child, options: ViewOptions = {}) => this.request<{ id: string; rev: number; open: boolean }>("ui.view.set", { id, ...options, root: resolve(root) }),
+    view: (id: string, root: ViewNode | Child, options: ViewOptions = {}) => this.request<{ id: string; rev: number; open: boolean }>("ui.view.set", { id, ...options, root: one(nodes(flat([root]))) }),
     closeView: (id: string) => this.request<boolean>("ui.view.close", { id }),
-    /** Repaint a Raster of an open view in place (see rasterCells), at up to 60 a second: animation. */
-    blit: (view: string, key: string, cells: string) => this.request<true>("ui.blit", { view, key, cells }),
+    /** Repaint the Raster with this id in an open view, in place (see rasterCells), at up to 60 a second: animation. */
+    blit: (view: string, id: string, cells: string) => this.request<true>("ui.blit", { view, id, cells }),
   };
 
   /**

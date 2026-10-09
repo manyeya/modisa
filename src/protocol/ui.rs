@@ -263,7 +263,7 @@ pub fn line(v: &Value, ink: &Ink) -> Res<Line<'static>> {
         Value::Object(o) if o.contains_key("spans") => {
             let xs = o["spans"].as_array().ok_or("spans must be an array")?;
             let mut l = Line::from(of(xs)?).style(style_at(v, "style", ink.th)?);
-            l.alignment = align(&o["align"])?;
+            l.alignment = align(&v["align"])?;
             l
         }
         Value::Object(_) => Line::from(spans(v, ink)?),
@@ -279,7 +279,7 @@ pub fn text(v: &Value, ink: &Ink) -> Res<Text<'static>> {
         Value::Array(xs) => Text::from(xs.iter().map(|x| line(x, ink)).collect::<Res<Vec<_>>>()?),
         Value::Object(o) if o.contains_key("lines") => {
             let mut t = text(&o["lines"], ink)?.style(style_at(v, "style", ink.th)?);
-            t.alignment = align(&o["align"])?;
+            t.alignment = align(&v["align"])?;
             t
         }
         Value::Object(_) => Text::from(line(v, ink)?),
@@ -434,6 +434,7 @@ mod tests {
         assert_eq!(t.lines[1].spans[0].style.add_modifier, Modifier::BOLD);
         assert_eq!(t.lines[2].alignment, Some(HorizontalAlignment::Right));
         assert_eq!(text(&json!("one\ntwo"), &ink).unwrap().lines.len(), 2);
+        assert_eq!(text(&json!({ "lines": [{ "spans": ["no align"] }] }), &ink).unwrap().alignment, None);
         assert!(line(&json!(3), &ink).is_err());
     }
 

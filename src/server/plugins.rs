@@ -118,7 +118,7 @@ impl Bucket {
     }
 }
 
-// a view, and its Rasters' sizes by key: what a blit must match
+// a view, and its Rasters' sizes by id: what a blit must match
 pub struct OpenView {
     pub state: Value,
     pub rasters: HashMap<String, (u64, u64)>,
@@ -1381,7 +1381,7 @@ fn view_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
 fn blit(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
     let pr = Params::new(p)?;
     let view = pr.len("view", 1, Some(40))?;
-    let key = pr.len("key", 1, Some(80))?;
+    let id = pr.len("id", 1, Some(80))?;
     let cells = pr.str("cells")?;
     let name = ui_call(srv, c, None)?;
     let pl = srv.host.plugins.get_mut(&name).unwrap();
@@ -1391,24 +1391,26 @@ fn blit(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
         return Err(fail("rate_limited", format!("too many blits from {name}: at most {} a second", BLITS.1)));
     }
     b.tokens -= 1.0;
-    let Some((cols, rows)) = pl.ui.views.get(&view).and_then(|v| v.rasters.get(&key)).copied() else {
-        return Err(fail("invalid_params", format!("{name} has no raster {key} in an open view {view}")));
+    let Some((cols, rows)) = pl.ui.views.get(&view).and_then(|v| v.rasters.get(&id)).copied() else {
+        return Err(fail("invalid_params", format!("{name} has no raster {id} in an open view {view}")));
     };
     check_cells(&cells, cols, rows)?;
     // kept in the tree too, so a client attaching later draws what's there now
-    fn swap(n: &mut Value, key: &str, cells: &str) {
-        if n["type"] == "raster" && n["key"] == key {
+    fn swap(n: &mut Value, id: &str, cells: &str) {
+        if n["type"] == "raster" && n["id"] == id {
             n["cells"] = json!(cells);
+        } else if let Some(child) = n.get_mut("child") {
+            swap(child, id, cells);
         } else if let Some(children) = n.get_mut("children").and_then(Value::as_array_mut) {
             for c in children {
-                swap(c, key, cells);
+                swap(c, id, cells);
             }
         }
     }
     if let Some(v) = pl.ui.views.get_mut(&view) {
-        swap(&mut v.state["root"], &key, &cells);
+        swap(&mut v.state["root"], &id, &cells);
     }
-    srv.broadcast_to("plugin.blit", json!({ "plugin": name, "view": view, "key": key, "cells": cells }), &viewers(srv));
+    srv.broadcast_to("plugin.blit", json!({ "plugin": name, "view": view, "id": id, "cells": cells }), &viewers(srv));
     Ok(json!(true))
 }
 

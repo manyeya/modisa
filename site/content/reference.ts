@@ -176,24 +176,26 @@ modisa plugin marketplace remove acme`) + p(
         `Modisa draws everything in your theme and names the plugin on every piece, so nothing a plugin shows can pass for modisa's own. Each plugin, and a session's plugins together, can only show so much and update so often. It's all cleared when the plugin stops.`,
       ]) },
       { id: "views", title: "Views", html: p(
-        `For more than a segment or a row, a plugin opens a <strong>view</strong>: an element tree modisa draws in your theme, framed and named for the plugin, over everything or over one pane. It's written like a web page, as JSX or plain function calls, and needs no program of its own.`,
+        `For more than a segment or a row, a plugin opens a <strong>view</strong>: an element tree modisa draws in your theme, framed and named for the plugin, over everything or over one pane. The elements are <a href="https://ratatui.rs">ratatui</a>'s: constraint layouts, blocks around anything, its widgets, and a few modisa draws itself. It's written as JSX or plain function calls, and needs no program of its own. <a href="https://github.com/manyeya/modisa/blob/main/examples/plugins/VIEWS.md">VIEWS.md</a> has every element and field.`,
       ) + code("tsx", `await modisa.ui.view("main", (
-  <Box gap={1}>
-    <Box direction="row" gap={2}><Gauge value={0.23} label="5h 23%" /><Gauge value={0.61} tone="warn" /></Box>
-    <Diff diff={patch} filetype="typescript" />
-    <Input key="note" placeholder="comment…" action="comment" />
-    <Button label="Send" action="send" />
-  </Box>
-), { title: "Review", keys: [{ key: "s", action: "send", description: "send" }] });`) + table(["Elements", "Are"], [
-        [`${c("Box")}, ${c("Scroll")}`, "flex layout: direction, gap, padding, alignment, borders and titles; a scrolling area"],
-        [`${c("Text")}, ${c("Markdown")}, ${c("Code")}, ${c("Diff")}, ${c("Table")}, ${c("BigText")}`, "styled text with agents' marks, Markdown, highlighted code and diffs (unified or split), tables, large type"],
-        [`${c("Progress")}, ${c("Sparkline")}, ${c("Chart")}, ${c("Gauge")}, ${c("Heatmap")}`, "charts from numbers, drawn at whatever size the layout gives them, in eighth blocks and braille"],
-        [`${c("Raster")}, ${c("Image")}`, "cells the plugin paints itself, repainted in place up to 60 times a second; a PNG"],
-        [`${c("Button")}, ${c("Input")}, ${c("Textarea")}, ${c("Select")}, ${c("Tabs")}, ${c("Spinner")}`, "controls that run the plugin's actions with what they hold"],
+  <Layout direction="horizontal" constraints={[Length(30), Fill(1)]}>
+    <List id="files" items={files} selected={at} change="file" block={{ title: "files", border_type: "rounded" }} />
+    <Layout constraints={[Fill(1), Length(3)]}>
+      <Diff id="diff" cursor action="line" block={{ title: "src/auth.ts" }}>{patch}</Diff>
+      <Input id="note" placeholder="comment…" action="comment" block={{ border_type: "rounded" }} />
+    </Layout>
+  </Layout>
+), { title: "Review", keys: [{ key: "s", action: "send", description: "send" }], close: "cancel" });`) + table(["Elements", "Are"], [
+        [`${c("Layout")}, ${c("Block")}`, "children in a direction, sized by constraints (lengths, percentages, ratios, minimums, maximums, fills); a frame with borders, titles, padding and a shadow, around any element"],
+        [`${c("Text")}, ${c("Markdown")}, ${c("Code")}, ${c("Diff")}, ${c("BigText")}`, "styled spans in lines (or a program's coloured output), Markdown, highlighted code and diffs (unified or split, with a line cursor), large type"],
+        [`${c("List")}, ${c("Table")}, ${c("Tabs")}, ${c("Tree")}`, "selections the user moves through, running the plugin's actions on Enter and as the selection moves"],
+        [`${c("Gauge")}, ${c("LineGauge")}, ${c("Sparkline")}, ${c("BarChart")}, ${c("Chart")}, ${c("Canvas")}, ${c("Calendar")}`, "ratatui's charts, drawn at whatever size the layout gives them"],
+        [`${c("Image")}, ${c("Raster")}`, "a PNG, JPEG or GIF (in your terminal's graphics protocol where it has one); cells the plugin paints itself, repainted in place up to 60 times a second"],
+        [`${c("Input")}, ${c("Textarea")}, ${c("Button")}, ${c("Spinner")}, ${c("Fill")}, ${c("Clear")}`, "controls that run the plugin's actions with what they hold, and the rest"],
       ]) + ul([
-        `${kbd("Tab")} moves between controls, the view's own keys run its actions, ${kbd("Esc")} closes it (and tells the plugin), and so does ${kbd("Ctrl+B")} ${kbd("x")}.`,
-        `Updating a view keeps what you've typed, chosen and scrolled to.`,
-        `Colours are tones, so a view follows your theme; text is cleaned like everything else a plugin shows, and a view can only be so big.`,
+        `${kbd("Tab")} moves between interactive elements, the view's own keys run its actions, ${kbd("Esc")} closes it (and tells the plugin), and so does ${kbd("Ctrl+B")} ${kbd("x")}.`,
+        `Updating a view keeps what you've typed, chosen, opened and scrolled to.`,
+        `Colours are your theme's (${c("$accent")}, ${c("$warn")}, ${c("$dim")}, …), so a view follows it; text is cleaned like everything else a plugin shows, and a view can only be so big.`,
       ]) },
       { id: "keys", title: "Keys", html: code("toml", `[plugin_keys]\n"attention-log.log" = "Y"   # <plugin>.<action or pane>; "" turns it off`) + p(
         `A plugin's ${c("keys")} bind keys under the prefix to its actions and panes. A key modisa uses, one reserved for getting out of plugin panes (${c("x")}, ${c("d")}, Escape), or one two plugins want is off, and the keyboard guide says why. ${c("[plugin_keys]")} moves a key. Each client binds keys with its own config, so two people attached to one session can differ.`,

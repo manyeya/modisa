@@ -187,8 +187,8 @@ pub struct WorkspaceView {
 pub type PluginUiView = Value;
 
 // The plugin UI a client understands, sent with attach: the server sends plugins' UI only to clients at this version or
-// later, so an older client never gets what it can't draw.
-pub const PLUGIN_UI: u32 = 2;
+// later, so an older client never gets what it can't draw. 3: views as examples/plugins/VIEWS.md says them.
+pub const PLUGIN_UI: u32 = 3;
 
 // Everything a client needs to draw the session.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
