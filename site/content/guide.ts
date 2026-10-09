@@ -155,16 +155,88 @@ ssh -T -p 2222 me@build-01 modisa proxy -s api    # …and ssh://me@build-01:222
     sections: [
       { id: "page", title: "The settings page", html: p(`${kbd("Ctrl+B")} ${kbd("s")}, or ⚙ settings in the sidebar. The sections run down the side; type to search every one of them at once. Tab or a click switches section, ↑↓ or the pointer selects, ←→ changes a value, Enter, space or a click applies, Esc closes. The line under the list says what the selected setting does. Every change applies at once and is saved to ${c("~/.config/modisa/config.toml")}, keeping your comments.`) },
       { id: "sections", title: "Sections", html: table(["Section", "What it sets"], [
-        ["theme", "Ion, Tokyo Night, Catppuccin Mocha, Gruvbox, Nord, Dracula and the Bearded themes — previewed live."],
+        ["theme", "Ion, Tokyo Night, Catppuccin (Mocha and Latte), Gruvbox (dark and light), Nord, Dracula, GitHub Light, Solarized Light, the Bearded themes, and your own — previewed live."],
         ["general", "The prefix key, select on hover, updates (and their channel), and the config file itself."],
-        ["layout", "The sidebar (shown, width, logos, which list it shows), what the status row shows, and pane borders."],
+        ["layout", "The sidebar (shown, width, logos), what the status row shows, and pane borders. Where the sidebar and tab bar go, and formats for the status row, tabs and titles, are in config.toml: see <a href=\"../customize/\">Make it yours</a>."],
         ["git", "The repository name, branch, ↑↓ commit counts and ● changed files in the status row, each on or off."],
         ["indicators", "The state glyphs (symbols ! ◆ ✓ ○, dots or letters) and where they show: tab badge, pane border, sidebar."],
         ["sound", `What plays when an agent needs you, is done, or starts working — 17 sounds from <a href="https://cuelume.dev">cuelume</a>, or off — and the volume.`],
         ["alerts", "Toast, system notification and terminal bell, per event."],
         ["agents", "What an agent may do to panes it didn't start (allow, ask or deny), and how much agents may message each other."],
         ["integrations", `Every agent's integration: installed, update available, available, not found. See <a href="../integrations/">Integrations</a>.`],
+        ["plugins", "The plugin manager, your plugins (start, stop), and each running plugin's own settings."],
+        ["slots", `Who draws each part of modisa's chrome that a plugin can replace: modisa, or a plugin that asks. See <a href="../plugins/#slots">Slots</a>.`],
       ]) + note("Alerts are for agents you're not looking at", "The focused pane never alerts; a background agent that blocks or finishes does.") },
+    ],
+  },
+  {
+    slug: "customize", group: "Using modisa", title: "Make it yours",
+    description: "Themes, formats, layout, keys, commands, hooks, sounds and profiles: config.toml for everything the settings page doesn't have.",
+    sections: [
+      { id: "themes", title: "Themes", html: p(
+        `A theme of your own is a file in ${c("~/.config/modisa/themes/<name>.toml")}, over a built-in or another of yours: any of its twelve colours, and the <em>roles</em> of the chrome (tabs, status row, sidebar, borders, menus, toasts). It applies as soon as you save it. ${c("theme = { dark = …, light = … }")} follows your terminal's background. ${c("modisa theme import <file>")} turns a Ghostty, iTerm2, Alacritty, kitty, Windows Terminal or base16 scheme into one.`,
+      ) + code("toml", `inherits = "catppuccin-mocha"
+accent = "#f5c2e7"
+
+[roles]
+"tab.active" = "bold $bg on $accent"
+status = "$fg on #000000"`) },
+      { id: "formats", title: "Formats", html: p(
+        `The status row, tab labels, pane titles, the terminal's window title and the sidebar's agent rows can each be a format: text with ${c("{variables}")}, ${c("{?condition|then|else}")}, ${c("#[styles]")} and ${c("#[click=action]")} parts.`,
+      ) + code("toml", `[status]
+left = "#[click=palette]#[bold $accent] modisa #[] {space} {?blocked|#[$blocked]! {blocked} need you|}"
+right = "{git.branch}{?git.changes| ●{git.changes}|} #[$dim]{clock:%H:%M}"
+
+[tabs]
+format = "{tab.index}:{tab}"
+position = "bottom"
+
+[window]
+title = "{space} · {name}"`) },
+      { id: "layout", title: "Layout", html: code("toml", `[sidebar]
+position = "right"
+sections = ["agents", "plugin:radar", "commands"]
+row = ["{icon} {name}", "  {agent} · {state}{?meta.context| · {meta.context}|}"]
+
+[panes]
+border = "light_triple_dashed"
+title_position = "bottom_center"
+dim_unfocused = 0.3`) },
+      { id: "keys", title: "Keys and modes", html: p(
+        `Keys work without the prefix in ${c("[root_keys]")} (each needs Ctrl or Alt), ${c("[actions]")} names a list of actions to bind as one, and a key mode lets a few keys work alone until Escape.`,
+      ) + code("toml", `[root_keys]
+"focus-left" = "M-h"
+"focus-right" = "M-l"
+
+[actions]
+"dev-layout" = ["split-right", "focus-left", "zoom"]
+
+[modes.resize]
+enter = "r"
+keys = { "resize-left" = "h", "resize-right" = "l" }`) },
+      { id: "commands", title: "Commands", html: p(`Your own entries in the palette, on keys, with prompts that type or pick.`) + code("toml", `[[command]]
+name = "Switch branch"
+key = "B"
+run = "git switch {branch}"
+in = "background"
+prompts = [{ name = "branch", pick = "git branch --format=%(refname:short)" }]`) },
+      { id: "hooks", title: "Hooks", html: p(
+        `Commands that run on events (an agent's state, a pane's exit, a message), and commands that stand in front of what agents do — a message they send, an agent they spawn, keys they type into a pane — and may stop it or change it.`,
+      ) + code("toml", `[[hook]]
+on = "agent.state"
+when = "to == 'blocked'"
+run = "say {name} needs you"
+
+[[hook]]
+on = "message.send"
+run = "~/bin/redact-secrets"   # prints {"body": "…"} to change it, or {"allow": false} to stop it`) },
+      { id: "sound", title: "Notifications and sound", html: p(
+        `${c("[notify.<agent>]")} and ${c("[sound.<agent>]")} give one agent its own; ${c("[sound] pack")} names a directory of your own sounds; ${c("[notify] unread")} keeps a tab marked until you look at it; a pane's menu mutes it.`,
+      ) },
+      { id: "meta", title: "Metadata", html: p(`Any program can show values in modisa — ${c("{meta.context}")} in a format — with ${c("modisa pane meta set context=43%")}, or the user-variable escape other terminals take.`) },
+      { id: "profiles", title: "Profiles", html: p(
+        `${c("modisa profile export > my-setup.toml")} puts all of it in one file: config.toml, your themes, and where your plugins came from. ${c("modisa profile import <file or URL>")} shows what it changes and asks first.`,
+      ) + p(`Every setting, variable and event: <a href="https://github.com/manyeya/modisa/blob/main/examples/config/CUSTOMIZE.md">CUSTOMIZE.md</a>.`) },
     ],
   },
 ];

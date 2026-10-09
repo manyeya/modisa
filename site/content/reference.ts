@@ -166,8 +166,29 @@ modisa plugin marketplace remove acme`) + p(
         [c("plugin logs <name>"), "Its stdout and stderr."],
         [c("plugin stop <name> | start <name>"), "Stop or start it in the session."],
         [c("plugin run <name> <action> [json]"), "Call one of its actions. A timeout means the outcome is unknown: running it again can repeat its effects."],
-        [c("plugin dev <dir>"), "A throwaway session with the plugin running, to try it by hand."],
+        [c("plugin restart <name>"), "Stop and start it in the session (after a grant, say)."],
+        [c("plugin dev <dir> [--watch]"), "A throwaway session with the plugin running, to try it by hand; with --watch it restarts whenever you save."],
+        [c("plugin validate <dir> [--json]"), "Check it without running it: its manifest, permissions, settings, client library and run command."],
+        [c("plugin grant | revoke <name> [permission…]"), "What it may do through modisa (below)."],
       ]) },
+      { id: "permissions", title: "Permissions", html: p(
+        `A plugin says in its plugin.json what it may do through modisa, and gets only what it asks for and you grant. ${c("link")} and ${c("install")} show what it asks for and, at a terminal, ask you first; ${c("plugin grant")} and ${c("plugin revoke")} change that later (then ${c("plugin restart")}). A request beyond them fails with ${c("permission_denied")}, saying why. A plugin that declares nothing (written before permissions) may do what plugins always could; ${c("plugin list")} says so. No plugin may restart or kill the session.`,
+      ) + code("json", `"permissions": ["ui", "panes.read"]`) + table(["Permission", "Lets it"], [
+        [c("ui"), "Show things: status, sidebar, badges, menus, toasts, views, slots that add."],
+        [c("ui.replace"), "Ask to draw instead of modisa's own widgets ([slots] still decides)."],
+        [c("panes.read"), "Read panes' text, and pane.output events."],
+        [c("panes.control"), "Type and run commands in panes; split, close, move, resize, focus and zoom them; open plugin panes."],
+        [c("agents"), "Start agents."],
+        [c("messages"), "Message agents and read the inbox."],
+        [c("notify"), "System notifications and sounds."],
+        [c("sessions"), "Create, rename and close spaces and tabs."],
+      ]) + p(`Permissions are about what a plugin does through modisa: it's still a program running as you. <a href="https://github.com/manyeya/modisa/blob/main/examples/plugins/TOOLING.md">TOOLING.md</a> has the details.`) },
+      { id: "plugin-settings", title: "Its settings", html: p(
+        `A plugin can offer settings — booleans, numbers, choices, text — that show in modisa's settings page under Plugins. The plugin reads them with ${c("await modisa.settings()")} and hears when you change one with ${c("modisa.onSettings(fn)")}; they're kept in its ${c("$MODISA_PLUGIN_CONFIG/settings.json")}.`,
+      ) + code("json", `"settings": [
+  { "key": "threshold", "type": "number", "default": 80, "min": 0, "max": 100, "title": "Warn above (%)" },
+  { "key": "provider", "type": "enum", "options": ["claude", "codex", "both"], "default": "both", "title": "Show" }
+]`) + p(`For tests, the client library's ${c("renderView(tree, { width, height })")} draws a view as text the way modisa does (${c("modisa view render")}), so a view can be snapshot-tested without a session.`) },
       { id: "tui", title: "In the TUI", html: ul([
         `Pieces in every part of modisa's own screen (<strong>slots</strong>, below): the status row, tabs, spaces, pane borders, agents' rows, sidebar sections, the pane, tab and space menus and the palette; and <strong>toasts</strong>, with rich text and buttons.`,
         `${c('[sidebar] agents = "radar"')} in config.toml (or ${c('[slots] "sidebar.agents" = "radar"')}) puts that plugin's section where modisa's agent list is, with all its room; when the plugin isn't running or shows nothing, modisa's list is back.`,
