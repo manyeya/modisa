@@ -106,10 +106,17 @@ mod os {
         Some(Info { pid, ppid: ppid(pid)?, args })
     }
 
-    // the kernel's own list when it keeps one (CONFIG_PROC_CHILDREN), else every process's parent
+    // the kernel's own lists when it keeps them (CONFIG_PROC_CHILDREN): one per thread, since a child belongs to the
+    // thread that started it; else every process's parent
     pub fn children(pid: i32) -> Vec<i32> {
-        if let Ok(list) = std::fs::read_to_string(format!("/proc/{pid}/task/{pid}/children")) {
-            return list.split_whitespace().filter_map(|p| p.parse().ok()).collect();
+        let lists: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/task"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|t| std::fs::read_to_string(t.path().join("children")).ok())
+            .collect();
+        if !lists.is_empty() {
+            return lists.iter().flat_map(|l| l.split_whitespace()).filter_map(|p| p.parse().ok()).collect();
         }
         std::fs::read_dir("/proc")
             .into_iter()
