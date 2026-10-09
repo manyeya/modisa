@@ -356,7 +356,103 @@ async fn in_session(t: &Throwaway, dir: &str, manifest: &PluginManifest, server:
     Ok(Some(pass))
 }
 
-pub async fn dev_plugin(arg: &str) -> i32 {
+// Each file under a plugin's directory (but node_modules, .git and the like) with when it changed and how big it is:
+// what `plugin dev --watch` compares from one second to the next.
+fn files_of(dir: &str) -> Vec<(String, Option<std::time::SystemTime>, u64)> {
+    let mut out = vec![];
+    let mut todo = vec![(std::path::PathBuf::from(dir), 0)];
+    while let Some((d, depth)) = todo.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name == "node_modules" || out.len() > 2000 {
+                continue;
+            }
+            match e.metadata() {
+                Ok(m) if m.is_dir() && depth < 4 => todo.push((e.path(), depth + 1)),
+                Ok(m) if m.is_file() => out.push((e.path().to_string_lossy().into_owned(), m.modified().ok(), m.len())),
+                _ => {}
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+// `modisa plugin validate <dir>`: a plugin checked without running it (TOOLING.md).
+pub fn validate(arg: &str, json: bool) -> i32 {
+    let Some(dir) = plugin_dir(arg) else { return 2 };
+    let mut problems: Vec<String> = vec![];
+    let mut notes: Vec<String> = vec![];
+    let manifest = read_manifest(&dir);
+    if let Err(e) = &manifest {
+        problems.push(e.clone());
+    }
+    let m = manifest.ok();
+    let current = sdk_version(SDK_TEXT);
+    let vendored = std::fs::read_to_string(format!("{dir}/modisa-plugin.ts")).ok().and_then(|t| sdk_version(&t));
+    if let (Some(v), Some(c)) = (vendored, current) {
+        if v < c {
+            notes.push(format!("its client library is version {v}; this modisa's is {c}: modisa plugin sdk > modisa-plugin.ts"));
+        }
+    }
+    let run = m.as_ref().and_then(|m| m.run.first().cloned());
+    let found = run.as_ref().is_some_and(|r| crate::core::paths::which(r).is_some() || std::path::Path::new(&dir).join(r).exists());
+    if run.is_some() && !found {
+        problems.push(format!("{} isn't on the PATH or in its directory", run.clone().unwrap_or_default()));
+    }
+    if let Some(m) = &m {
+        if m.permissions.is_none() {
+            notes.push("it doesn't say what it does through modisa (no permissions): it's treated as allowed everything a plugin can do".into());
+        }
+    }
+    let count = |v: Option<usize>| v.unwrap_or(0);
+    if json {
+        let r = json!({
+            "ok": problems.is_empty(),
+            "name": m.as_ref().map(|m| m.name.clone()),
+            "permissions": m.as_ref().and_then(|m| m.permissions.clone()),
+            "settings": count(m.as_ref().and_then(|m| m.settings.as_ref().map(Vec::len))),
+            "actions": count(m.as_ref().and_then(|m| m.actions.as_ref().map(Vec::len))),
+            "keys": count(m.as_ref().and_then(|m| m.keys.as_ref().map(Vec::len))),
+            "panes": count(m.as_ref().and_then(|m| m.panes.as_ref().map(Vec::len))),
+            "links": count(m.as_ref().and_then(|m| m.links.as_ref().map(Vec::len))),
+            "sdk": { "vendored": vendored, "current": current },
+            "run": { "command": run, "found": found },
+            "problems": problems,
+            "notes": notes,
+        });
+        outln!("{}", stringify(&r, true));
+    } else {
+        if let Some(m) = &m {
+            ok("manifest", Some(&format!("{} (protocol {})", m.name, m.protocol)));
+            let perms = m.permissions.as_ref().map(|p| if p.is_empty() { "none".to_string() } else { p.join(", ") }).unwrap_or_else(|| "undeclared".into());
+            ok("permissions", Some(&perms));
+            ok(
+                "offers",
+                Some(&format!(
+                    "{} actions, {} keys, {} panes, {} links, {} settings",
+                    count(m.actions.as_ref().map(Vec::len)),
+                    count(m.keys.as_ref().map(Vec::len)),
+                    count(m.panes.as_ref().map(Vec::len)),
+                    count(m.links.as_ref().map(Vec::len)),
+                    count(m.settings.as_ref().map(Vec::len))
+                )),
+            );
+        }
+        if run.is_some() && found {
+            ok("runs", run.as_deref());
+        }
+        for n in &notes {
+            outln!("! {n}");
+        }
+        for p in &problems {
+            bad("problem", p);
+        }
+    }
+    if problems.is_empty() { 0 } else { 1 }
+}
+
+pub async fn dev_plugin(arg: &str, watch: bool) -> i32 {
     let Some(dir) = plugin_dir(arg) else { return 2 };
     let manifest = match read_manifest(&dir) {
         Ok(m) => m,
@@ -377,7 +473,28 @@ pub async fn dev_plugin(arg: &str) -> i32 {
         manifest.name, t.root, t.env[0].1, t.env[1].1, t.session, manifest.name
     );
     tokio::time::sleep(Duration::from_millis(1500)).await;
+    // --watch: a change to its files restarts it in the throwaway session
+    let watcher = watch.then(|| {
+        let (dir, env, session, name) = (dir.clone(), t.child_env.clone(), t.session, manifest.name.clone());
+        tokio::task::spawn_local(async move {
+            let mut last = files_of(&dir);
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let now = files_of(&dir);
+                if now == last {
+                    continue;
+                }
+                last = now;
+                for verb in ["stop", "start"] {
+                    let _ = tokio::process::Command::new(self_exe()).args(["-s", session, "plugin", verb, &name]).env_clear().envs(env.iter().cloned()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().await;
+                }
+            }
+        })
+    });
     let attached = tokio::process::Command::new(self_exe()).args(["-s", t.session]).env_clear().envs(t.child_env.iter().cloned()).current_dir(&dir).status().await;
+    if let Some(w) = watcher {
+        w.abort();
+    }
     let _ = tokio::process::Command::new(self_exe()).args(["kill", t.session]).env_clear().envs(t.child_env.iter().cloned()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().await;
     rm_rf(&t.root);
     attached.map_or(1, |s| s.code().unwrap_or(1))

@@ -6,7 +6,7 @@
 // gap and no duplicates (subscribe). When the session's socket closes, `closed` resolves: exit then, because the next
 // server starts the plugin again. runPlugin does all of that.
 
-export const SDK_VERSION = 12;
+export const SDK_VERSION = 13;
 export const PROTOCOL = 1;
 
 export type AgentState = "working" | "blocked" | "done" | "idle";
@@ -366,6 +366,7 @@ export class Client {
   private actions: Record<string, Action> = {};
   private running = new Map<string, AbortController>(); // invocation → its call's signal
   private listeners: ((e: Event) => void)[] = [];
+  private settingsListeners: ((s: Record<string, unknown>) => void)[] = [];
   private cause?: Error;
   private onClosed!: (cause: Error) => void;
   /** Resolves, with the reason, once the connection to the session is gone. */
@@ -396,7 +397,18 @@ export class Client {
       } else if (m.method === "event" && m.params) for (const listen of this.listeners) listen(m.params);
       else if (m.method === "plugin.action" && m.id !== undefined) void this.answer(m.id, m.params ?? {});
       else if (m.method === "plugin.cancel") this.running.get(m.params?.invocation)?.abort(new Error("modisa stopped waiting for this action"));
+      else if (m.method === "plugin.settings.changed" && m.params?.settings) for (const listen of this.settingsListeners) listen(m.params.settings);
     }
+  }
+
+  /** The user's settings for this plugin (plugin.json's `settings`, each the user's value or its default). */
+  settings(): Promise<Record<string, unknown>> {
+    return this.request("plugin.settings");
+  }
+
+  /** Called with all of them whenever the user changes one (in modisa's settings page). */
+  onSettings(listen: (settings: Record<string, unknown>) => void) {
+    this.settingsListeners.push(listen);
   }
 
   /** The connection is gone. */
@@ -636,6 +648,18 @@ export async function connect(socket = Bun.env.MODISA_SOCKET, open: Connector = 
 }
 
 /** Run a plugin: connect, run `main`, and exit once the session's connection closes (the next server starts it again). */
+/**
+ * A view drawn as text, without a session, the way modisa draws it (`modisa view render`): for snapshot tests.
+ * `tree` is an element, or { root, title, keys }; `modisa` is the binary to use (default: the one on the PATH).
+ */
+export async function renderView(tree: unknown, o: { width?: number; height?: number; theme?: string; modisa?: string } = {}): Promise<string> {
+  const args = ["view", "render", "-", "--size", `${o.width ?? 80}x${o.height ?? 24}`, ...(o.theme ? ["--theme", o.theme] : [])];
+  const p = Bun.spawn([o.modisa ?? "modisa", ...args], { stdin: new Blob([JSON.stringify(tree)]), stdout: "pipe", stderr: "pipe" });
+  const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+  if (code !== 0) throw new Error(err.trim() || `modisa view render exited ${code}`);
+  return out;
+}
+
 export async function runPlugin(main: (modisa: Client) => unknown) {
   try {
     const modisa = await connect();

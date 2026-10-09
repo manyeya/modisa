@@ -16,7 +16,7 @@ pub struct Args {
     pub lists: IndexMap<String, Vec<String>>,
 }
 
-const BOOLEAN: &[&str] = &["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes", "screen", "new-tab", "new-workspace", "on", "off", "toggle", "system", "sound", "takeover", "observe", "ansi"];
+const BOOLEAN: &[&str] = &["json", "follow", "exited", "right", "down", "tab", "focus", "output", "help", "idle", "release", "version", "purge", "yes", "screen", "new-tab", "new-workspace", "on", "off", "toggle", "system", "sound", "takeover", "observe", "ansi", "watch"];
 // Flags given once per value, which all count: --env A=1 --env B=2. They're in `lists`, not `flags`.
 const REPEATABLE: &[&str] = &["env"];
 // Flags that take a value in one command though they're switches elsewhere: `agent spawn --tab` opens a tab, while

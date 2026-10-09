@@ -58,8 +58,24 @@ pub fn dispatch(shared: &Shared, client: u64, m: Value) {
     // a second one from the same plugin included, is trusted as the local user, caller claims and all. Nothing here is
     // authentication.
     let plugin = shared.borrow().clients.get(&client).and_then(|c| c.plugin.clone());
-    if let (Some(plugin), Some(_)) = (plugin, params.get("caller")) {
+    if let (Some(plugin), Some(_)) = (&plugin, params.get("caller")) {
         return reply(Err(crate::protocol::conn::fail("invalid_params", format!("invalid params: caller: plugin {plugin} acts as itself, not as a pane"))));
+    }
+    // a plugin does through modisa only what it was granted (examples/plugins/TOOLING.md, Permissions)
+    if let (Some(name), Some(need)) = (&plugin, crate::protocol::plugin::needs(&method, &params)) {
+        let srv = shared.borrow();
+        let p = srv.host.plugins.get(name);
+        if p.is_some_and(|p| need == "never" || p.granted.as_ref().is_some_and(|g| !g.contains(need))) {
+            let why = if need == "never" {
+                format!("no plugin may call {method}")
+            } else if p.is_some_and(|p| p.missing.iter().any(|m| m == need)) {
+                format!("{name} wasn't granted {need}, which {method} needs: modisa plugin grant {name} {need}")
+            } else {
+                format!("{method} needs {need}, and {name}'s plugin.json doesn't ask for it (its permissions)")
+            };
+            drop(srv);
+            return reply(Err(crate::protocol::conn::fail("permission_denied", why)));
+        }
     }
     // a [[hook]] stands in front of this request: it runs first, then the request with what it left
     let hooked = crate::server::hooks::intercepted(&method).filter(|e| shared.borrow().cfg.hook.iter().any(|h| h.on == *e));

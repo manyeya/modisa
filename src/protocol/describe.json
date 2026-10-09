@@ -8033,6 +8033,40 @@
           "description": "none: all of them"
         }
       }
+    },
+    "plugin.settings": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "caller": {
+          "type": "string"
+        }
+      },
+      "description": "a plugin's own settings: each the user's value or its default (examples/plugins/TOOLING.md)"
+    },
+    "plugin.settings.set": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "caller": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {}
+      },
+      "required": [
+        "plugin",
+        "key",
+        "value"
+      ],
+      "description": "the user sets one of a plugin's settings (never a plugin): saved, and the plugin gets plugin.settings.changed"
     }
   },
   "results": {

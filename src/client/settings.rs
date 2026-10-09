@@ -68,6 +68,7 @@ pub enum Act {
     Plugin(String, bool), // name, running
     Plugins(&'static str), // the plugin manager, at one of its views
     Slot(&'static str),    // who draws a slot
+    PluginSetting(String, String), // a plugin's own setting: its name, the setting's key
 }
 
 #[derive(Clone, Debug)]
@@ -284,6 +285,21 @@ fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
                 });
                 v.push(action(name, shown, tone, Some(note), if status == "running" { "↵ stop" } else { "↵ start" }, Act::Plugin(name.into(), status == "running"), &about));
             }
+            // each running plugin's own settings (its plugin.json's): ←→ to change one, ↵ to type one
+            for p in super::plugin_ui::plugin_ui(app) {
+                let Some(list) = p["settings"].as_array().filter(|l| !l.is_empty()) else { continue };
+                let name = p["plugin"].as_str().unwrap_or("");
+                v.push(heading(&format!("{name} settings")));
+                for st in list {
+                    let (key, title) = (st["key"].as_str().unwrap_or(""), st["title"].as_str().unwrap_or(""));
+                    let act = Act::PluginSetting(name.into(), key.into());
+                    let about = format!("{name}'s {key}, in {name}'s settings.json; it hears when it changes");
+                    v.push(match st["type"].as_str() {
+                        Some("boolean") => toggle(title, st["value"] == true, act, &about),
+                        _ => choice(title, st["value"].as_str().map(String::from).unwrap_or_else(|| st["value"].to_string()), act, &about),
+                    });
+                }
+            }
             v
         }
     }
@@ -398,8 +414,50 @@ fn notify_list(app: &App, event: AgentState) -> Vec<NotifyKind> {
     app.cfg.notify.kinds(event).to_vec()
 }
 
+// A plugin's setting given, through the server: it saves it and tells the plugin.
+fn set_plugin_setting(app: &App, plugin: &str, key: &str, value: Value) {
+    let Some(conn) = app.conn.clone() else { return };
+    let (me, p) = (app.me.clone(), json!({ "plugin": plugin, "key": key, "value": value }));
+    tokio::task::spawn_local(async move {
+        if let Err(e) = conn.request("plugin.settings.set", p, None).await {
+            if let Some(a) = me.upgrade() {
+                let mut a = a.borrow_mut();
+                let w = a.th.warn;
+                a.toast(&e.message, w);
+            }
+        }
+    });
+}
+
+fn plugin_setting<'a>(app: &'a App, plugin: &str, key: &str) -> Option<&'a Value> {
+    super::plugin_ui::plugin_ui(app).iter().find(|p| p["plugin"] == plugin)?["settings"].as_array()?.iter().find(|s| s["key"] == key)
+}
+
+// ←→ on a plugin's setting: the next option, or a step up or down (a twentieth of its range, else 1)
+fn step_plugin_setting(app: &App, plugin: &str, key: &str, by: i64) {
+    let Some(st) = plugin_setting(app, plugin, key) else { return };
+    let next = match st["type"].as_str() {
+        Some("boolean") => json!(st["value"] != true),
+        Some("enum") => {
+            let options: Vec<&str> = st["options"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            json!(cycle(&options, st["value"].as_str().unwrap_or(""), by))
+        }
+        Some("number") => {
+            let (min, max) = (st["min"].as_f64(), st["max"].as_f64());
+            let unit = match (min, max) {
+                (Some(a), Some(b)) if b > a => ((b - a) / 20.0).max(1.0).round(),
+                _ => 1.0,
+            };
+            json!((st["value"].as_f64().unwrap_or(0.0) + unit * by as f64).clamp(min.unwrap_or(f64::MIN), max.unwrap_or(f64::MAX)))
+        }
+        _ => return,
+    };
+    set_plugin_setting(app, plugin, key, next);
+}
+
 fn step(app: &mut App, s: &mut Settings, act: &Act, by: i64) {
     match act {
+        Act::PluginSetting(plugin, key) => step_plugin_setting(app, plugin, key, by),
         Act::Prefix => save(app, None, "prefix", json!(format!("C-{}", cycle(&PREFIXES, &app.prefix.name, by)))),
         Act::Channel => {
             let now = json!(app.cfg.update.channel).as_str().unwrap_or("stable").to_string();
@@ -510,6 +568,21 @@ fn activate(app: &mut App, s: &mut Settings, row: &Row) {
             s.close = true;
             let (shared, view) = (app.shared(), *view);
             tokio::task::spawn_local(async move { super::plugins::open(&shared, view).await });
+        }
+        (Kind::Toggle { on }, Act::PluginSetting(plugin, key)) => set_plugin_setting(app, plugin, key, json!(!on)),
+        (Kind::Choice { value }, Act::PluginSetting(plugin, key)) => {
+            if plugin_setting(app, plugin, key).is_some_and(|st| st["type"] == "string") {
+                // typed: the page closes for the prompt, as it does for every dialog of its own
+                s.close = true;
+                let (shared, plugin, key, value) = (app.shared(), plugin.clone(), key.clone(), value.clone());
+                tokio::task::spawn_local(async move {
+                    if let Some(v) = super::modals::prompt(&shared, &key, &value, "").await {
+                        set_plugin_setting(&shared.borrow(), &plugin, &key, json!(v));
+                    }
+                });
+            } else {
+                step_plugin_setting(app, plugin, key, 1);
+            }
         }
         (Kind::Action { .. }, Act::Plugin(name, running)) => {
             if s.busy.is_empty() {

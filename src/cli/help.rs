@@ -47,7 +47,10 @@ agents
 
 plugins (examples/plugins/README.md)
   modisa plugin new <name> [--dir d]        scaffold one: TypeScript, modisa's client library, a guide, a test
-  modisa plugin check <dir> | dev <dir>     verify it in a throwaway session | try it in one (not a sandbox)
+  modisa plugin check <dir> | dev <dir> [--watch]   verify it in a throwaway session | try it in one (not a sandbox; --watch restarts it on changes)
+  modisa plugin validate <dir> [--json]     check it without running it: manifest, permissions, settings, client library, run command
+  modisa plugin grant|revoke <name> [permission…]   what it may do through modisa (none named: all it asks for | all of it)
+  modisa plugin restart <name>              stop and start it in the running session
   modisa plugin sdk | schema                the client library's source | every request, result and event (JSON Schema)
   modisa plugin list [--json] | logs <name> [--lines 50] | stop <name> | start <name>
   modisa plugin link <dir> [--json]         register it for every session, then start it in the running session

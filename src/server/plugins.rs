@@ -22,7 +22,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use indexmap::IndexMap;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tokio::io::AsyncReadExt;
 
 use super::rpc::dispatch::Handler;
@@ -230,6 +230,8 @@ pub struct Plugin {
     pub actions: Vec<String>,
     pub stopping: bool,
     pub starting: bool,
+    pub granted: Option<std::collections::HashSet<String>>, // what it may do (None: undeclared, as before permissions)
+    pub missing: Vec<String>,                               // what it declares but the user hasn't granted
     ui: UiState,
 }
 
@@ -294,7 +296,7 @@ fn install_of(name: &str, dir: &str) -> Option<Value> {
 fn add<'a>(srv: &'a mut Server, name: &str, source: &'static str, dir: Option<String>) -> &'a mut Plugin {
     // starting until it's launched or fails to: never reported as failed before it has had a chance to run
     let log = format!("{}/plugins/{}.{name}.log", *DIR, srv.session);
-    srv.host.plugins.insert(name.into(), Plugin { name: name.into(), source, dir, status: "starting", pid: None, exit_code: None, signal: None, error: None, log, install: None, run: None, argv: None, manifest: None, client: None, actions: vec![], stopping: false, starting: false, ui: UiState::new() });
+    srv.host.plugins.insert(name.into(), Plugin { name: name.into(), source, dir, status: "starting", pid: None, exit_code: None, signal: None, error: None, log, install: None, run: None, argv: None, manifest: None, client: None, actions: vec![], stopping: false, starting: false, granted: None, missing: vec![], ui: UiState::new() });
     srv.host.plugins.get_mut(name).unwrap()
 }
 
@@ -691,7 +693,54 @@ fn ui_of(pl: &Plugin, legacy: bool) -> Value {
     v["keys"] = if live { json!(manifest.iter().flat_map(|m| m.keys.iter().flatten()).map(|k| { let mut x = json!({ "key": k.key }); if let Some(a) = &k.action { x["action"] = json!(a) } if let Some(p) = &k.pane { x["pane"] = json!(p) } x["description"] = json!(k.description); x }).collect::<Vec<_>>()) } else { json!([]) };
     v["panes"] = if live { json!(manifest.iter().flat_map(|m| m.panes.iter().flatten()).map(|p| json!({ "id": p.id, "title": p.title, "placement": p.placement })).collect::<Vec<_>>()) } else { json!([]) };
     v["links"] = if pl.client.is_some() { json!(manifest.iter().flat_map(|m| m.links.iter().flatten()).filter(|l| pl.actions.contains(&l.action)).collect::<Vec<_>>()) } else { json!([]) };
+    // the settings it offers, each with its value now, for the settings page
+    let values = settings_of(pl);
+    let offered: Vec<Value> = manifest.iter().flat_map(|m| m.settings.iter().flatten()).map(|s| { let mut x = json!(s); x["value"] = values.get(&s.key).cloned().unwrap_or(Value::Null); x }).collect();
+    if live && !offered.is_empty() {
+        v["settings"] = json!(offered);
+    }
     v
+}
+
+// ---------- settings (examples/plugins/TOOLING.md, Settings) ----------
+
+fn settings_file(name: &str) -> String {
+    format!("{}/plugin-config/{name}/settings.json", *CONFIG_DIR)
+}
+
+// A plugin's settings: what it declares, each the user's value where that's one it takes, else its default.
+pub fn settings_of(pl: &Plugin) -> Map<String, Value> {
+    let saved: Map<String, Value> = std::fs::read_to_string(settings_file(&pl.name)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    pl.manifest.iter().flat_map(|m| m.settings.iter().flatten()).map(|s| (s.key.clone(), saved.get(&s.key).filter(|v| s.check(v).is_ok()).cloned().unwrap_or_else(|| s.default.clone()))).collect()
+}
+
+// A plugin asks for its settings.
+fn plugin_settings(srv: &mut Server, _p: &Value, c: u64) -> RpcResult {
+    let name = srv.clients.get(&c).and_then(|c| c.plugin.clone()).ok_or_else(|| fail("invalid_params", "plugin.settings is a plugin's own: call it from a plugin"))?;
+    Ok(json!(srv.host.plugins.get(&name).map(settings_of).unwrap_or_default()))
+}
+
+// The settings page sets one (never a plugin: it's the user's): saved, and the plugin told.
+fn plugin_settings_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
+    if srv.clients.get(&c).is_some_and(|c| c.plugin.is_some()) {
+        return Err(fail("permission_denied", "a plugin's settings are the user's to set"));
+    }
+    let pr = Params::new(p)?;
+    let name = pr.len("plugin", 1, None)?;
+    let key = pr.len("key", 1, None)?;
+    let value = pr.raw("value").cloned().unwrap_or(Value::Null);
+    let pl = srv.host.plugins.get(&name).ok_or_else(|| fail("not_found", format!("no plugin {name}")))?;
+    let s = pl.manifest.iter().flat_map(|m| m.settings.iter().flatten()).find(|s| s.key == key).ok_or_else(|| fail("not_found", format!("{name} has no setting {key}")))?;
+    s.check(&value).map_err(|e| fail("invalid_params", e))?;
+    let mut all = settings_of(pl);
+    all.insert(key, value);
+    let file = settings_file(&name);
+    std::fs::create_dir_all(std::path::Path::new(&file).parent().unwrap()).and_then(|_| std::fs::write(&file, serde_json::to_string_pretty(&all).unwrap_or_default() + "\n")).map_err(|e| fail("error", format!("{file}: {e}")))?;
+    if let Some(conn) = pl.client.and_then(|c| srv.clients.get(&c)).map(|c| c.conn.clone()) {
+        conn.notify("plugin.settings.changed", json!({ "settings": all }));
+    }
+    srv.changed();
+    Ok(json!(all))
 }
 
 // What plugins show in the TUI, for the session's view: the running ones that show anything.
@@ -902,6 +951,8 @@ pub fn route(method: &str) -> Option<Handler> {
         "plugin.stop" => async_handler!(plugin_stop),
         "plugin.start" => async_handler!(plugin_start),
         "plugin.hello" => Sync(plugin_hello),
+        "plugin.settings" => Sync(plugin_settings),
+        "plugin.settings.set" => Sync(plugin_settings_set),
         "plugin.invoke" => async_handler!(plugin_invoke),
         "ui.status.set" => Sync(status_set),
         "ui.status.clear" => Sync(status_clear),
@@ -1067,6 +1118,7 @@ fn plugin_hello(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
     let pl = srv.host.plugins.get_mut(&name).unwrap();
     pl.client = Some(c);
     pl.actions = actions;
+    (pl.granted, pl.missing) = crate::config::grants::effective(&name, pl.manifest.as_ref().and_then(|m| m.permissions.as_deref()));
     let log = pl.run.as_ref().unwrap().log.clone();
     if let Some(client) = srv.clients.get_mut(&c) {
         client.plugin = Some(name.clone());
@@ -1074,7 +1126,12 @@ fn plugin_hello(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
         client.conn.on_late_reply(move |m| log.borrow_mut().note(&format!("modisa: a late reply from {plugin}, after its invocation had timed out (dropped): {}", m.to_string().chars().take(500).collect::<String>())));
     }
     srv.changed(); // its actions reach the palette
-    Ok(json!({ "name": name, "protocol": PROTOCOL, "session": srv.session, "epoch": srv.epoch }))
+    let mut hello = json!({ "name": name, "protocol": PROTOCOL, "session": srv.session, "epoch": srv.epoch });
+    let settings = settings_of(&srv.host.plugins[&name]);
+    if !settings.is_empty() {
+        hello["settings"] = json!(settings);
+    }
+    Ok(hello)
 }
 
 async fn plugin_invoke(shared: Shared, p: Value, _c: u64) -> RpcResult {

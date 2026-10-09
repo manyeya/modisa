@@ -39,7 +39,7 @@ use args::parse_args;
 use help::HELP;
 
 // The plugin commands that need no server (src/cli/plugin.ts): the rest go through it.
-const LOCAL_PLUGIN: &[&str] = &["new", "sdk", "schema", "check", "dev", "link", "unlink", "install", "update", "search", "marketplace"];
+const LOCAL_PLUGIN: &[&str] = &["new", "sdk", "schema", "check", "dev", "validate", "grant", "revoke", "link", "unlink", "install", "update", "search", "marketplace"];
 
 pub fn is_local_plugin_command(verb: Option<&str>) -> bool {
     verb.is_some_and(|v| LOCAL_PLUGIN.contains(&v))

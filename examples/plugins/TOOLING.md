@@ -23,12 +23,14 @@ A plugin says in `plugin.json` what it needs from modisa, and gets only that:
 Without the permission a request fails with `permission_denied`, naming what's missing. Everyone gets the rest: the
 session's snapshot, agents' states and the other events (`events.subscribe`), `plugin.hello`, `protocol.describe`.
 
-The user grants them: `modisa plugin install` and `link` list what a plugin asks for and ask before starting it
-(`--yes` agrees for scripts); the grant is saved in `~/.config/modisa/plugins/<name>.grant.json`. A plugin that
-later asks for more (an update) starts with what was granted, and modisa says so (a toast, and `modisa plugin
-list`) until the user runs `modisa plugin grant <name>`. `modisa plugin revoke <name> [permission…]` takes them away.
-A plugin with no `permissions` field (written before them) is granted everything a plugin could do before, and
-`modisa plugin list` marks it "undeclared".
+The user grants them: `modisa plugin install` and `link` list what a plugin asks for and, at a terminal, ask before
+it starts (from a script nobody is asked, and it gets what it asks for). Grants are kept in
+`~/.config/modisa/plugin-grants.json`. A plugin gets only what it both asks for and was granted: one that later asks
+for more (an update) starts with what was granted, and `modisa plugin list` says what it lacks until
+`modisa plugin grant <name> [permission…]` (none named: all it asks for). `modisa plugin revoke <name> [permission…]`
+takes them away; either way, `modisa plugin restart <name>` for a running one to have the change. A plugin with no
+`permissions` field (written before them) may do everything a plugin could before, and `modisa plugin list` says it
+doesn't declare.
 
 Permissions are about what a plugin does through modisa. A plugin is still a program running as you: it can do on
 your machine whatever you can. Install what you trust.
@@ -46,9 +48,10 @@ A plugin declares its settings, and modisa shows them in its settings page (pref
 ]
 ```
 
-Values live in `~/.config/modisa/plugin-config/<name>/settings.json` (the user may edit it by hand too). The plugin
-gets them with `plugin.settings` (and in `plugin.hello`'s result), and a `plugin.settings.changed` event when they
-change. The client library: `await modisa.settings()`, `modisa.onSettings(fn)`.
+Values live in `~/.config/modisa/plugin-config/<name>/settings.json` (`$MODISA_PLUGIN_CONFIG/settings.json`). The
+plugin gets them with the `plugin.settings` request (and in `plugin.hello`'s result), and a `plugin.settings.changed`
+notification (`{ settings }`) when the user changes one in the settings page. The client library:
+`await modisa.settings()`, `modisa.onSettings(fn)`.
 
 ## Tooling
 
@@ -60,5 +63,4 @@ change. The client library: `await modisa.settings()`, `modisa.onSettings(fn)`.
 | `modisa view render tree.json --size 80x24` | draws a view without a session; the client library's `renderView(tree, { width, height, theme })` returns the same text, for snapshot tests |
 | `modisa plugin schema` | every request, result and event as JSON Schema, views and slots included |
 
-`modisa plugin new` scaffolds a plugin that declares `permissions: ["ui"]`, a settings example, and a snapshot test
-of its view.
+`modisa plugin new` scaffolds a plugin that declares `permissions: ["ui"]`.

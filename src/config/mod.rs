@@ -3,6 +3,7 @@ pub mod adapters;
 pub mod agents;
 pub mod plugins;
 pub mod check;
+pub mod grants;
 pub mod keys;
 pub mod marketplaces;
 pub mod plugin_manage;

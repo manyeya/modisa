@@ -40,13 +40,87 @@ pub async fn run_plugin_local(verb: &str, args: &[&str], a: &Args) -> i32 {
         }
         "new" => scaffold(arg, a.str("dir")),
         "check" => super::plugin_check::check_plugin(arg.unwrap_or(".")).await,
-        "dev" => super::plugin_check::dev_plugin(arg.unwrap_or(".")).await,
+        "dev" => super::plugin_check::dev_plugin(arg.unwrap_or("."), a.switch("watch")).await,
+        "validate" => super::plugin_check::validate(arg.unwrap_or("."), json),
+        "grant" | "revoke" => grant(verb, arg, &args[1.min(args.len())..]),
         "link" => link(arg, a.str("session"), json).await,
         "install" => super::plugin_install::install(arg, a.str("ref"), a.str("subdir"), a.str("session"), json).await,
         "update" => super::plugin_install::update(arg, json).await,
         "search" => super::plugin_search::search(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), json).await,
         "marketplace" => super::plugin_marketplace::marketplace(args, a).await,
         _ => super::plugin_install::unlink(arg, a.str("session"), json).await,
+    }
+}
+
+// What each permission lets a plugin do, as `link` and `install` say it before it starts.
+fn means(p: &str) -> &'static str {
+    match p {
+        "ui" => "show things in modisa's screen",
+        "ui.replace" => "ask to draw instead of modisa's own widgets",
+        "panes.read" => "read what's in your panes",
+        "panes.control" => "type and run commands in panes, and open, close and move them",
+        "agents" => "start agents",
+        "messages" => "message agents and read their inbox",
+        "notify" => "send system notifications and sounds",
+        "sessions" => "create, rename and close spaces and tabs",
+        _ => "something this modisa doesn't know",
+    }
+}
+
+// Before a plugin starts: what it asks to do through modisa, and the user's answer recorded (TOOLING.md, Permissions).
+// At a terminal it asks; a script (nobody to ask) gets what the plugin declares, which is what linking it means.
+pub fn consent(m: &crate::protocol::plugin::PluginManifest, json: bool) {
+    use std::io::IsTerminal;
+    let Some(perms) = &m.permissions else {
+        if !json {
+            outln!("{} doesn't say what it does through modisa (no permissions in its plugin.json): it may do anything a plugin can", m.name);
+        }
+        return;
+    };
+    if !json && !perms.is_empty() {
+        outln!("{} asks to:\n{}", m.name, perms.iter().map(|p| format!("  · {} ({p})", means(p))).collect::<Vec<_>>().join("\n"));
+    }
+    let yes = if !json && !perms.is_empty() && std::io::stdin().is_terminal() {
+        eprint!("Allow? [Y/n] ");
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer).is_ok() && !answer.trim().eq_ignore_ascii_case("n")
+    } else {
+        true
+    };
+    let saved = crate::config::grants::revoke(&m.name, &[]).and_then(|_| if yes { crate::config::grants::grant(&m.name, perms) } else { Ok(()) });
+    if let Err(e) = saved {
+        errln!("modisa: {}: {e}", crate::config::grants::path());
+    } else if !yes {
+        outln!("not granted: it starts, but can't do those. modisa plugin grant {} when you change your mind", m.name);
+    }
+}
+
+// modisa plugin grant <name> [permission…] (none: all it asks for) | revoke <name> [permission…] (none: all)
+fn grant(verb: &str, name: Option<&str>, perms: &[&str]) -> i32 {
+    let Some(name) = name else {
+        errln!("usage: modisa plugin {verb} <name> [permission…]");
+        return 2;
+    };
+    let mut perms: Vec<String> = perms.iter().map(|s| s.to_string()).collect();
+    if let Some(p) = perms.iter().find(|p| !crate::protocol::plugin::PERMISSIONS.contains(&p.as_str())) {
+        errln!("modisa: {p} isn't a permission: {}", crate::protocol::plugin::PERMISSIONS.join(", "));
+        return 2;
+    }
+    if verb == "grant" && perms.is_empty() {
+        let declared = crate::config::plugins::linked_plugins().into_iter().find(|l| l.name == name).and_then(|l| read_manifest(&l.dir).ok()).and_then(|m| m.permissions);
+        perms = declared.unwrap_or_default();
+    }
+    let done = if verb == "grant" { crate::config::grants::grant(name, &perms) } else { crate::config::grants::revoke(name, &perms) };
+    match done {
+        Ok(()) => {
+            let have = crate::config::grants::read().get(name).cloned().unwrap_or_default();
+            outln!("{name} may now: {} (modisa plugin restart {name} for a running one to have it)", if have.is_empty() { "nothing beyond what every plugin can".into() } else { have.join(", ") });
+            0
+        }
+        Err(e) => {
+            errln!("modisa: {}: {e}", crate::config::grants::path());
+            1
+        }
     }
 }
 
@@ -68,7 +142,7 @@ fn scaffold(name: Option<&str>, dir_flag: Option<&str>) -> i32 {
         return 1;
     }
     let fill = |text: &str| text.replace("{{name}}", name);
-    let manifest = serde_json::json!({ "name": name, "protocol": PROTOCOL, "run": ["bun", "plugin.ts"], "description": format!("{name}: a modisa plugin") });
+    let manifest = serde_json::json!({ "name": name, "protocol": PROTOCOL, "run": ["bun", "plugin.ts"], "description": format!("{name}: a modisa plugin"), "permissions": ["ui"] });
     let files = [
         ("plugin.json", stringify(&manifest, true) + "\n"),
         ("plugin.ts", fill(PLUGIN)),
@@ -154,6 +228,7 @@ async fn link(arg: Option<&str>, session: Option<&str>, json: bool) -> i32 {
             return 1;
         }
     }
+    consent(&manifest, json);
     let start = match start_in(session, &manifest.name).await {
         Ok(s) => s,
         Err(e) => {

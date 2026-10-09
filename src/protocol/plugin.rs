@@ -55,6 +55,68 @@ pub struct PluginManifest {
     pub keys: Option<Vec<ManifestKey>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<LinkEntry>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Vec<String>>, // what it may do through modisa (examples/plugins/TOOLING.md); none: undeclared
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<Vec<ManifestSetting>>, // what the settings page offers for it
+}
+
+// A setting a plugin offers the user: boolean, number (min, max), enum (options) or string (max characters).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ManifestSetting {
+    pub key: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub default: Value,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<String>>,
+}
+
+impl ManifestSetting {
+    // `v` as this setting takes it, or why not
+    pub fn check(&self, v: &Value) -> Result<(), String> {
+        let ok = match self.kind.as_str() {
+            "boolean" => v.is_boolean(),
+            "number" => v.as_f64().is_some_and(|n| self.min.is_none_or(|m| n >= m) && self.max.is_none_or(|m| n <= m)),
+            "enum" => v.as_str().is_some_and(|s| self.options.iter().flatten().any(|o| o == s)),
+            "string" => v.as_str().is_some_and(|s| s.chars().count() as f64 <= self.max.unwrap_or(200.0)),
+            _ => false,
+        };
+        if ok {
+            return Ok(());
+        }
+        Err(match self.kind.as_str() {
+            "number" => format!("{} is a number{}{}", self.key, self.min.map(|m| format!(" from {m}")).unwrap_or_default(), self.max.map(|m| format!(" to {m}")).unwrap_or_default()),
+            "enum" => format!("{} is one of {}", self.key, self.options.iter().flatten().cloned().collect::<Vec<_>>().join(", ")),
+            k => format!("{} is a {k}", self.key),
+        })
+    }
+}
+
+// What a plugin can ask to do through modisa (TOOLING.md, Permissions).
+pub const PERMISSIONS: &[&str] = &["ui", "ui.replace", "panes.read", "panes.control", "agents", "messages", "notify", "sessions"];
+
+// The permission a plugin needs to make this request, if it needs one; "never" for what no plugin may do.
+pub fn needs(method: &str, params: &Value) -> Option<&'static str> {
+    Some(match method {
+        "ui.slot.set" if params["position"] == "replace" => "ui.replace",
+        m if m.starts_with("ui.") => "ui",
+        "pane.meta.set" | "pane.meta.clear" => "ui",
+        "pane.read" => "panes.read",
+        "events.subscribe" if params["output"] == true => "panes.read",
+        "pane.keys" | "pane.run" | "pane.split" | "pane.close" | "pane.move" | "pane.resize" | "pane.focus" | "pane.zoom" | "pane.swap" | "pane.rename" | "plugin.pane.open" | "plugin.popup.close" | "plugin.popup.resize" => "panes.control",
+        "agent.spawn" => "agents",
+        "send" | "inbox" | "messages" | "messaging.pause" => "messages",
+        "notify" => "notify",
+        "tab.create" | "workspace.create" | "workspace.rename" | "workspace.close" => "sessions",
+        "restart" | "kill" => "never",
+        _ => return None,
+    })
 }
 
 pub type Issue = (String, String);
@@ -203,6 +265,38 @@ pub fn check_manifest(raw: &Value) -> Result<PluginManifest, Vec<Issue>> {
             }
         }
     }
+    if let Some(list) = c.list("permissions", m.get("permissions")) {
+        for (i, p) in list.iter().enumerate() {
+            if !p.as_str().is_some_and(|p| PERMISSIONS.contains(&p)) {
+                c.issue(&format!("permissions.{i}"), format!("Invalid option: expected one of {}", PERMISSIONS.iter().map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join("|")));
+            }
+        }
+    }
+    if let Some(list) = c.list("settings", m.get("settings")) {
+        let mut keys = std::collections::HashSet::new();
+        for (i, a) in list.iter().enumerate() {
+            let p = format!("settings.{i}");
+            if let Some(o) = c.strict(&p, a, &["key", "type", "default", "title", "min", "max", "options"]) {
+                c.string(&format!("{p}.key"), o.get("key"), 0, None, true);
+                c.string(&format!("{p}.title"), o.get("title"), 1, Some(60), false);
+                if !o.get("type").and_then(Value::as_str).is_some_and(|t| ["boolean", "number", "enum", "string"].contains(&t)) {
+                    c.issue(&format!("{p}.type"), "Invalid option: expected one of \"boolean\"|\"number\"|\"enum\"|\"string\"");
+                } else if let Ok(s) = serde_json::from_value::<ManifestSetting>(a.clone()) {
+                    if s.kind == "enum" && s.options.as_ref().is_none_or(|o| o.is_empty()) {
+                        c.issue(&format!("{p}.options"), "an enum setting needs its options");
+                    }
+                    if let Err(e) = s.check(&s.default) {
+                        c.issue(&format!("{p}.default"), e);
+                    }
+                    if !keys.insert(s.key.clone()) {
+                        c.issue(&format!("{p}.key"), format!("a second setting {}", s.key));
+                    }
+                } else {
+                    c.issue(&p, "Invalid input");
+                }
+            }
+        }
+    }
     if let Some(list) = c.list("links", m.get("links")) {
         if list.len() > LINK.per_plugin {
             c.issue("links", format!("Too big: expected array to have <={} items", LINK.per_plugin));
@@ -303,5 +397,37 @@ mod tests {
         let mut panes = base;
         panes["panes"] = json!([{ "id": "p", "title": "P", "run": ["x"] }]);
         assert_eq!(check_manifest(&panes).unwrap().panes.unwrap()[0].placement, "overlay");
+    }
+
+    #[test]
+    fn permissions_and_settings_are_checked() {
+        let ok = json!({ "name": "p", "protocol": 1, "run": ["x"], "permissions": ["ui", "panes.read"], "settings": [
+            { "key": "threshold", "type": "number", "default": 80, "min": 0, "max": 100, "title": "Warn above" },
+            { "key": "show", "type": "enum", "options": ["a", "b"], "default": "a", "title": "Show" },
+        ] });
+        let m = check_manifest(&ok).unwrap();
+        assert_eq!(m.permissions.as_deref(), Some(&["ui".to_string(), "panes.read".to_string()][..]));
+        let s = &m.settings.unwrap()[0];
+        assert!(s.check(&json!(50)).is_ok() && s.check(&json!(101)).is_err() && s.check(&json!("x")).is_err());
+        for (bad, at) in [
+            (json!({ "name": "p", "protocol": 1, "run": ["x"], "permissions": ["root"] }), "permissions.0"),
+            (json!({ "name": "p", "protocol": 1, "run": ["x"], "settings": [{ "key": "k", "type": "enum", "default": "z", "options": ["a"], "title": "K" }] }), "settings.0.default"),
+            (json!({ "name": "p", "protocol": 1, "run": ["x"], "settings": [{ "key": "k", "type": "color", "default": 1, "title": "K" }] }), "settings.0.type"),
+        ] {
+            let issues = check_manifest(&bad).unwrap_err();
+            assert!(issues.iter().any(|(p, _)| p == at), "{bad}: {issues:?}");
+        }
+    }
+
+    #[test]
+    fn what_each_request_needs() {
+        assert_eq!(needs("ui.status.set", &json!({})), Some("ui"));
+        assert_eq!(needs("ui.slot.set", &json!({ "position": "replace" })), Some("ui.replace"));
+        assert_eq!(needs("ui.slot.set", &json!({ "position": "after" })), Some("ui"));
+        assert_eq!(needs("events.subscribe", &json!({ "output": true })), Some("panes.read"));
+        assert_eq!(needs("events.subscribe", &json!({})), None);
+        assert_eq!(needs("pane.keys", &json!({})), Some("panes.control"));
+        assert_eq!(needs("kill", &json!({})), Some("never"));
+        assert_eq!(needs("list", &json!({})), None);
     }
 }

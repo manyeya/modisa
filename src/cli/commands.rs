@@ -531,7 +531,25 @@ impl Cli<'_> {
                         if !names("asks").is_empty() {
                             outln!("{}: asked to draw instead of modisa in {}; [slots] or a plugin before it by name has that", tpl(p.get("name")), names("asks"));
                         }
+                        // what it may do through modisa: undeclared (anything a plugin can), or what it asks for and lacks
+                        // (its plugin.json and the grants, read here as the server reads them)
+                        let name = tpl(p.get("name"));
+                        let manifest = p["dir"].as_str().and_then(|d| crate::config::plugins::read_manifest(d).ok());
+                        match manifest.map(|m| crate::config::grants::effective(&name, m.permissions.as_deref())) {
+                            Some((None, _)) => outln!("{name}: doesn't say what it does through modisa (no permissions in its plugin.json)"),
+                            Some((Some(_), missing)) if !missing.is_empty() => outln!("{name}: asks for {}, not granted: modisa plugin grant {name}", missing.join(", ")),
+                            _ => {}
+                        }
                     }
+                }
+            }
+            "plugin restart" => {
+                self.call("plugin.stop", obj(vec![("name", s(r(0)))])).await?;
+                let p = self.call("plugin.start", obj(vec![("name", s(r(0)))])).await?;
+                if json {
+                    print(&p);
+                } else {
+                    outln!("{}: {}", tpl(p.get("name")), tpl(p.get("status")));
                 }
             }
             "plugin stop" | "plugin start" => {

@@ -76,6 +76,11 @@ pub async fn install(arg: Option<&str>, r#ref: Option<&str>, subdir: Option<&str
     if !result.installed && result.already_installed != Some(true) {
         return report(&result, json);
     }
+    // what it asks to do through modisa, before it starts
+    let name = result.name.clone().unwrap_or_default();
+    if let Some(m) = crate::config::plugins::linked_plugins().into_iter().find(|l| l.name == name).and_then(|l| crate::config::plugins::read_manifest(&l.dir).ok()) {
+        super::plugin::consent(&m, json);
+    }
     // the start goes before the hints, as it always has
     result.start = match start_in(session, result.name.as_deref().unwrap_or_default()).await {
         Ok(s) => Some(s),
