@@ -114,28 +114,38 @@ gap = 0                     # cells between panes (0–2)
 
 ## Keys
 
+Every key table is `action = key`, or a list of keys (`""` for none), like `[keys]` has always been.
+
 ```toml
 prefix = "C-b"
 
-[keys]                      # after the prefix (as before)
+[keys]                      # after the prefix
 zoom = "f"
 "split-right" = ["v", "|"]
-"layout-dev" = ["split-right", "focus-left", "zoom"]   # a list of actions runs them in order
+"dev-layout" = "D"          # a list from [actions], a command or a mode binds the same way
 
-[keys.root]                 # without the prefix: careful, the panes don't get these
-"M-h" = "focus-left"
-"M-l" = "focus-right"
-"M-Enter" = "palette"
+[actions]                   # a name for a list of actions, run in order
+"dev-layout" = ["split-right", "focus-left", "zoom"]
 
-[modes.resize]              # a key mode: enter it, then its keys work alone until escape (or `timeout`)
+[root_keys]                 # without the prefix: these never reach the panes, so each needs C- or M- (or is an f-key)
+"focus-left" = "M-h"
+"focus-right" = "M-l"
+palette = "M-return"
+
+[modes.resize]              # a key mode: enter it, then its keys work alone until escape (or the prefix)
 enter = "r"                 # after the prefix
 sticky = true               # stay after each key (false: one key, then back)
-timeout = 0                 # ms of no key before leaving; 0 never
-keys = { h = "resize-left", l = "resize-right", j = "resize-down", k = "resize-up", "=" = "equalize" }
+timeout = 0                 # ms after its last key before it ends; 0 never
+keys = { "resize-left" = "h", "resize-right" = "l", "resize-down" = "j", "resize-up" = "k" }
 ```
 
-An action is anything in the keyboard guide (prefix `?`), `plugin:<name>.<action>`, a `[[command]]`'s name, or
-`sh:<command>` (runs in the background). `{mode}` in a format shows the current mode.
+A key with modifiers is written `C-` (ctrl), `M-` (alt), `S-` (shift, for a named key: a shifted character is just
+that character) before its name: `M-h`, `C-M-left`, `S-tab`, `f5`. Names: one character, `return`, `tab`, `space`,
+`backspace`, `escape`, `delete`, `left`/`right`/`up`/`down`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`.
+
+An action is anything in the keyboard guide (prefix `?`), a name from `[actions]`, a `[[command]]`'s name,
+`mode:<name>`, `plugin:<name>.<action>`, or `sh:<command>` (runs in the background, where the focused pane is). While a
+mode is on, its name shows at the left of the status row.
 
 ## Commands
 
@@ -144,9 +154,9 @@ Your own entries in the palette, with keys and prompts:
 ```toml
 [[command]]
 name = "Run tests"
-key = "t"                   # after the prefix; or root = "M-t"
-run = "bun test {filter}"
-in = "split"                # split (default), split-down, tab, popup, zoomed, background
+key = "T"                   # after the prefix; or root = "M-t"
+run = "bun test {filter}"   # {cwd} {pane} {name} {space} {tab} {session} and the prompts' names; shell-quoted here
+in = "split"                # split (default), split-down, tab, zoomed, background
 cwd = "{cwd}"               # the focused pane's directory (default)
 prompts = [{ name = "filter", title = "Test filter", default = "" }]
 

@@ -525,6 +525,11 @@ fn status(app: &App, c: &mut Canvas) {
     let blocked = agents.iter().filter(|p| p.agent.as_ref().unwrap().state == AgentState::Blocked).count();
     let running = agents.iter().filter(|p| p.agent.as_ref().unwrap().state == AgentState::Working).count();
     let mut x = 0;
+    if let Some(mode) = &app.mode {
+        // the key mode it's in: its keys work alone until escape
+        let text = format!(" {mode} ");
+        x += c.text(x, y, &text, th.bg, Some(th.accent), Modifier::BOLD, width(&text));
+    }
     let side = app.side_width() > 0;
     let seg = |c: &mut Canvas, x: &mut i32, text: &str, fg: &str, bg: &str, hit: Hit| *x += c.button(*x, y, text, width(text) as i32, fg, bg, hover, hit);
     seg(c, &mut x, if side { " ◧ sidebar " } else { " ◨ sidebar " }, if side { th.bg } else { th.fg }, if side { th.focus } else { th.border }, Hit::Action("toggle-sidebar"));

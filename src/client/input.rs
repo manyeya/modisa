@@ -3,6 +3,7 @@
 // them (`app.hits`); a pane's program gets the mouse when it asked for it, otherwise a drag selects its text and the
 // wheel scrolls its scrollback.
 use std::io::Write;
+use std::time::{Duration, Instant};
 
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column, Line, Point, Side};
@@ -90,6 +91,25 @@ fn key(shared: &Shared, k: KeyEvent) {
         return views::key(&mut app, &k);
     }
     let is_prefix = app.prefix.ctrl && k.modifiers.contains(KeyModifiers::CONTROL) && matches!(k.code, KeyCode::Char(c) if c.to_lowercase().to_string() == app.prefix.name);
+    // a key mode: its keys run what they're bound to; escape or the prefix leaves it, and nothing reaches the panes
+    if let Some(name) = app.mode.clone() {
+        let mode = app.modes.get(&name).cloned().unwrap_or_default();
+        if k.code == KeyCode::Esc || is_prefix {
+            leave_mode(&mut app);
+            app.prefix_armed = is_prefix;
+            return;
+        }
+        app.mode_at = Instant::now();
+        if !mode.sticky {
+            leave_mode(&mut app);
+        }
+        let action = mode.keys.get(&chord_of(&k)).cloned();
+        drop(app);
+        if let Some(a) = action {
+            actions::run_named(shared, &a);
+        }
+        return;
+    }
     if app.copy_mode && !app.prefix_armed && !is_prefix {
         return copy_key(&mut app, &k);
     }
@@ -105,6 +125,10 @@ fn key(shared: &Shared, k: KeyEvent) {
             return;
         }
         let name = key_name(&k);
+        if let Some(a) = app.more_keys.get(&name).cloned() {
+            drop(app);
+            return actions::run_named(shared, &a);
+        }
         let action = app.bindings.get(&name).copied();
         if action.is_none() {
             return super::plugin_ui::plugin_key(&mut app, &name); // modisa's keys first; a plugin never gets one of them
@@ -120,10 +144,55 @@ fn key(shared: &Shared, k: KeyEvent) {
         app.dirty();
         return;
     }
+    if let Some(a) = app.root_keys.get(&chord_of(&k)).cloned() {
+        drop(app);
+        return actions::run_named(shared, &a);
+    }
     if let Some(p) = focused(&app) {
         let bytes = encode_for(&app, &p, &k);
         send(&mut app, &p, &bytes);
     }
+}
+
+// A key as root keys and modes name it (keys.rs chord): C-, M-, S- (on a named key: a shifted character is itself) and
+// its name.
+pub fn chord_of(k: &KeyEvent) -> String {
+    let name = key_name(k);
+    let m = k.modifiers;
+    let shift = m.contains(KeyModifiers::SHIFT) && name.chars().count() > 1;
+    format!("{}{}{}{name}", if m.contains(KeyModifiers::CONTROL) { "C-" } else { "" }, if m.contains(KeyModifiers::ALT) { "M-" } else { "" }, if shift { "S-" } else { "" })
+}
+
+pub fn enter_mode(shared: &Shared, name: &str) {
+    let mut app = shared.borrow_mut();
+    let Some(timeout) = app.modes.get(name).map(|m| m.timeout) else { return };
+    app.mode = Some(name.to_string());
+    app.mode_at = Instant::now();
+    app.dirty();
+    if timeout == 0 {
+        return;
+    }
+    // ends `timeout` ms after its last key
+    let (me, name, wait) = (app.me.clone(), name.to_string(), Duration::from_millis(timeout));
+    tokio::task::spawn_local(async move {
+        loop {
+            let Some(at) = me.upgrade().map(|a| a.borrow().mode_at) else { return };
+            tokio::time::sleep_until((at + wait).into()).await;
+            let Some(a) = me.upgrade() else { return };
+            let mut app = a.borrow_mut();
+            if app.mode.as_deref() != Some(name.as_str()) {
+                return;
+            }
+            if app.mode_at.elapsed() >= wait {
+                return leave_mode(&mut app);
+            }
+        }
+    });
+}
+
+pub fn leave_mode(app: &mut App) {
+    app.mode = None;
+    app.dirty();
 }
 
 fn encode_for(app: &App, pane: &str, k: &KeyEvent) -> Vec<u8> {

@@ -5,6 +5,7 @@
 // server, everything runs on one thread: the App is one Rc<RefCell<…>>, borrowed only between awaits. Dialogs are async
 // (modals.rs), so actions read like the original's: `let name = prompt(...).await`.
 pub mod actions;
+pub mod commands;
 pub mod design;
 pub mod draw;
 pub mod input;
@@ -21,9 +22,10 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::rc::{Rc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event};
+use indexmap::IndexMap;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use serde_json::{json, Value};
@@ -31,7 +33,7 @@ use tokio::sync::{mpsc, Notify};
 
 use crate::cli::sessions::{ClientOptions, OnMessage};
 use crate::cli::update::Manifest;
-use crate::config::keys::{bindings, Bindings};
+use crate::config::keys::{all_keys, Bindings, Mode};
 use crate::config::themes::{theme, Theme};
 use crate::config::{self, parse_prefix, Config, NotifyKind, Prefix};
 use crate::core::layout::{panes as tree_panes, Rect};
@@ -86,6 +88,11 @@ pub struct App {
     pub th: Theme,
     pub prefix: Prefix,
     pub bindings: Bindings,
+    pub more_keys: IndexMap<String, String>, // after the prefix, beyond modisa's actions: lists, commands, modes, plugin:, sh:
+    pub root_keys: IndexMap<String, String>, // without the prefix
+    pub modes: IndexMap<String, Mode>,
+    pub mode: Option<String>,  // the key mode it's in
+    pub mode_at: Instant,      // its last key, for its timeout
     pub panes: HashMap<String, ClientPane>,
     pub sidebar: bool,
     pub prefix_armed: bool,
@@ -251,7 +258,11 @@ impl App {
     pub fn set_config(&mut self, cfg: Config) {
         self.th = *theme(&cfg);
         self.prefix = parse_prefix(&cfg.prefix);
-        self.bindings = bindings(&cfg);
+        let keys = all_keys(&cfg).0;
+        (self.bindings, self.more_keys, self.root_keys, self.modes) = (keys.prefix, keys.more, keys.root, keys.modes);
+        if self.mode.as_ref().is_some_and(|m| !self.modes.contains_key(m)) {
+            self.mode = None;
+        }
         self.cfg = cfg;
         paint_background(self.th.bg);
         self.dirty();
@@ -686,6 +697,7 @@ fn restore_terminal() {
 
 pub async fn run_client(opts: ClientOptions) -> i32 {
     let cfg = config::load_config();
+    let keys = all_keys(&cfg).0;
     let mut terminal = match setup_terminal() {
         Ok(t) => t,
         Err(e) => {
@@ -710,7 +722,12 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
             view: None,
             th: *theme(&cfg),
             prefix: parse_prefix(&cfg.prefix),
-            bindings: bindings(&cfg),
+            bindings: keys.prefix,
+            more_keys: keys.more,
+            root_keys: keys.root,
+            modes: keys.modes,
+            mode: None,
+            mode_at: Instant::now(),
             sidebar: cfg.sidebar.visible,
             cfg,
             panes: HashMap::new(),

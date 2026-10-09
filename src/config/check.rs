@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::keys::resolve_keys;
+use super::keys::all_keys;
 use super::{find_key, one_js_char, parse_toml, themes, SOUND_NAMES};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +121,33 @@ const SETTINGS: &[(&str, Schema)] = &[
     ("plugin", Schema::Array(&Schema::Object { fields: &[("run", Schema::Str { min: 1 })], partial: false })),
     ("plugin_keys", Schema::Record(&STR)),
     ("keys", Schema::Record(&Schema::Keys)),
+    ("actions", Schema::Record(&Schema::Array(&Schema::Str { min: 1 }))),
+    ("root_keys", Schema::Record(&Schema::Keys)),
+    (
+        "modes",
+        Schema::Record(&Schema::Object {
+            fields: &[("enter", Schema::Str { min: 1 }), ("sticky", BOOL), ("timeout", Schema::Num { int: true, min: Some(AT_LEAST), max: None }), ("keys", Schema::Record(&Schema::Keys))],
+            partial: true,
+        }),
+    ),
+    (
+        "command",
+        Schema::Array(&Schema::Object {
+            fields: &[
+                ("name", Schema::Str { min: 1 }),
+                ("run", Schema::Str { min: 1 }),
+                ("key", STR),
+                ("root", STR),
+                ("in", Schema::Enum(&["split", "split-down", "tab", "zoomed", "background"])),
+                ("cwd", STR),
+                (
+                    "prompts",
+                    Schema::Array(&Schema::Object { fields: &[("name", Schema::Str { min: 1 }), ("title", STR), ("default", STR), ("pick", STR)], partial: true }),
+                ),
+            ],
+            partial: true,
+        }),
+    ),
 ];
 
 const UNKNOWN: &str = "modisa has no such setting, so it's ignored";
@@ -285,10 +312,11 @@ pub fn check_config(source: &str) -> Vec<ConfigProblem> {
     if user.get("sidebar").and_then(|s| s.get("git")).is_some() {
         add(Level::Warning, &[Seg::Key("sidebar".into()), Seg::Key("git".into())], "this moved: [git] status = false turns the branch off".into());
     }
-    if let Some(Value::Object(keys)) = user.get("keys") {
-        for p in resolve_keys(keys).problems {
-            add(p.level, &[Seg::Key("keys".into()), Seg::Key(p.action)], p.message);
-        }
+    // keys after the prefix, without it, and in modes, as modisa binds them (lists, commands and modes included)
+    for (table, p) in all_keys(&super::merge(&user)).1 {
+        let mut at: Vec<Seg> = table.split('.').map(|k| Seg::Key(k.to_string())).collect();
+        at.push(Seg::Key(p.action));
+        add(p.level, &at, p.message);
     }
     problems.sort_by_key(|p| p.line.unwrap_or(0)); // stable: same-line problems keep their order
     problems

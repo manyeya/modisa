@@ -97,21 +97,25 @@ pub struct KeyProblem {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedKeys {
     pub table: Bindings,
+    pub more: IndexMap<String, String>, // key → what else it runs (a list, a command, a mode, plugin:, sh:)
     pub problems: Vec<KeyProblem>,
 }
 
 // The bindings [keys] makes ("<action>" = "K", or a list of keys; "" or [] for none), and what in it can't be bound. An
-// action set there has only the keys given, each taken from whatever had it by default.
-pub fn resolve_keys(keys: &Map<String, Value>) -> ResolvedKeys {
+// action set there has only the keys given, each taken from whatever had it by default. `named` says which other
+// names (not modisa's actions) can be bound: their keys go in `more`.
+pub fn resolve_keys(keys: &Map<String, Value>, named: &dyn Fn(&str) -> bool) -> ResolvedKeys {
     let mut table = DEFAULT_KEYS.clone();
+    let mut more = IndexMap::new();
     let mut problems = Vec::new();
-    let mut given: HashMap<String, ActionId> = HashMap::new(); // key → the action [keys] gave it
+    let mut given: HashMap<String, String> = HashMap::new(); // key → what [keys] gave it
     for (name, value) in keys {
-        let Some(action) = action_id(name) else {
+        let action = action_id(name);
+        if action.is_none() && !named(name) {
             let message = format!("there's no action {name} (the keyboard guide, prefix ?, lists them)");
             problems.push(KeyProblem { level: Level::Warning, action: name.clone(), message });
             continue;
-        };
+        }
         let wanted: Vec<&Value> = match value {
             Value::Array(items) => items.iter().collect(),
             v => vec![v],
@@ -120,10 +124,12 @@ pub fn resolve_keys(keys: &Map<String, Value>) -> ResolvedKeys {
             problems.push(KeyProblem { level: Level::Error, action: name.clone(), message: "a key is a string (\"K\"), or a list of them".into() });
             continue;
         };
-        table.retain(|key, a| *a != action || kept(key).is_some());
+        if let Some(action) = action {
+            table.retain(|key, a| *a != action || kept(key).is_some());
+        }
         for key in wanted.into_iter().filter(|k| !k.is_empty()) {
             let mut error = |message: String| problems.push(KeyProblem { level: Level::Error, action: name.clone(), message });
-            if RESERVED_KEYS.contains(&key) && kept(key) != Some(action) {
+            if RESERVED_KEYS.contains(&key) && (action.is_none() || kept(key) != action) {
                 error(format!("{key} is reserved: it's how you get out of anything a plugin opens"));
                 continue;
             }
@@ -133,19 +139,165 @@ pub fn resolve_keys(keys: &Map<String, Value>) -> ResolvedKeys {
                 continue;
             }
             if let Some(other) = given.get(key) {
-                if *other != action {
+                if other != name {
                     error(format!("{key} is given to {other} too; the last one wins"));
                 }
             }
-            given.insert(key.to_string(), action);
-            table.insert(key.to_string(), action);
+            given.insert(key.to_string(), name.clone());
+            match action {
+                Some(a) => {
+                    more.shift_remove(key);
+                    table.insert(key.to_string(), a);
+                }
+                None => {
+                    table.shift_remove(key);
+                    more.insert(key.to_string(), name.clone());
+                }
+            }
         }
     }
-    ResolvedKeys { table, problems }
+    ResolvedKeys { table, more, problems }
 }
 
 pub fn bindings(cfg: &Config) -> Bindings {
-    resolve_keys(&cfg.keys).table
+    all_keys(cfg).0.prefix
+}
+
+// ---------- everything a key can run, and keys beyond the prefix ----------
+
+// What a key, a mode or an [actions] list can run by name: one of modisa's actions, an [actions] list, a [[command]],
+// a mode (mode:<name>), a plugin's action (plugin:<name>.<action>), or a shell command run in the background
+// (sh:<command>).
+pub fn known(cfg: &Config, name: &str) -> bool {
+    action_id(name).is_some()
+        || cfg.actions.contains_key(name)
+        || cfg.command.iter().any(|c| c.name == name)
+        || name.strip_prefix("mode:").is_some_and(|m| cfg.modes.contains_key(m))
+        || name.strip_prefix("plugin:").and_then(|p| p.split_once('.')).is_some_and(|(p, a)| !p.is_empty() && !a.is_empty())
+        || name.strip_prefix("sh:").is_some_and(|c| !c.trim().is_empty())
+}
+
+// Keys with names beyond the one-character ones, for chords and modes.
+const SPECIAL: &[&str] = &["return", "tab", "space", "backspace", "escape", "delete"];
+
+// A key with its modifiers, written C- (ctrl), M- (alt), S- (shift, for a named key: a shifted character is just that
+// character) before its name: "M-h", "C-M-left", "S-tab". The one way modisa writes it (C-, M-, S- in that order), or
+// None when it isn't one.
+pub fn chord(s: &str) -> Option<String> {
+    let (mut ctrl, mut alt, mut shift, mut rest) = (false, false, false, s);
+    loop {
+        let flag = match rest.get(..2) {
+            Some("C-") => &mut ctrl,
+            Some("M-") => &mut alt,
+            Some("S-") => &mut shift,
+            _ => break,
+        };
+        if rest.len() == 2 {
+            break; // "C-" alone isn't a key ("C--" is ctrl and -)
+        }
+        *flag = true;
+        rest = &rest[2..];
+    }
+    if !(is_key(rest) || SPECIAL.contains(&rest)) || (shift && rest.chars().count() == 1) {
+        return None;
+    }
+    Some(format!("{}{}{}{rest}", if ctrl { "C-" } else { "" }, if alt { "M-" } else { "" }, if shift { "S-" } else { "" }))
+}
+
+// A key that works without the prefix mustn't be one typing needs: it has C- or M-, or it's an f-key.
+fn rootable(chord: &str) -> bool {
+    chord.starts_with("C-") || chord.starts_with("M-") || chord.strip_prefix("S-").unwrap_or(chord).strip_prefix('f').is_some_and(|n| n.parse::<u8>().is_ok())
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Mode {
+    pub sticky: bool,
+    pub timeout: u64,
+    pub keys: IndexMap<String, String>, // key (as chord() writes it) → what it runs
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Keys {
+    pub prefix: Bindings,               // modisa's actions after the prefix
+    pub more: IndexMap<String, String>, // the rest after the prefix: lists, commands, modes' `enter`, plugin:, sh:
+    pub root: IndexMap<String, String>, // without the prefix
+    pub modes: IndexMap<String, Mode>,
+}
+
+// One table's "<action>" = key(s): each key as chord() writes it, or a problem.
+fn table_keys(table: &str, map: &Map<String, Value>, cfg: &Config, root: bool, problems: &mut Vec<(String, KeyProblem)>) -> IndexMap<String, String> {
+    let mut out = IndexMap::new();
+    for (name, value) in map {
+        let mut problem = |level: Level, message: String| problems.push((table.to_string(), KeyProblem { level, action: name.clone(), message }));
+        if !known(cfg, name) {
+            problem(Level::Warning, format!("there's no action {name} (the keyboard guide, prefix ?, lists them)"));
+            continue;
+        }
+        let wanted: Vec<&Value> = match value {
+            Value::Array(items) => items.iter().collect(),
+            v => vec![v],
+        };
+        for k in wanted {
+            let Some(k) = k.as_str() else {
+                problem(Level::Error, "a key is a string (\"M-h\"), or a list of them".into());
+                continue;
+            };
+            if k.is_empty() {
+                continue;
+            }
+            let Some(c) = chord(k) else {
+                problem(Level::Error, format!("{} isn't a key: C-, M- or S- and a key's name (one character, {}, f1 to f12)", Value::from(k), SPECIAL.join(", ")));
+                continue;
+            };
+            if root && !rootable(&c) {
+                problem(Level::Error, format!("{c} would take a key the panes need: give it C- or M- (or use an f-key)"));
+                continue;
+            }
+            if root && format!("C-{}", cfg.prefix.strip_prefix("C-").unwrap_or("")) == c {
+                problem(Level::Error, format!("{c} is the prefix"));
+                continue;
+            }
+            if let Some(other) = out.get(&c).filter(|o| *o != name) {
+                problem(Level::Error, format!("{c} is given to {other} too; the last one wins"));
+            }
+            out.insert(c, name.clone());
+        }
+    }
+    out
+}
+
+// Every key the config makes, and what's wrong with them: (the table it's in, the problem).
+pub fn all_keys(cfg: &Config) -> (Keys, Vec<(String, KeyProblem)>) {
+    let mut problems = Vec::new();
+    // after the prefix: [keys], each [[command]]'s key, each mode's enter
+    let mut prefix = cfg.keys.clone();
+    for c in cfg.command.iter().filter(|c| !c.key.is_empty()) {
+        prefix.insert(c.name.clone(), Value::from(c.key.clone()));
+    }
+    for (name, m) in cfg.modes.iter().filter(|(_, m)| !m.enter.is_empty()) {
+        prefix.insert(format!("mode:{name}"), Value::from(m.enter.clone()));
+    }
+    let r = resolve_keys(&prefix, &|n| known(cfg, n));
+    problems.extend(r.problems.into_iter().map(|p| ("keys".to_string(), p)));
+    let mut root_map = cfg.root_keys.clone();
+    for c in cfg.command.iter().filter(|c| !c.root.is_empty()) {
+        root_map.insert(c.name.clone(), Value::from(c.root.clone()));
+    }
+    let root = table_keys("root_keys", &root_map, cfg, true, &mut problems);
+    let modes = cfg
+        .modes
+        .iter()
+        .map(|(name, m)| {
+            let keys = table_keys(&format!("modes.{name}.keys"), &m.keys, cfg, false, &mut problems);
+            (name.clone(), Mode { sticky: m.sticky, timeout: m.timeout, keys })
+        })
+        .collect();
+    for (name, list) in &cfg.actions {
+        for a in list.iter().filter(|a| !known(cfg, a)) {
+            problems.push(("actions".into(), KeyProblem { level: Level::Warning, action: name.clone(), message: format!("there's no action {a}, so the list skips it") }));
+        }
+    }
+    (Keys { prefix: r.table, more: r.more, root, modes }, problems)
 }
 
 // Why a plugin can't have `key` under these bindings (DEFAULT_KEYS when it's no config's), if it can't.
@@ -228,6 +380,9 @@ mod tests {
     fn keys(v: Value) -> Map<String, Value> {
         v.as_object().cloned().unwrap()
     }
+    fn resolve_keys_plain(keys: &Map<String, Value>) -> ResolvedKeys {
+        resolve_keys(keys, &|_| false)
+    }
     fn with_keys(v: Value) -> Bindings {
         bindings(&Config { keys: keys(v), ..Config::default() })
     }
@@ -265,7 +420,7 @@ mod tests {
 
     #[test]
     fn x_d_and_escape_cant_be_given_away_and_x_and_d_stay_on_close_pane_and_detach() {
-        let ResolvedKeys { table, problems } = resolve_keys(&keys(json!({ "zoom": "x", "palette": "escape", "close-pane": "q", "detach": "" })));
+        let ResolvedKeys { table, problems, .. } = resolve_keys_plain(&keys(json!({ "zoom": "x", "palette": "escape", "close-pane": "q", "detach": "" })));
         assert_eq!(table.get("x").copied(), Some("close-pane"));
         assert_eq!(table.get("q").copied(), Some("close-pane"));
         assert_eq!(table.get("d").copied(), Some("detach"));
@@ -273,12 +428,12 @@ mod tests {
         assert!(!table.values().any(|a| *a == "zoom")); // asked only for x, which it can't have
         let got: Vec<(&str, Level)> = problems.iter().map(|p| (p.action.as_str(), p.level)).collect();
         assert_eq!(got, [("zoom", Level::Error), ("palette", Level::Error)]);
-        assert_eq!(resolve_keys(&keys(json!({ "close-pane": ["x", "q"] }))).problems, []); // its own key, said again
+        assert_eq!(resolve_keys_plain(&keys(json!({ "close-pane": ["x", "q"] }))).problems, []); // its own key, said again
     }
 
     #[test]
     fn what_keys_gets_wrong_is_reported() {
-        let ResolvedKeys { table, problems } = resolve_keys(&keys(json!({ "nope": "q", "zoom": "ctrl-z", "help": "g", "settings": "g", "copy-mode": 3 })));
+        let ResolvedKeys { table, problems, .. } = resolve_keys_plain(&keys(json!({ "nope": "q", "zoom": "ctrl-z", "help": "g", "settings": "g", "copy-mode": 3 })));
         let got: Vec<(&str, Level)> = problems.iter().map(|p| (p.action.as_str(), p.level)).collect();
         assert_eq!(got, [("nope", Level::Warning), ("zoom", Level::Error), ("settings", Level::Error), ("copy-mode", Level::Error)]);
         assert!(problems[0].message.contains("no action nope"));
@@ -287,7 +442,7 @@ mod tests {
         assert!(problems[3].message.contains("a key is a string"));
         assert_eq!(table.get("g").copied(), Some("settings")); // the last one wins
         assert_eq!(table.get("[").copied(), Some("copy-mode")); // a value that isn't keys changes nothing
-        assert_eq!(resolve_keys(&keys(json!({ "zoom": ["Z", "f5", "pageup", "é"] }))).problems, []);
+        assert_eq!(resolve_keys_plain(&keys(json!({ "zoom": ["Z", "f5", "pageup", "é"] }))).problems, []);
         assert!(!is_key("\u{feff}") && is_key("\u{85}") && !is_key(" ") && !is_key("ab"));
     }
 
@@ -315,5 +470,59 @@ mod tests {
         assert_eq!(reasons, [Some("also wanted by q"), Some("also wanted by p"), Some("also wanted by another key of r"), Some("also wanted by another key of r"), Some("turned off in [plugin_keys]")]);
         let json = serde_json::to_value(&bound[4]).unwrap();
         assert_eq!(json, json!({ "plugin": "s", "key": "", "pane": "off", "description": "", "state": "disabled", "reason": "turned off in [plugin_keys]" }));
+    }
+
+    fn cfg(v: Value) -> Config {
+        crate::config::merge(v.as_object().unwrap())
+    }
+
+    #[test]
+    fn chords_are_written_one_way() {
+        assert_eq!(chord("M-h").as_deref(), Some("M-h"));
+        assert_eq!(chord("M-C-left").as_deref(), Some("C-M-left"));
+        assert_eq!(chord("S-tab").as_deref(), Some("S-tab"));
+        assert_eq!(chord("C--").as_deref(), Some("C--"));
+        assert_eq!(chord("f5").as_deref(), Some("f5"));
+        for bad in ["S-a", "C-", "M-ab", "ctrl-x", ""] {
+            assert_eq!(chord(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn root_keys_need_a_modifier_and_lists_commands_and_modes_bind_like_actions() {
+        let c = cfg(json!({
+            "actions": { "dev": ["split-right", "zoom", "nope"] },
+            "root_keys": { "focus-left": "M-h", "zoom": "h", "dev": ["f5", "C-b"], "palette": "M-C-p" },
+            "modes": { "resize": { "enter": "r", "keys": { "resize-left": "h", "resize-right": ["l", "right"] } }, "once": { "enter": "O", "sticky": false, "timeout": 500, "keys": { "zoom": "z" } } },
+            "command": [{ "name": "Tests", "run": "bun test", "key": "T", "root": "M-t" }, { "name": "Theme", "run": "x", "key": "t" }],
+            "keys": { "dev": "D" },
+        }));
+        let (k, problems) = all_keys(&c);
+        assert_eq!(k.root.get("M-h").map(String::as_str), Some("focus-left"));
+        assert_eq!(k.root.get("f5").map(String::as_str), Some("dev"));
+        assert_eq!(k.root.get("C-M-p").map(String::as_str), Some("palette"));
+        assert_eq!(k.root.get("M-t").map(String::as_str), Some("Tests"));
+        assert!(!k.root.contains_key("h") && !k.root.contains_key("C-b"));
+        assert_eq!(k.more.get("D").map(String::as_str), Some("dev"));
+        assert_eq!(k.more.get("T").map(String::as_str), Some("Tests"));
+        assert_eq!(k.more.get("t").map(String::as_str), Some("Theme"));
+        assert_eq!(k.prefix.get("t"), None); // the command took the theme picker's key
+        assert_eq!(k.more.get("r").map(String::as_str), Some("mode:resize"));
+        assert_eq!(k.modes["resize"].keys.get("right").map(String::as_str), Some("resize-right"));
+        assert!(k.modes["resize"].sticky && !k.modes["once"].sticky && k.modes["once"].timeout == 500);
+        let got: Vec<(&str, &str, Level)> = problems.iter().map(|(t, p)| (t.as_str(), p.action.as_str(), p.level)).collect();
+        assert_eq!(got, [("root_keys", "zoom", Level::Error), ("root_keys", "dev", Level::Error), ("actions", "dev", Level::Warning)]);
+        assert!(problems[0].1.message.contains("C- or M-") && problems[1].1.message.contains("the prefix"));
+    }
+
+    #[test]
+    fn what_a_key_can_run() {
+        let c = cfg(json!({ "actions": { "dev": ["zoom"] }, "modes": { "resize": { "enter": "r" } }, "command": [{ "name": "Tests", "run": "x" }] }));
+        for ok in ["zoom", "dev", "Tests", "mode:resize", "plugin:radar.order", "sh:make"] {
+            assert!(known(&c, ok), "{ok}");
+        }
+        for bad in ["nope", "mode:other", "plugin:radar", "plugin:.x", "sh: "] {
+            assert!(!known(&c, bad), "{bad}");
+        }
     }
 }

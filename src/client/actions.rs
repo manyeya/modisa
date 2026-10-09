@@ -88,6 +88,52 @@ pub fn run(shared: &Shared, id: &str) {
     });
 }
 
+// What a key, a mode or an [actions] list names (keys.rs known): one of modisa's actions, a list, a [[command]], a
+// mode (mode:<name>), a plugin's action (plugin:<name>.<action>) or a shell command run in the background (sh:<command>).
+pub fn run_named(shared: &Shared, name: &str) {
+    run_named_at(shared, name, 0)
+}
+
+fn run_named_at(shared: &Shared, name: &str, depth: usize) {
+    let warn = |text: String| {
+        let mut app = shared.borrow_mut();
+        let b = app.th.blocked;
+        app.toast(&text, b);
+    };
+    if depth > 8 {
+        return warn(format!("{name}: a list that runs itself"));
+    }
+    if let Some(id) = crate::config::keys::action_id(name) {
+        return run(shared, id);
+    }
+    if let Some(m) = name.strip_prefix("mode:") {
+        return super::input::enter_mode(shared, m);
+    }
+    if let Some(command) = name.strip_prefix("sh:") {
+        return super::commands::background(shared, command);
+    }
+    if let Some((plugin, action)) = name.strip_prefix("plugin:").and_then(|p| p.split_once('.')) {
+        let app = shared.borrow();
+        let Some(run) = plugin_ui(&app).iter().find(|p| p["plugin"] == plugin).and_then(|p| p["run"].as_str()).map(String::from) else {
+            drop(app);
+            return warn(format!("{plugin} isn't running"));
+        };
+        let target = focused_target(&app);
+        return run_plugin_action(&app, plugin, &run, action, json!({}), target, None);
+    }
+    let (list, command) = {
+        let app = shared.borrow();
+        (app.cfg.actions.get(name).cloned(), app.cfg.command.iter().find(|c| c.name == name).cloned())
+    };
+    if let Some(list) = list {
+        for a in &list {
+            run_named_at(shared, a, depth + 1);
+        }
+    } else if let Some(c) = command {
+        super::commands::run(shared, c);
+    }
+}
+
 async fn request(shared: &Shared, method: &str, params: Value) -> Result<Value, String> {
     let conn = shared.borrow().conn.clone().ok_or("not connected")?;
     conn.request(method, params, None).await.map_err(|e| e.message)
@@ -254,6 +300,13 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
                         items.push(ListItem::new(format!("{name}: {}", a["title"].as_str().unwrap_or("")), desc, format!("plugin:{name}:{run}:{}", a["id"].as_str().unwrap_or(""))));
                     }
                 }
+                for c in &app.cfg.command {
+                    let key = if c.key.is_empty() { c.root.clone() } else { c.key.clone() };
+                    items.push(ListItem::new(c.name.clone(), c.run.clone(), format!("named:{}", c.name)).key(key));
+                }
+                for (name, list) in &app.cfg.actions {
+                    items.push(ListItem::new(name.clone(), list.join(" → "), format!("named:{name}")));
+                }
                 items.push(ListItem::new("Kill session", "close every pane and stop the server", "kill"));
                 items
             };
@@ -270,6 +323,10 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
             }
             if v == "kill" {
                 request(shared, "kill", json!({})).await?;
+                return Ok(());
+            }
+            if let Some(name) = v.strip_prefix("named:") {
+                run_named(shared, name);
                 return Ok(());
             }
             run(shared, &v);

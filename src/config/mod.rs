@@ -213,6 +213,56 @@ pub struct PluginEntry {
 // [agents.<id>]: any of the adapter's fields (launch, resume, …) over it; see adapters.rs.
 pub type AgentOverride = Map<String, Value>;
 
+fn yes() -> bool {
+    true
+}
+
+fn split() -> String {
+    "split".into()
+}
+
+// [modes.<name>]: a key mode, entered with `enter` after the prefix; its own keys work alone until escape.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModeConfig {
+    #[serde(default)]
+    pub enter: String,
+    #[serde(default = "yes")]
+    pub sticky: bool, // stay after each key (false: one key, then back)
+    #[serde(default)]
+    pub timeout: u64, // ms of no key before it ends; 0 never
+    #[serde(default)]
+    pub keys: Map<String, Value>, // action → its key(s) in the mode, as [keys]
+}
+
+// A [[command]]'s question: typed (`default` to start from), or picked from what `pick` prints, a line each.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CommandPrompt {
+    pub name: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub default: String,
+    #[serde(default)]
+    pub pick: String,
+}
+
+// [[command]]: an entry of the user's own in the palette, with keys and prompts.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CommandConfig {
+    pub name: String,
+    pub run: String,
+    #[serde(default)]
+    pub key: String, // after the prefix
+    #[serde(default)]
+    pub root: String, // without it
+    #[serde(default = "split", rename = "in")]
+    pub place: String, // split, split-down, tab, zoomed, background
+    #[serde(default)]
+    pub cwd: String, // default: the focused pane's
+    #[serde(default)]
+    pub prompts: Vec<CommandPrompt>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -234,6 +284,10 @@ pub struct Config {
     pub plugin: Vec<PluginEntry>,
     pub plugin_keys: IndexMap<String, String>, // "<plugin>.<action or pane>" → key ("" turns it off); outranks plugin.json
     pub keys: Map<String, Value>, // action → its key(s) after the prefix, in place of modisa's ("" for none): see keys.rs
+    pub actions: IndexMap<String, Vec<String>>, // [actions]: a name for a list of actions, run in order
+    pub root_keys: Map<String, Value>, // action → its key(s) with no prefix (a modifier needed): see keys.rs
+    pub modes: IndexMap<String, ModeConfig>,
+    pub command: Vec<CommandConfig>,
     pub remote_command: String,
 }
 
@@ -257,6 +311,10 @@ pub fn defaults() -> Config {
         plugin: vec![],
         plugin_keys: IndexMap::new(),
         keys: Map::new(),
+        actions: IndexMap::new(),
+        root_keys: Map::new(),
+        modes: IndexMap::new(),
+        command: vec![],
         remote_command: "modisa".into(),
     }
 }
@@ -357,6 +415,29 @@ run_foreign = "ask"
 # [keys]
 # zoom = "f"
 # split-right = ["v", "|"]
+
+# A name for a list of actions, run in order; bind it like any action ([keys], [root_keys], a mode).
+# [actions]
+# "dev-layout" = ["split-right", "focus-left", "zoom"]
+
+# Keys that work without the prefix (they never reach the panes, so each needs C- or M-, or is an f-key).
+# [root_keys]
+# focus-left = "M-h"
+# focus-right = "M-l"
+# palette = "M-return"
+
+# A key mode: `enter` after the prefix, then its keys work alone until escape (sticky = false: one key, then back).
+# [modes.resize]
+# enter = "r"
+# keys = { resize-left = "h", resize-right = "l", resize-down = "j", resize-up = "k" }
+
+# Your own commands, in the palette and on keys. `in`: split, split-down, tab, zoomed or background. {cwd}, {pane},
+# {name}, {space}, {tab}, {session} and each prompt's name are filled in (prompt answers shell-quoted).
+# [[command]]
+# name = "Run tests"
+# key = "T"
+# run = "bun test {filter}"
+# prompts = [{ name = "filter", title = "Test filter" }]
 
 # How --remote starts modisa on the far side of ssh. Set an absolute path when it isn't on the
 # PATH of a non-interactive ssh shell (~/.local/bin often isn't).
@@ -494,6 +575,10 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         plugin: get("plugin").and_then(Value::as_array).map(|p| p.iter().filter_map(|e| typed(Some(e))).collect()).unwrap_or_default(),
         plugin_keys: entries(get("plugin_keys")),
         keys: get("keys").and_then(Value::as_object).cloned().unwrap_or_default(),
+        actions: entries(get("actions")),
+        root_keys: get("root_keys").and_then(Value::as_object).cloned().unwrap_or_default(),
+        modes: entries(get("modes")),
+        command: get("command").and_then(Value::as_array).map(|c| c.iter().filter_map(|e| typed(Some(e))).collect()).unwrap_or_default(),
         remote_command: typed(get("remote_command")).unwrap_or(d.remote_command),
     }
 }
@@ -877,7 +962,9 @@ mod tests {
     fn the_config_serializes_with_the_ts_field_names() {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-        assert_eq!(fields, ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys", "remote_command"]);
+        let ts = ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys"];
+        let since = ["actions", "root_keys", "modes", "command", "remote_command"]; // the Rust build's, then the TS's last
+        assert_eq!(fields, [&ts[..], &since[..]].concat());
         assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false }));
         assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [] }));
         assert_eq!(v["sound"], json!({ "volume": 0.7, "blocked": "chime", "done": "success", "working": "loading" }));
