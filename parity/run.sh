@@ -41,8 +41,8 @@ pkill -f "$MODISA_BIN server" || true # a test that only deletes its sandbox lea
 # runners sometimes leave a TUI test's menu open after a resize (test/e2e/ui/mouse.test.ts); it doesn't happen
 # locally. A file that fails twice fails the run.
 if [ $status -ne 0 ]; then
-  # a file's header is "test/….test.ts:" (in GitHub Actions, "##[group]test/….test.ts:")
-  failed=$(awk '{ line = $0; sub(/^##\[group\]/, "", line) } line ~ /^test\/.*\.test\.ts:$/ { file = substr(line, 1, length(line) - 1) } /^\(fail\)/ && file { print file }' "$log" | sort -u)
+  # a file's header is "test/….test.ts:" (in GitHub Actions "::group::test/….test.ts:", which its log shows as "##[group]…")
+  failed=$(awk '{ line = $0; sub(/^(::group::|##\[group\])/, "", line) } line ~ /^test\/.*\.test\.ts:$/ { file = substr(line, 1, length(line) - 1) } /^\(fail\)/ && file { print file }' "$log" | sort -u)
   if [ -n "$failed" ]; then
     echo "re-running what failed: $failed"
     # shellcheck disable=SC2086
