@@ -292,6 +292,21 @@ pub struct ModeConfig {
     pub keys: Map<String, Value>, // action → its key(s) in the mode, as [keys]
 }
 
+fn second() -> u64 {
+    1000
+}
+
+// [[hook]]: a command run on an event (server/hooks.rs).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct HookConfig {
+    pub on: String,
+    #[serde(default)]
+    pub when: String,
+    pub run: String,
+    #[serde(default = "second")]
+    pub timeout: u64, // ms an intercepting one may take
+}
+
 // A [[command]]'s question: typed (`default` to start from), or picked from what `pick` prints, a line each.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CommandPrompt {
@@ -346,6 +361,7 @@ pub struct Config {
     pub root_keys: Map<String, Value>, // action → its key(s) with no prefix (a modifier needed): see keys.rs
     pub modes: IndexMap<String, ModeConfig>,
     pub command: Vec<CommandConfig>,
+    pub hook: Vec<HookConfig>,
     pub remote_command: String,
 }
 
@@ -373,6 +389,7 @@ pub fn defaults() -> Config {
         root_keys: Map::new(),
         modes: IndexMap::new(),
         command: vec![],
+        hook: vec![],
         remote_command: "modisa".into(),
     }
 }
@@ -503,6 +520,13 @@ run_foreign = "ask"
 # key = "T"
 # run = "bun test {filter}"
 # prompts = [{ name = "filter", title = "Test filter" }]
+
+# Commands run on what happens, with the event as JSON on stdin; {field} fills in one of its fields. Those on
+# message.send, agent.spawn, pane.keys, pane.run or notify run first and may stop it or change it (see CUSTOMIZE.md).
+# [[hook]]
+# on = "agent.state"
+# when = "to == 'blocked'"
+# run = "say {name} needs you"
 
 # How --remote starts modisa on the far side of ssh. Set an absolute path when it isn't on the
 # PATH of a non-interactive ssh shell (~/.local/bin often isn't).
@@ -644,6 +668,7 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         root_keys: get("root_keys").and_then(Value::as_object).cloned().unwrap_or_default(),
         modes: entries(get("modes")),
         command: get("command").and_then(Value::as_array).map(|c| c.iter().filter_map(|e| typed(Some(e))).collect()).unwrap_or_default(),
+        hook: get("hook").and_then(Value::as_array).map(|h| h.iter().filter_map(|e| typed(Some(e))).collect()).unwrap_or_default(),
         remote_command: typed(get("remote_command")).unwrap_or(d.remote_command),
     }
 }
@@ -1042,7 +1067,7 @@ mod tests {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
         let ts = ["prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents", "plugin", "plugin_keys", "keys"];
-        let since = ["actions", "root_keys", "modes", "command", "remote_command"]; // the Rust build's, then the TS's last
+        let since = ["actions", "root_keys", "modes", "command", "hook", "remote_command"]; // the Rust build's, then the TS's last
         assert_eq!(fields, [&ts[..], &since[..]].concat());
         assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false }));
         assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [], "unread": false, "click": "none" }));

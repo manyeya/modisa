@@ -169,26 +169,32 @@ prompts = [{ name = "branch", pick = "git branch --format=%(refname:short)" }]  
 
 ## Hooks
 
-Commands run on what happens. A hook gets the event as JSON on stdin and `MODISA_EVENT`, `MODISA_PANE_ID` etc. in
-its environment.
+Commands run on what happens. A hook gets the event as JSON on stdin and in `$MODISA_EVENT` (with `MODISA_SOCKET`,
+`MODISA_SESSION` and, for an event about a pane, `MODISA_PANE_ID` set, so it can call `modisa`), and `{field}` in its
+command line is one of the event's fields, shell-quoted (`{agent.harness}` for a nested one).
 
 ```toml
 [[hook]]
 on = "agent.state"
-when = "to == 'blocked'"    # optional: a condition on the event's fields (==, !=, contains, &&, ||, !)
-run = "say '{name} needs you'"
+when = "to == 'blocked'"    # optional: a condition on the event's fields (==, !=, contains, !, &&, ||, parentheses)
+run = "say {name} needs you"
 
 [[hook]]
-on = "message.send"         # before an agent's message is delivered: may change or stop it
+on = "message.send"         # before an agent's message goes: may change it or stop it
 run = "~/bin/redact-secrets"
-timeout = 2000              # ms (default 1000); on a timeout or failure the event goes on unchanged
+timeout = 2000              # ms (default 1000); a hook that fails or runs out of time changes nothing
 ```
 
-Observing events: `agent.state`, `pane.created`, `pane.exited`, `pane.cwd`, `command.finished` (OSC 133, with its
-exit code and duration), `client.attached`, `client.detached`, `theme.changed`, `notify`, `plugin.started`,
-`plugin.stopped`. Intercepting events (the hook may print `{"allow": false, "reason": "…"}` to stop it, or the event's
-fields changed, e.g. `{"text": "…"}`): `message.send`, `agent.spawn` (its prompt and launch command), `pane.keys`
-and `pane.run` (from agents), `notify` (its text, or drop it).
+Events a hook can watch (what `modisa events --follow` shows): `agent.state` (`pane`, `name`, `harness`, `from`,
+`to`), `pane.created`, `process.exited` (`exitCode`), `message.sent`, `message.delivered`, `client.attached`,
+`pane.output` (every chunk a pane prints: expensive).
+
+Requests a hook can stand in front of, and their fields: `message.send` (`to`, `body`), `agent.spawn` (`harness`,
+`name`, `prompt`, `dir`, …), `pane.keys` (`target`, `keys`), `pane.run` (`target`, `command`), `notify` (`title`,
+`body`, `tone`, `system`, `sound`); each also has `caller`, the pane asking, when an agent asks. The hook prints
+`{"allow": false, "reason": "…"}` to stop it (the caller is told the reason), or an object of fields to change
+(`{"body": "…"}`), or nothing to let it go as it is. Several hooks on one request run in order, each seeing what the one
+before left.
 
 ## Notifications and sound
 

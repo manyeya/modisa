@@ -61,6 +61,18 @@ pub fn dispatch(shared: &Shared, client: u64, m: Value) {
     if let (Some(plugin), Some(_)) = (plugin, params.get("caller")) {
         return reply(Err(crate::protocol::conn::fail("invalid_params", format!("invalid params: caller: plugin {plugin} acts as itself, not as a pane"))));
     }
+    // a [[hook]] stands in front of this request: it runs first, then the request with what it left
+    let hooked = crate::server::hooks::intercepted(&method).filter(|e| shared.borrow().cfg.hook.iter().any(|h| h.on == *e));
+    if let Some(event) = hooked {
+        let shared = shared.clone();
+        tokio::task::spawn_local(async move {
+            match crate::server::hooks::intercept(&shared, event, params).await {
+                Ok(params) => reply(call(&shared, client, &method, params).await),
+                Err(e) => reply(Err(e)),
+            }
+        });
+        return;
+    }
     match route(&method) {
         None => {
             if let Some(id) = m.get("id") {

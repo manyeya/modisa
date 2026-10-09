@@ -8,6 +8,7 @@ pub mod agents;
 pub mod attach;
 pub mod env;
 pub mod git;
+pub mod hooks;
 pub mod keys;
 pub mod permissions;
 pub mod persist;
@@ -138,6 +139,7 @@ impl Server {
                 c.conn.notify("event", ev.clone());
             }
         }
+        hooks::observe(self, &ev);
     }
 
     // Not stored: a client attached later never sees it. Both limits are checked before either is spent. Returns how

@@ -142,6 +142,13 @@ const SETTINGS: &[(&str, Schema)] = &[
         }),
     ),
     (
+        "hook",
+        Schema::Array(&Schema::Object {
+            fields: &[("on", Schema::Str { min: 1 }), ("when", STR), ("run", Schema::Str { min: 1 }), ("timeout", Schema::Num { int: true, min: Some(AT_LEAST), max: None })],
+            partial: true,
+        }),
+    ),
+    (
         "command",
         Schema::Array(&Schema::Object {
             fields: &[
@@ -327,6 +334,11 @@ pub fn check_config(source: &str) -> Vec<ConfigProblem> {
         validate(schema, Some(value), &mut vec![Seg::Key(name.clone())], &mut issues);
         for issue in issues {
             add(issue.level, &issue.path, issue.message);
+        }
+    }
+    for (i, h) in user.get("hook").and_then(Value::as_array).into_iter().flatten().enumerate() {
+        if let Some(problem) = h.get("when").and_then(Value::as_str).and_then(crate::server::hooks::check_when) {
+            add(Level::Error, &[Seg::Key("hook".into()), Seg::Index(i), Seg::Key("when".into())], problem);
         }
     }
     // [notify.<id>] and [sound.<id>] are per agent: one modisa knows, or one [agents.<id>] adds
