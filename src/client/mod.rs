@@ -324,7 +324,19 @@ pub async fn setup_logos(shared: Shared) {
 // ---------- notifications ----------
 
 pub fn system_notification(text: &str) {
-    use crate::core::paths::which;
+    system_notification_at(text, None)
+}
+
+// With `focus` ([notify] click = "focus", and terminal-notifier on the PATH), clicking it focuses that pane: (session,
+// pane). Elsewhere a click does what the system does with it.
+fn system_notification_at(text: &str, focus: Option<(&str, &str)>) {
+    use crate::core::paths::{self_exe, which};
+    if let (Some((session, pane)), Some(tn)) = (focus, which("terminal-notifier")) {
+        let quote = |s: &str| format!("'{}'", s.replace('\'', r"'\''"));
+        let run = format!("{} -s {} pane focus {}", quote(&self_exe()), quote(session), quote(pane));
+        let _ = std::process::Command::new(tn).args(["-title", "modisa", "-message", text, "-execute", &run]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+        return;
+    }
     if which("osascript").is_some() {
         let _ = std::process::Command::new("osascript").args(["-e", &format!("display notification {} with title \"modisa\"", serde_json::to_string(text).unwrap())]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
     } else if which("notify-send").is_some() {
@@ -336,23 +348,33 @@ pub fn system_notification(text: &str) {
     }
 }
 
+// A built-in sound's name, or a file's path.
 fn play_sound(name: &str, volume: f64) {
-    sound::play(name, volume);
+    if name.contains('/') {
+        sound::play_file(&crate::core::paths::abs_path(name), volume);
+    } else {
+        sound::play(name, volume);
+    }
 }
 
-// An agent's state changed while you weren't looking at it.
-fn notify(app: &mut App, state: AgentState, text: &str) {
-    let kinds = app.cfg.notify.kinds(state).to_vec();
+// An agent's state changed while you weren't looking at it: told the ways [notify] (and [notify.<agent>]) say, but a
+// muted pane makes no sound and no system notification.
+fn notify(app: &mut App, state: AgentState, text: &str, pane: Option<&str>) {
+    let info = pane.and_then(|p| app.info(p));
+    let agent = info.and_then(|i| i.agent.as_ref()).map(|a| a.harness.clone());
+    let muted = info.is_some_and(|i| i.muted);
+    let kinds = app.cfg.notify.kinds_for(state, agent.as_deref()).to_vec();
     if kinds.contains(&NotifyKind::Toast) {
         let c = app.state_color(state);
         app.toast(text, c);
     }
-    if kinds.contains(&NotifyKind::System) {
-        system_notification(text);
+    if kinds.contains(&NotifyKind::System) && !muted {
+        let focus = (app.cfg.notify.click == "focus").then_some(pane).flatten().map(|p| (app.opts.session.as_str(), p));
+        system_notification_at(text, focus);
     }
-    if kinds.contains(&NotifyKind::Sound) {
-        if let Some(s) = app.cfg.sound.name(state) {
-            play_sound(s, app.cfg.sound.volume);
+    if kinds.contains(&NotifyKind::Sound) && !muted {
+        if let Some(s) = app.cfg.sound.for_agent(state, agent.as_deref()) {
+            play_sound(&s, app.cfg.sound.volume);
         }
     }
     if kinds.contains(&NotifyKind::Bell) {
@@ -450,7 +472,7 @@ fn on_message(app: &mut App, m: Value) {
         }
         "notify" => {
             if let Some(s) = d["state"].as_str().and_then(AgentState::parse) {
-                notify(app, s, d["text"].as_str().unwrap_or(""));
+                notify(app, s, d["text"].as_str().unwrap_or(""), d["pane"].as_str());
             }
         }
         "plugin.toast" => sent_toast(app, d),

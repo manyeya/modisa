@@ -195,20 +195,21 @@ and `pane.run` (from agents), `notify` (its text, or drop it).
 ```toml
 [notify]
 blocked = ["toast", "system", "sound"]
-unread = true               # a tab keeps its "needs you" mark until you visit it
-click = "focus"             # clicking a system notification focuses the pane (where the OS allows)
+unread = true               # a tab keeps a • after an agent in it needed you or finished, until you look at it
+click = "focus"             # clicking a system notification focuses the pane (macOS: needs terminal-notifier)
 
-[notify.codex]              # per agent, overriding the above
+[notify.codex]              # per agent (its id: claude-code, codex, …), over the above
 done = []
 
 [sound]
-pack = "~/.config/modisa/sounds/retro"   # a directory: blocked.wav, done.wav, working.wav (wav, mp3, aiff, ogg)
+pack = "~/.config/modisa/sounds/retro"   # blocked.wav, done.mp3, working.aiff… (wav, mp3, aiff, ogg) play instead
 volume = 0.7
 [sound.claude-code]
 done = "~/sounds/ding.wav"  # a file, or a built-in sound's name
 ```
 
-A pane's right-click menu has "Mute this pane".
+A pane's right-click menu has "Mute this pane": its agent then makes no sound and no system notification (toasts
+still show).
 
 ## Metadata
 

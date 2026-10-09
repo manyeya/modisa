@@ -128,6 +128,20 @@ pub struct Notify {
     pub done: Vec<NotifyKind>,
     #[serde(deserialize_with = "known_kinds")]
     pub working: Vec<NotifyKind>,
+    pub unread: bool,  // a tab keeps its mark until it's looked at
+    pub click: String, // "focus": clicking a system notification focuses the pane (with terminal-notifier)
+    #[serde(flatten)]
+    pub agents: IndexMap<String, AgentNotify>, // [notify.<agent id>]: its own lists over these
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentNotify {
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "some_kinds")]
+    pub blocked: Option<Vec<NotifyKind>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "some_kinds")]
+    pub done: Option<Vec<NotifyKind>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "some_kinds")]
+    pub working: Option<Vec<NotifyKind>>,
 }
 
 impl Notify {
@@ -139,6 +153,21 @@ impl Notify {
             AgentState::Idle => &[],
         }
     }
+
+    // For one agent: its [notify.<id>] list for the event, else everyone's.
+    pub fn kinds_for(&self, event: AgentState, agent: Option<&str>) -> &[NotifyKind] {
+        let own = agent.and_then(|a| self.agents.get(a)).and_then(|a| match event {
+            AgentState::Blocked => a.blocked.as_deref(),
+            AgentState::Done => a.done.as_deref(),
+            AgentState::Working => a.working.as_deref(),
+            AgentState::Idle => None,
+        });
+        own.unwrap_or_else(|| self.kinds(event))
+    }
+}
+
+fn some_kinds<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<NotifyKind>>, D::Error> {
+    known_kinds(d).map(Some)
 }
 
 // A kind modisa doesn't know is left out: in the TS it stayed in the list and matched nothing.
@@ -154,9 +183,38 @@ pub struct Sound {
     pub blocked: String,
     pub done: String,
     pub working: String,
+    pub pack: String, // a directory of files named after the events (blocked.wav, done.mp3, …) that play instead
+    #[serde(flatten)]
+    pub agents: IndexMap<String, AgentSound>, // [sound.<agent id>]: a sound's name or a file, per event
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentSound {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working: Option<String>,
 }
 
 impl Sound {
+    // What plays for an agent's event: its [sound.<id>] setting, else the pack's file for the event, else the sound
+    // [sound] names. A built-in sound's name, or a file's path (~ for home).
+    pub fn for_agent(&self, event: AgentState, agent: Option<&str>) -> Option<String> {
+        let own = agent.and_then(|a| self.agents.get(a)).and_then(|a| match event {
+            AgentState::Blocked => a.blocked.clone(),
+            AgentState::Done => a.done.clone(),
+            AgentState::Working => a.working.clone(),
+            AgentState::Idle => None,
+        });
+        let packed = || {
+            let dir = crate::core::paths::abs_path(&self.pack);
+            ["wav", "mp3", "aiff", "ogg"].iter().map(|ext| format!("{dir}/{}.{ext}", event.as_str())).find(|f| !self.pack.is_empty() && std::path::Path::new(f).is_file())
+        };
+        own.or_else(packed).or_else(|| self.name(event).map(String::from)).filter(|s| !s.is_empty())
+    }
+
     pub fn name(&self, event: AgentState) -> Option<&str> {
         match event {
             AgentState::Blocked => Some(&self.blocked),
@@ -300,8 +358,8 @@ pub fn defaults() -> Config {
         status: Status { agents: true, panes: true, theme: false },
         git: Git { status: true, repo: true, counts: true, changes: true },
         panes: Panes { border: BorderStyle::Single },
-        notify: Notify { blocked: vec![NotifyKind::Toast, NotifyKind::System, NotifyKind::Sound], done: vec![NotifyKind::Toast], working: vec![] },
-        sound: Sound { volume: 0.7, blocked: "chime".into(), done: "success".into(), working: "loading".into() },
+        notify: Notify { blocked: vec![NotifyKind::Toast, NotifyKind::System, NotifyKind::Sound], done: vec![NotifyKind::Toast], working: vec![], unread: false, click: "none".into(), agents: IndexMap::new() },
+        sound: Sound { volume: 0.7, blocked: "chime".into(), done: "success".into(), working: "loading".into(), pack: String::new(), agents: IndexMap::new() },
         indicators: Indicators { style: IndicatorStyle::Symbols, tab: true, pane: true, sidebar: true },
         pane_labels: PaneLabels { agent: true },
         update: Update { check: true, channel: Channel::Stable },
@@ -368,12 +426,19 @@ hover = true                # the pointer resting on a row of a menu, picker or 
 blocked = ["toast", "system", "sound"]   # …needs you
 done = ["toast"]                         # …finished
 working = []                             # …started working
+unread = false              # a tab keeps a • after an agent in it needed you or finished, until you look at it
+click = "none"              # "focus": clicking a system notification focuses the pane (needs terminal-notifier on macOS)
+# [notify.codex]            # one agent's own: blocked, done, working over the above
+# done = []
 
 [sound]                     # the sound each event plays (cuelume): chime, sparkle, droplet, bloom,
 volume = 0.7                # whisper, tick, press, release, toggle, success, error, page, loading,
 blocked = "chime"           # ready, pulse, scan, arrival
 done = "success"
 working = "loading"
+pack = ""                   # a directory of your own sounds named after the events: blocked.wav, done.mp3, …
+# [sound.claude-code]       # one agent's own: a sound's name or a file, per event
+# done = "~/sounds/ding.wav"
 
 [indicators]
 style = "symbols"           # symbols ! ◆ ✓ ○ · dots ● ● ● ○ · letters B W D I
@@ -959,6 +1024,20 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_has_its_own_notifications_and_sounds_over_everyones() {
+        let dir = scratch("pack");
+        std::fs::write(dir.join("done.mp3"), b"").unwrap();
+        let c = merge(&parse_toml(&format!("[notify.codex]\ndone = []\n[sound]\npack = \"{}\"\n[sound.codex]\nblocked = \"~/b.wav\"\n", dir.display())).unwrap());
+        assert_eq!(c.notify.kinds_for(AgentState::Done, Some("codex")), []);
+        assert_eq!(c.notify.kinds_for(AgentState::Done, Some("claude-code")), [NotifyKind::Toast]);
+        assert_eq!(c.notify.kinds_for(AgentState::Blocked, Some("codex")).len(), 3); // codex didn't say: everyone's
+        assert_eq!(c.sound.for_agent(AgentState::Blocked, Some("codex")).as_deref(), Some("~/b.wav"));
+        assert_eq!(c.sound.for_agent(AgentState::Done, Some("codex")), Some(format!("{}/done.mp3", dir.display()))); // the pack's
+        assert_eq!(c.sound.for_agent(AgentState::Working, None).as_deref(), Some("loading"));
+        assert_eq!(c.sound.for_agent(AgentState::Idle, None), None);
+    }
+
+    #[test]
     fn the_config_serializes_with_the_ts_field_names() {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
@@ -966,8 +1045,8 @@ mod tests {
         let since = ["actions", "root_keys", "modes", "command", "remote_command"]; // the Rust build's, then the TS's last
         assert_eq!(fields, [&ts[..], &since[..]].concat());
         assert_eq!(v["sidebar"], json!({ "visible": true, "width": 26, "agents": "", "logos": "auto", "graph": false }));
-        assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [] }));
-        assert_eq!(v["sound"], json!({ "volume": 0.7, "blocked": "chime", "done": "success", "working": "loading" }));
+        assert_eq!(v["notify"], json!({ "blocked": ["toast", "system", "sound"], "done": ["toast"], "working": [], "unread": false, "click": "none" }));
+        assert_eq!(v["sound"], json!({ "volume": 0.7, "blocked": "chime", "done": "success", "working": "loading", "pack": "" }));
         assert_eq!(v["permissions"], json!({ "keys_foreign": "ask", "close_foreign": "ask", "run_foreign": "ask" }));
         let partial: Config = serde_json::from_value(json!({ "theme": "nord", "sidebar": { "width": 40 } })).unwrap();
         assert_eq!((partial.theme.as_str(), partial.sidebar.width, partial.sidebar.visible, partial.prefix.as_str()), ("nord", 40, true, "C-b"));

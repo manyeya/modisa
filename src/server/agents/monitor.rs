@@ -102,6 +102,9 @@ fn look(srv: &mut Server) {
         }
         data["to"] = json!(c.to);
         srv.emit("agent.state", data);
+        if matches!(c.to, AgentState::Blocked | AgentState::Done) && !(attached && srv.s.is_visible(&info.id)) {
+            srv.s.mark_unread(&info.id);
+        }
         if c.to != AgentState::Idle && !focused(&info.id) {
             let what = match c.to {
                 AgentState::Blocked => "is blocked — needs you",
@@ -111,6 +114,9 @@ fn look(srv: &mut Server) {
             let who = info.name.as_ref().map(|n| format!("@{n}")).unwrap_or(info.title.clone());
             srv.broadcast("notify", json!({ "pane": info.id, "state": c.to, "text": format!("{who} {what}") }));
         }
+    }
+    if attached {
+        srv.s.seen();
     }
     if !srv.mail.paused {
         let now = now_ms();

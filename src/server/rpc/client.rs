@@ -114,6 +114,12 @@ fn cmd(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
         }
         "close" => s.close(text("pane").as_deref()),
         "closeTab" => s.close_tab(),
+        "mutePane" => {
+            if let Some(p) = text("pane").and_then(|id| s.panes.get_mut(&id)) {
+                p.info.muted = !p.info.muted;
+                s.changed();
+            }
+        }
         "focusDir" => {
             if let Some(d) = dir_of(&a["dir"]) {
                 s.focus_dir(d, None);

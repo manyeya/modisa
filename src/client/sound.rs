@@ -488,8 +488,15 @@ thread_local! {
 
 // true if it started playing; never waits for it
 pub fn play(name: &str, volume: f64) -> bool {
+    match wav_in(&format!("{}/sounds", *DIR), name) {
+        Some(path) => play_file(&path, volume),
+        None => false,
+    }
+}
+
+// A sound file of the user's (wav, mp3, aiff or ogg: whatever the player takes).
+pub fn play_file(path: &str, volume: f64) -> bool {
     let Some((player, exe)) = player() else { return false };
-    let Some(path) = wav_in(&format!("{}/sounds", *DIR), name) else { return false };
     let volume = volume.clamp(0.0, 1.0);
     let mut cmd = Command::new(exe);
     match player {

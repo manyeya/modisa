@@ -91,6 +91,8 @@ pub struct PaneInfo {
     pub popup: Option<bool>, // a plugin's popup: no place in the layout, shown only by the client that opened it
     #[serde(skip_serializing_if = "Option::is_none")]
     pub takeover: Option<bool>, // driven from another terminal (pane attach)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool, // its agent makes no sound and no system notification
 }
 
 impl PaneInfo {
@@ -157,6 +159,8 @@ pub struct TabView {
     pub tree: Node,
     pub focused: String,
     pub zoomed: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unread: bool, // an agent in it needed you or finished, and the tab hasn't been looked at since
 }
 
 // A space's repository, where its focused pane is: ahead/behind are only there when the branch has an upstream.

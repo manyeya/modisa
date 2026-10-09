@@ -21,6 +21,7 @@ pub struct Tab {
     pub tree: Node,
     pub focused: String,
     pub zoomed: bool,
+    pub unread: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +108,23 @@ impl Session {
     fn ws_mut(&mut self) -> &mut Workspace {
         &mut self.workspaces[self.active]
     }
+    // An agent in `pane` needed you or finished out of sight: its tab stays marked until it's looked at (seen).
+    pub fn mark_unread(&mut self, pane: &str) {
+        let tab = self.workspaces.iter_mut().flat_map(|w| w.tabs.iter_mut()).find(|t| tree_panes(&t.tree).iter().any(|p| p == pane));
+        if let Some(t) = tab.filter(|t| !t.unread) {
+            t.unread = true;
+            self.changed();
+        }
+    }
+
+    // The tab on screen has been looked at.
+    pub fn seen(&mut self) {
+        if self.tab().unread {
+            self.tab_mut().unread = false;
+            self.changed();
+        }
+    }
+
     pub fn tab(&self) -> &Tab {
         let ws = self.ws();
         &ws.tabs[ws.active]
@@ -249,7 +267,7 @@ impl Session {
     // A tab holding one pane that already exists; select: show it.
     fn add_tab(&mut self, wi: usize, pane: &str, name: Option<String>, select: bool) -> usize {
         self.seq += 1;
-        let tab = Tab { id: format!("t{}", self.seq), name, tree: Node::pane(pane), focused: pane.into(), zoomed: false };
+        let tab = Tab { id: format!("t{}", self.seq), name, tree: Node::pane(pane), focused: pane.into(), zoomed: false, unread: false };
         let ws = &mut self.workspaces[wi];
         ws.tabs.push(tab);
         if select {
@@ -568,7 +586,7 @@ impl Session {
                     name: ws.name.clone(),
                     cwd: ws.cwd.clone(),
                     active: ws.active,
-                    tabs: ws.tabs.iter().map(|t| TabView { id: t.id.clone(), name: t.name.clone(), tree: t.tree.clone(), focused: t.focused.clone(), zoomed: t.zoomed }).collect(),
+                    tabs: ws.tabs.iter().map(|t| TabView { id: t.id.clone(), name: t.name.clone(), tree: t.tree.clone(), focused: t.focused.clone(), zoomed: t.zoomed, unread: t.unread }).collect(),
                     git: ws.git.clone(),
                 })
                 .collect(),

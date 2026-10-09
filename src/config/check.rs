@@ -58,6 +58,7 @@ enum Schema {
     Sound, // one of SOUND_NAMES, which its message lists
     Array(&'static Schema),
     Object { fields: &'static [(&'static str, Schema)], partial: bool }, // strict: other keys are warnings
+    Open { fields: &'static [(&'static str, Schema)], rest: &'static Schema }, // its fields, and any other key is a `rest`
     Record(&'static Schema),
     Keys, // one key, or a list of them
     Unknown,
@@ -82,6 +83,9 @@ const fn table(fields: &'static [(&'static str, Schema)]) -> Schema {
     Schema::Object { fields, partial: true }
 }
 
+const AGENT_NOTIFY: Schema = table(&[("blocked", KINDS), ("done", KINDS), ("working", KINDS)]);
+const AGENT_SOUND: Schema = table(&[("blocked", STR), ("done", STR), ("working", STR)]); // a sound's name or a file
+
 // What each top-level setting may be: one schema per table.
 const SETTINGS: &[(&str, Schema)] = &[
     ("prefix", Schema::Prefix),
@@ -102,15 +106,22 @@ const SETTINGS: &[(&str, Schema)] = &[
     ("status", table(&[("agents", BOOL), ("panes", BOOL), ("theme", BOOL)])),
     ("git", table(&[("status", BOOL), ("repo", BOOL), ("counts", BOOL), ("changes", BOOL)])),
     ("panes", table(&[("border", Schema::Enum(&["single", "rounded", "double", "heavy"]))])),
-    ("notify", table(&[("blocked", KINDS), ("done", KINDS), ("working", KINDS)])),
+    (
+        "notify",
+        Schema::Open { fields: &[("blocked", KINDS), ("done", KINDS), ("working", KINDS), ("unread", BOOL), ("click", Schema::Enum(&["focus", "none"]))], rest: &AGENT_NOTIFY },
+    ),
     (
         "sound",
-        table(&[
-            ("volume", Schema::Num { int: false, min: Some(Bound { value: 0.0, ..AT_LEAST }), max: Some(Bound { value: 1.0, ..AT_LEAST }) }),
-            ("blocked", SOUND),
-            ("done", SOUND),
-            ("working", SOUND),
-        ]),
+        Schema::Open {
+            fields: &[
+                ("volume", Schema::Num { int: false, min: Some(Bound { value: 0.0, ..AT_LEAST }), max: Some(Bound { value: 1.0, ..AT_LEAST }) }),
+                ("blocked", SOUND),
+                ("done", SOUND),
+                ("working", SOUND),
+                ("pack", STR),
+            ],
+            rest: &AGENT_SOUND,
+        },
     ),
     ("indicators", table(&[("style", Schema::Enum(&["symbols", "dots", "letters"])), ("tab", BOOL), ("pane", BOOL), ("sidebar", BOOL)])),
     ("pane_labels", table(&[("agent", BOOL)])),
@@ -255,6 +266,15 @@ fn validate(schema: &Schema, value: Option<&Value>, path: &mut Vec<Seg>, out: &m
                 path.pop();
             }
         }
+        Schema::Open { fields, rest } => {
+            let Some(Value::Object(m)) = value else { return error(expected("object")) };
+            for (k, v) in m {
+                path.push(Seg::Key(k.clone()));
+                let field = fields.iter().find(|(name, _)| *name == k.as_str()).map_or(*rest, |(_, f)| f);
+                validate(field, Some(v), path, out);
+                path.pop();
+            }
+        }
         Schema::Object { fields, partial } => {
             let Some(Value::Object(m)) = value else { return error(expected("object")) };
             for (name, field) in fields.iter() {
@@ -307,6 +327,13 @@ pub fn check_config(source: &str) -> Vec<ConfigProblem> {
         validate(schema, Some(value), &mut vec![Seg::Key(name.clone())], &mut issues);
         for issue in issues {
             add(issue.level, &issue.path, issue.message);
+        }
+    }
+    // [notify.<id>] and [sound.<id>] are per agent: one modisa knows, or one [agents.<id>] adds
+    let agents: Vec<String> = crate::config::agents::builtin_agents().into_iter().map(|a| a.id).chain(user.get("agents").and_then(Value::as_object).into_iter().flat_map(|m| m.keys().cloned())).collect();
+    for (table, own) in [("notify", &["blocked", "done", "working", "unread", "click"][..]), ("sound", &["volume", "blocked", "done", "working", "pack"][..])] {
+        for id in user.get(table).and_then(Value::as_object).into_iter().flat_map(|m| m.keys()).filter(|k| !own.contains(&k.as_str()) && !agents.contains(k)) {
+            add(Level::Warning, &[Seg::Key(table.into()), Seg::Key(id.clone())], format!("there's no agent {id}, so this is ignored"));
         }
     }
     if user.get("sidebar").and_then(|s| s.get("git")).is_some() {
@@ -390,7 +417,8 @@ mod tests {
             ("keys = \"x\"\n", json!([["error", "keys", "Invalid input: expected record, received string", 1]])),
             ("[keys]\nzoom = [\"a\", 3]\n", json!([["error", "keys.zoom", "Invalid input", 2], ["error", "keys.zoom", "a key is a string (\"K\"), or a list of them", 2]])),
             ("[keys]\nzoom = \"ctrl-z\"\nhelp = \"g\"\nsettings = \"g\"\nnope = \"q\"\n", json!([["error", "keys.zoom", "\"ctrl-z\" isn't a key: one character (H is shift+h), or left, right, up, down, home, end, pageup, pagedown or f1 to f12", 2], ["error", "keys.settings", "g is given to help too; the last one wins", 4], ["warning", "keys.nope", "there's no action nope (the keyboard guide, prefix ?, lists them)", 5]])),
-            ("[notify.extra]\nx = 1\n", json!([["warning", "notify.extra", UNKNOWN, 1]])),
+            ("[notify.extra]\nx = 1\n", json!([["warning", "notify.extra", "there's no agent extra, so this is ignored", 1], ["warning", "notify.extra.x", UNKNOWN, 2]])),
+            ("[notify.codex]\ndone = []\n[sound.claude-code]\ndone = \"~/ding.wav\"\n", json!([])),
             ("sidebar = { width = 60, visible = \"x\", zz = 1 }\n", json!([["error", "sidebar.visible", "Invalid input: expected boolean, received string", 1], ["error", "sidebar.width", "20 to 48 columns", 1], ["warning", "sidebar.zz", UNKNOWN, 1]])),
             ("[sidebar]\nwidth = 30\n[sidebar.deep]\na = 1\n", json!([["warning", "sidebar.deep", UNKNOWN, 3]])),
             ("width = 1\n[sidebar]\nwidth=1\n", json!([["warning", "width", UNKNOWN, 1], ["error", "sidebar.width", "20 to 48 columns", 3]])),

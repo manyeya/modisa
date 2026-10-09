@@ -98,6 +98,7 @@ impl PtyPane {
             rows,
             popup: None,
             takeover: None,
+            muted: false,
         };
         let argv: Vec<String> = match &opts.command {
             Some(c) => vec![shell.clone(), "-lc".into(), c.clone()],

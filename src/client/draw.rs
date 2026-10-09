@@ -259,14 +259,15 @@ fn tabs(app: &App, c: &mut Canvas) {
         let t = &ws.tabs[i];
         let on = i == ws.active;
         let blocked = app.cfg.indicators.tab && tree_panes(&t.tree).iter().any(|id| app.info(id).and_then(|p| p.agent.as_ref()).is_some_and(|a| a.state == AgentState::Blocked));
-        let suffix = format!("{}{}", if t.zoomed { " [Z]" } else { "" }, if blocked { format!(" {}", app.icon(AgentState::Blocked)) } else { String::new() });
+        let unread = app.cfg.notify.unread && t.unread && !on && !blocked; // [notify] unread: marked until looked at
+        let suffix = format!("{}{}{}", if t.zoomed { " [Z]" } else { "" }, if blocked { format!(" {}", app.icon(AgentState::Blocked)) } else { String::new() }, if unread { " •" } else { "" });
         let prefix = format!(" {}:", i + 1);
         let name = tab_label(app, t);
         let text = format!("{prefix}{}{suffix} ", fit(&name, win.width.saturating_sub(width(&prefix) + width(&suffix) + 2)));
         // sized to the label so tabs sit side by side; window.width only caps long names. Clicking the tab you're on
         // renames it.
         let w = (win.width as i32 - 1).min(width(&text) as i32);
-        let fg = if blocked { th.warn } else if on { th.fg } else { th.dim };
+        let fg = if blocked { th.warn } else if on || unread { th.fg } else { th.dim };
         x += c.button(x, y, &text, w, fg, if on { th.border } else { th.bar }, hover, Hit::Tab(i));
         if on {
             x += c.button(x, y, "✕ ", 2, th.dim, th.border, hover, Hit::Action("close-tab"));

@@ -756,6 +756,7 @@ mod tests {
                 rows: 24,
                 popup: None,
                 takeover: None,
+                muted: false,
             };
             FakePane {
                 id: id.into(),

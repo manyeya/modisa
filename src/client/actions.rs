@@ -601,7 +601,7 @@ fn context_menu_now(shared: &Shared, pane: &str, x: i32, y: i32) {
         if app.modal.is_some() || !app.views.is_empty() {
             return;
         }
-        app.info(pane).map(|p| (p.name.as_ref().map(|n| format!("@{n}")).unwrap_or(p.title.clone()), app.sidebar, p.instance.clone()))
+        app.info(pane).map(|p| (p.name.as_ref().map(|n| format!("@{n}")).unwrap_or(p.title.clone()), app.sidebar, p.instance.clone(), p.muted))
     }) else {
         return;
     };
@@ -628,6 +628,7 @@ fn context_menu_now(shared: &Shared, pane: &str, x: i32, y: i32) {
             ("All panes", "o", "pane-picker", false),
             (if title.1 { "Hide sidebar" } else { "Show sidebar" }, "b", "toggle-sidebar", false),
             ("Change theme", "t", "theme-picker", false),
+            (if title.3 { "Unmute this pane" } else { "Mute this pane" }, "", "mute", false),
         ];
         options.extend(extra.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)));
         options.push(("Close pane", "x", "close-pane", true));
@@ -648,6 +649,11 @@ fn context_menu_now(shared: &Shared, pane: &str, x: i32, y: i32) {
         }
         match action.as_str() {
             "focus" => {}
+            "mute" => {
+                if let Err(e) = request(&s, "cmd", json!({ "name": "mutePane", "args": { "pane": pane } })).await {
+                    toast(&s, &e, |th| th.blocked);
+                }
+            }
             "copy-output" => {
                 let text = s.borrow().panes.get(&pane).map(|p| p.screen.screen_text());
                 if let Some(t) = text.filter(|t| !t.is_empty()) {
