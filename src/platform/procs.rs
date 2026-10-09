@@ -148,7 +148,9 @@ mod tests {
         let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
         let pid = child.id() as i32;
         assert!(children(me).contains(&pid));
-        assert_eq!(info(pid).unwrap().args, "sleep 5");
+        // Linux: a moment after a spawn, its command line can still be empty (the kernel sets it up late in exec)
+        let args = (0..100).map(|_| info(pid).unwrap().args).find(|a| !a.is_empty() || { std::thread::sleep(std::time::Duration::from_millis(10)); false });
+        assert_eq!(args.as_deref(), Some("sleep 5"));
         assert!(alive(pid));
         child.kill().unwrap();
         child.wait().unwrap();

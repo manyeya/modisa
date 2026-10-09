@@ -627,6 +627,13 @@ mod tests {
         std::fs::copy("/bin/sleep", &codex).unwrap();
         let mut child = std::process::Command::new(&codex).arg("5").spawn().unwrap();
         let pid = child.id() as i32;
+        // Linux: a moment after a spawn, its command line can still be empty
+        for _ in 0..100 {
+            if crate::platform::procs::info(pid).is_some_and(|i| !i.args.is_empty()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         let t = pane_table(&[(me, Some(pid))], &[], &all);
         assert_eq!(t[&me].tpgid, pid);
         assert_eq!(t[&pid].ppid, me);
