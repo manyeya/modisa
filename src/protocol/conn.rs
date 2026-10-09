@@ -73,7 +73,8 @@ pub fn closed_error(cause: Option<&str>) -> RpcError {
 // closed. For a subscriber that's a gap in its history; it reconnects and takes a new snapshot.
 pub static WRITE_QUEUE_LIMIT: LazyLock<usize> = LazyLock::new(|| std::env::var("MODISA_WRITE_QUEUE_LIMIT").ok().and_then(|v| v.parse().ok()).filter(|&n| n > 0).unwrap_or(16 * 1024 * 1024));
 
-type Pending = oneshot::Sender<RpcResult>;
+// who waits for a reply, and what runs with it the moment it's read (request_ordered)
+type Pending = (oneshot::Sender<RpcResult>, Option<Box<dyn FnOnce(&RpcResult)>>);
 
 struct Inner {
     out: RefCell<Option<mpsc::UnboundedSender<Vec<u8>>>>,
@@ -235,11 +236,14 @@ impl Conn {
                             f(m)
                         }
                     }
-                    Some(tx) => {
+                    Some((tx, first)) => {
                         let r = match m.get("error") {
                             Some(e) => Err(fail(&error_code(e.pointer("/data/code").and_then(Value::as_str)), e.get("message").and_then(Value::as_str).unwrap_or("error"))),
                             None => Ok(m.get("result").cloned().unwrap_or(Value::Null)),
                         };
+                        if let Some(f) = first {
+                            f(&r);
+                        }
                         let _ = tx.send(r);
                     }
                 }
@@ -298,13 +302,24 @@ impl Conn {
     // timeout: stop waiting and forget the request, so a peer that never answers can't pile up pending requests. The
     // request was still sent, so its outcome is unknown; a reply that comes after goes to on_late_reply.
     pub async fn request(&self, method: &str, params: Value, timeout: Option<Duration>) -> RpcResult {
+        self.request_with(method, params, timeout, None).await
+    }
+
+    // As request, but `first` runs with the reply as soon as it's read, before anything the peer sent after it: what
+    // the reply holds is applied before a notification that came after it can overtake it (attach's view, a replay's
+    // screens, then the output since).
+    pub async fn request_ordered(&self, method: &str, params: Value, first: impl FnOnce(&RpcResult) + 'static) -> RpcResult {
+        self.request_with(method, params, None, Some(Box::new(first))).await
+    }
+
+    async fn request_with(&self, method: &str, params: Value, timeout: Option<Duration>, first: Option<Box<dyn FnOnce(&RpcResult)>>) -> RpcResult {
         if self.closed() {
             return Err(self.0.close_reason.borrow().clone().unwrap_or_else(|| closed_error(None)));
         }
         let id = self.0.seq.get() + 1;
         self.0.seq.set(id);
         let (tx, rx) = oneshot::channel();
-        self.0.pending.borrow_mut().insert(id, tx);
+        self.0.pending.borrow_mut().insert(id, (tx, first));
         self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
         let closed = || self.0.close_reason.borrow().clone().unwrap_or_else(|| closed_error(None));
         match timeout {
@@ -335,7 +350,7 @@ impl Conn {
         self.0.closed.set(true);
         let reason = closed_error(cause);
         *self.0.close_reason.borrow_mut() = Some(reason.clone());
-        for (_, tx) in self.0.pending.borrow_mut().drain() {
+        for (_, (tx, _)) in self.0.pending.borrow_mut().drain() {
             let _ = tx.send(Err(reason.clone()));
         }
         self.0.out.borrow_mut().take(); // the writer flushes what's queued, then shuts the transport down
@@ -350,5 +365,38 @@ impl Conn {
 
     pub fn close(&self) {
         self.closed_by_peer(None);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // A reply and the notification after it, read in one go: the reply's `first` runs before the notification is handled.
+    #[test]
+    fn an_ordered_reply_is_applied_before_what_follows_it() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        tokio::task::LocalSet::new().block_on(&rt, async {
+            let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
+            ours.set_nonblocking(true).unwrap();
+            let (read, write) = tokio::net::UnixStream::from_std(ours).unwrap().into_split();
+            let seen = Rc::new(RefCell::new(Vec::<String>::new()));
+            let log = seen.clone();
+            let conn = Conn::spawn(read, write, move |_, m| log.borrow_mut().push(m["method"].as_str().unwrap_or("").into()));
+            let log = seen.clone();
+            let peer = std::thread::spawn(move || {
+                let mut theirs = theirs;
+                let mut buf = [0u8; 256];
+                let _ = std::io::Read::read(&mut theirs, &mut buf); // the request
+                theirs.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"screens\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"output\"}\n").unwrap();
+                theirs
+            });
+            let r = conn.request_ordered("replay", json!({}), move |r| log.borrow_mut().push(r.clone().unwrap().as_str().unwrap().into())).await;
+            assert_eq!(r.unwrap(), json!("screens"));
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            assert_eq!(*seen.borrow(), ["screens", "output"]);
+            drop(peer.join());
+        });
     }
 }

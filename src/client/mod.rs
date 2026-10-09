@@ -517,26 +517,36 @@ async fn attach(shared: &Shared, spawn: bool) -> crate::protocol::conn::RpcResul
     }
     shared.borrow_mut().conn = Some(conn.clone());
     let area = shared.borrow().area();
-    let res = conn.request("attach", json!({ "area": area, "ui": PLUGIN_UI }), None).await?;
-    {
-        let mut app = shared.borrow_mut();
-        app.panes.clear(); // reconnect: rebuild from the replay
-        if let Ok(v) = serde_json::from_value::<View>(res.clone()) {
-            set_view(&mut app, v);
-        }
-        views::clear_views(&mut app);
-        for v in res["views"].as_array().into_iter().flatten() {
-            views::view_set(&mut app, v.clone());
-        }
-    }
-    let replay = conn.request("replay", json!({}), None).await?;
-    {
-        let mut app = shared.borrow_mut();
+    // the view and the screens are applied the moment their replies are read: a view or output the server sent after
+    // them is then applied on top, never overwritten by them
+    let weak = me.clone();
+    let res = conn
+        .request_ordered("attach", json!({ "area": area, "ui": PLUGIN_UI }), move |r| {
+            let (Ok(res), Some(app)) = (r, weak.upgrade()) else { return };
+            let mut app = app.borrow_mut();
+            app.panes.clear(); // reconnect: rebuild from the replay
+            if let Ok(v) = serde_json::from_value::<View>(res.clone()) {
+                set_view(&mut app, v);
+            }
+            views::clear_views(&mut app);
+            for v in res["views"].as_array().into_iter().flatten() {
+                views::view_set(&mut app, v.clone());
+            }
+        })
+        .await?;
+    let weak = me.clone();
+    conn.request_ordered("replay", json!({}), move |r| {
+        let (Ok(replay), Some(app)) = (r, weak.upgrade()) else { return };
+        let mut app = app.borrow_mut();
         for r in replay.as_array().into_iter().flatten() {
             if let Some(p) = r["pane"].as_str().and_then(|id| app.panes.get_mut(id)) {
                 p.screen.write(&unb64(r["data"].as_str().unwrap_or("")));
             }
         }
+    })
+    .await?;
+    {
+        let mut app = shared.borrow_mut();
         for id in res["prompts"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
             modals::permission(&mut app, id, "(pending permission request)".into());
         }
