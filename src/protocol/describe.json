@@ -1031,11 +1031,189 @@
         },
         "system": {
           "type": "boolean"
+        },
+        "lines": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/line"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "title",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
         }
       },
-      "required": [
-        "text"
-      ]
+      "anyOf": [
+        {
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "required": [
+            "lines"
+          ]
+        }
+      ],
+      "$defs": {
+        "color": {
+          "type": "string",
+          "description": "a theme token ($fg, $bg, $bar, $dim, $border, $focus, $accent, $warn, $working, $blocked, $done, $idle), #rrggbb, a colour's name (red, light-blue, gray, ...), an index (0-255), or reset"
+        },
+        "style": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "modifier names, a colour (the foreground) and on <colour> (the background): \"bold italic $accent on $bar\""
+            },
+            {
+              "type": "object",
+              "properties": {
+                "fg": {
+                  "$ref": "#/$defs/color"
+                },
+                "bg": {
+                  "$ref": "#/$defs/color"
+                },
+                "underline_color": {
+                  "$ref": "#/$defs/color"
+                },
+                "bold": {
+                  "type": "boolean"
+                },
+                "dim": {
+                  "type": "boolean"
+                },
+                "italic": {
+                  "type": "boolean"
+                },
+                "underlined": {
+                  "type": "boolean"
+                },
+                "slow_blink": {
+                  "type": "boolean"
+                },
+                "rapid_blink": {
+                  "type": "boolean"
+                },
+                "reversed": {
+                  "type": "boolean"
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "crossed_out": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "span": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "icon": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                }
+              },
+              "required": [
+                "icon"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "line": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/span"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "spans": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/span"
+                  }
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "align": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right"
+                  ]
+                }
+              },
+              "required": [
+                "spans"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
     },
     "ui.badge.set": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1129,6 +1307,3111 @@
       "required": [
         "items"
       ]
+    },
+    "ui.slot.set": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "description": "A piece in modisa's own chrome (examples/plugins/CHROME.md). What each slot is for (pane and instance, tab, space) and takes (line, lines, element and height, title) is there; replace is for status.agents, status.panes, status.git, status.theme, tab, space, pane.title, agent.row, sidebar.agents, and is drawn where config.toml's [slots] lets it.",
+      "properties": {
+        "caller": {
+          "type": "string"
+        },
+        "slot": {
+          "type": "string",
+          "enum": [
+            "status.left",
+            "status.right",
+            "status.agents",
+            "status.panes",
+            "status.git",
+            "status.theme",
+            "tab",
+            "space",
+            "pane.title",
+            "pane.top_right",
+            "pane.bottom_left",
+            "pane.bottom_right",
+            "agent.row",
+            "sidebar",
+            "sidebar.agents",
+            "menu.pane",
+            "menu.tab",
+            "menu.space",
+            "palette"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "pane": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tab": {
+          "type": "string",
+          "minLength": 1
+        },
+        "space": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after",
+            "replace"
+          ],
+          "default": "after"
+        },
+        "order": {
+          "default": 0,
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "line": {
+          "$ref": "#/$defs/line"
+        },
+        "lines": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/line"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "spans": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/span"
+                    }
+                  },
+                  "style": {
+                    "$ref": "#/$defs/style"
+                  },
+                  "align": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ]
+                  },
+                  "action": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "pane": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "instance": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "spans"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "element": {
+          "$ref": "#/$defs/viewNode"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "title": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hide_below": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          },
+          "required": [
+            "width"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "slot",
+        "id"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "viewNode": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "layout"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "vertical",
+                    "horizontal"
+                  ]
+                },
+                "constraints": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/constraint"
+                  }
+                },
+                "flex": {
+                  "type": "string",
+                  "enum": [
+                    "legacy",
+                    "start",
+                    "end",
+                    "center",
+                    "space_between",
+                    "space_around",
+                    "space_evenly"
+                  ]
+                },
+                "spacing": {
+                  "type": "integer",
+                  "minimum": -65535,
+                  "maximum": 65535
+                },
+                "margin": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  ]
+                },
+                "children": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/viewNode"
+                  }
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "text"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "text": {
+                  "$ref": "#/$defs/text"
+                },
+                "ansi": {
+                  "type": "string"
+                },
+                "align": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right"
+                  ]
+                },
+                "wrap": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "string",
+                      "const": "trim"
+                    }
+                  ]
+                },
+                "scroll": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "string",
+                      "const": "bottom"
+                    }
+                  ]
+                },
+                "scrollbar": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "not": {
+                "required": [
+                  "text",
+                  "ansi"
+                ]
+              },
+              "if": {
+                "properties": {
+                  "scroll": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                },
+                "required": [
+                  "scroll"
+                ]
+              },
+              "then": {
+                "required": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "block"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "borders": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "all",
+                        "none"
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "right",
+                          "bottom",
+                          "left"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "border_type": {
+                  "type": "string",
+                  "enum": [
+                    "plain",
+                    "rounded",
+                    "double",
+                    "thick",
+                    "light_double_dashed",
+                    "heavy_double_dashed",
+                    "light_triple_dashed",
+                    "heavy_triple_dashed",
+                    "light_quadruple_dashed",
+                    "heavy_quadruple_dashed",
+                    "quadrant_inside",
+                    "quadrant_outside"
+                  ]
+                },
+                "border_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "title": {
+                  "$ref": "#/$defs/line"
+                },
+                "titles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "$ref": "#/$defs/line"
+                      },
+                      "position": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ]
+                      },
+                      "align": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "center",
+                          "right"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "padding": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535
+                      },
+                      "minItems": 4,
+                      "maxItems": 4
+                    }
+                  ]
+                },
+                "shadow": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "dark_shade",
+                            "medium_shade",
+                            "light_shade",
+                            "block",
+                            "overlay"
+                          ]
+                        },
+                        "offset": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": -65535,
+                            "maximum": 65535
+                          },
+                          "minItems": 2,
+                          "maxItems": 2
+                        },
+                        "style": {
+                          "$ref": "#/$defs/style"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "merge": {
+                  "type": "string",
+                  "enum": [
+                    "replace",
+                    "exact",
+                    "fuzzy"
+                  ]
+                },
+                "child": {
+                  "$ref": "#/$defs/viewNode"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "list"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/line"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "content": {
+                            "$ref": "#/$defs/text"
+                          },
+                          "style": {
+                            "$ref": "#/$defs/style"
+                          }
+                        },
+                        "required": [
+                          "content"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "selected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "highlight_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "highlight_symbol": {
+                  "type": "string"
+                },
+                "highlight_spacing": {
+                  "type": "string",
+                  "enum": [
+                    "always",
+                    "when_selected",
+                    "never"
+                  ]
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "top_to_bottom",
+                    "bottom_to_top"
+                  ]
+                },
+                "scroll_padding": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "items"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "table"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "header": {
+                  "$ref": "#/$defs/row"
+                },
+                "footer": {
+                  "$ref": "#/$defs/row"
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/row"
+                  }
+                },
+                "widths": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/constraint"
+                  }
+                },
+                "column_spacing": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "flex": {
+                  "type": "string",
+                  "enum": [
+                    "legacy",
+                    "start",
+                    "end",
+                    "center",
+                    "space_between",
+                    "space_around",
+                    "space_evenly"
+                  ]
+                },
+                "select": {
+                  "type": "string",
+                  "enum": [
+                    "row",
+                    "cell",
+                    "column",
+                    "none"
+                  ]
+                },
+                "selected": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  ]
+                },
+                "row_highlight_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "column_highlight_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "cell_highlight_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "highlight_symbol": {
+                  "type": "string"
+                },
+                "highlight_spacing": {
+                  "type": "string",
+                  "enum": [
+                    "always",
+                    "when_selected",
+                    "never"
+                  ]
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "rows"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "tabs"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "titles": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/line"
+                  }
+                },
+                "selected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "divider": {
+                  "$ref": "#/$defs/span"
+                },
+                "padding": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/span"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "highlight_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "titles"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "gauge"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ratio": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "percent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "label": {
+                  "$ref": "#/$defs/span"
+                },
+                "gauge_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "unicode": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "not": {
+                "required": [
+                  "ratio",
+                  "percent"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "line_gauge"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ratio": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "percent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "label": {
+                  "$ref": "#/$defs/span"
+                },
+                "filled_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "unfilled_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "filled_symbol": {
+                  "$ref": "#/$defs/symbol"
+                },
+                "unfilled_symbol": {
+                  "$ref": "#/$defs/symbol"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "not": {
+                "required": [
+                  "ratio",
+                  "percent"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "sparkline"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "left_to_right",
+                    "right_to_left"
+                  ]
+                },
+                "bar_set": {
+                  "type": "string",
+                  "enum": [
+                    "nine_levels",
+                    "three_levels"
+                  ]
+                },
+                "absent_symbol": {
+                  "$ref": "#/$defs/symbol"
+                },
+                "absent_style": {
+                  "$ref": "#/$defs/style"
+                }
+              },
+              "required": [
+                "type",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "bar_chart"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "groups": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "$ref": "#/$defs/line"
+                      },
+                      "bars": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "value": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "label": {
+                              "$ref": "#/$defs/line"
+                            },
+                            "text_value": {
+                              "type": "string"
+                            },
+                            "style": {
+                              "$ref": "#/$defs/style"
+                            },
+                            "value_style": {
+                              "$ref": "#/$defs/style"
+                            }
+                          },
+                          "required": [
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "bars"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    ],
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "vertical",
+                    "horizontal"
+                  ]
+                },
+                "bar_width": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "bar_gap": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "group_gap": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "bar_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "value_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "label_style": {
+                  "$ref": "#/$defs/style"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "groups"
+                  ]
+                },
+                {
+                  "required": [
+                    "data"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "chart"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "datasets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "$ref": "#/$defs/line"
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          },
+                          "minItems": 2,
+                          "maxItems": 2
+                        }
+                      },
+                      "graph_type": {
+                        "type": "string",
+                        "enum": [
+                          "line",
+                          "scatter",
+                          "bar",
+                          "area"
+                        ]
+                      },
+                      "marker": {
+                        "$ref": "#/$defs/marker"
+                      },
+                      "style": {
+                        "$ref": "#/$defs/style"
+                      },
+                      "fill_to": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "data"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "x_axis": {
+                  "$ref": "#/$defs/axis"
+                },
+                "y_axis": {
+                  "$ref": "#/$defs/axis"
+                },
+                "legend": {
+                  "type": "string",
+                  "enum": [
+                    "top_right",
+                    "top_left",
+                    "top",
+                    "left",
+                    "right",
+                    "bottom",
+                    "bottom_left",
+                    "bottom_right",
+                    "none"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "datasets"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "canvas"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "x_bounds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "y_bounds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "marker": {
+                  "$ref": "#/$defs/marker"
+                },
+                "background": {
+                  "$ref": "#/$defs/color"
+                },
+                "shapes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/shape"
+                  }
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "calendar"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "year": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9999
+                },
+                "month": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12
+                },
+                "events": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/$defs/style"
+                  }
+                },
+                "month_header": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/style"
+                    },
+                    {
+                      "type": "boolean",
+                      "const": false
+                    }
+                  ]
+                },
+                "weekday_header": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/style"
+                    },
+                    {
+                      "type": "boolean",
+                      "const": false
+                    }
+                  ]
+                },
+                "surrounding": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/style"
+                    },
+                    {
+                      "type": "boolean",
+                      "const": false
+                    }
+                  ]
+                },
+                "default_style": {
+                  "$ref": "#/$defs/style"
+                }
+              },
+              "required": [
+                "type",
+                "year",
+                "month"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "fill"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "symbol": {
+                  "$ref": "#/$defs/symbol"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "clear"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "code"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "content": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "line_numbers": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ]
+                },
+                "highlight": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "wrap": {
+                  "type": "boolean"
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
+                }
+              },
+              "required": [
+                "type",
+                "content"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "diff"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "diff": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "view": {
+                  "type": "string",
+                  "enum": [
+                    "unified",
+                    "split"
+                  ]
+                },
+                "line_numbers": {
+                  "type": "boolean"
+                },
+                "cursor": {
+                  "type": "boolean"
+                },
+                "marks": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
+                }
+              },
+              "required": [
+                "type",
+                "diff"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "markdown"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "content": {
+                  "type": "string"
+                },
+                "syntax_theme": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "description": "colours from a built-in syntax theme instead of the user's theme (case and punctuation don't matter): 1337, ansi, base16, base16-256, base16-eighties.dark, base16-mocha.dark, base16-ocean.dark, base16-ocean.light, Catppuccin Frappe, Catppuccin Latte, Catppuccin Macchiato, Catppuccin Mocha, Coldark-Cold, Coldark-Dark, DarkNeon, Dracula, GitHub, gruvbox-dark, gruvbox-light, InspiredGitHub, Monokai Extended, Monokai Extended Bright, Monokai Extended Light, Monokai Extended Origin, Nord, OneHalfDark, OneHalfLight, Solarized (dark), Solarized (light), Sublime Snazzy, TwoDark, zenburn"
+                }
+              },
+              "required": [
+                "type",
+                "content"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "big_text"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "text": {
+                  "$ref": "#/$defs/text"
+                },
+                "pixel_size": {
+                  "type": "string",
+                  "enum": [
+                    "full",
+                    "half_height",
+                    "half_width",
+                    "quadrant",
+                    "third_height",
+                    "sextant",
+                    "quarter_height",
+                    "octant"
+                  ]
+                },
+                "align": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "image"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 of a PNG, JPEG or GIF"
+                },
+                "alt": {
+                  "type": "string"
+                },
+                "resize": {
+                  "type": "string",
+                  "enum": [
+                    "fit",
+                    "crop",
+                    "scale"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "input"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "value": {
+                  "type": "string"
+                },
+                "placeholder": {
+                  "type": "string"
+                },
+                "mask": {
+                  "$ref": "#/$defs/symbol"
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "textarea"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "value": {
+                  "type": "string"
+                },
+                "placeholder": {
+                  "type": "string"
+                },
+                "line_numbers": {
+                  "type": "boolean"
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "tree"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/treeItem"
+                  }
+                },
+                "open": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/path"
+                  }
+                },
+                "selected": {
+                  "$ref": "#/$defs/path"
+                },
+                "highlight_style": {
+                  "$ref": "#/$defs/style"
+                },
+                "highlight_symbol": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "change": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "toggle": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "items"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ],
+                "change": [
+                  "id"
+                ],
+                "toggle": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "button"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "label": {
+                  "$ref": "#/$defs/line"
+                },
+                "action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "focus_style": {
+                  "$ref": "#/$defs/style"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "action": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "spinner"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "label": {
+                  "$ref": "#/$defs/line"
+                },
+                "set": {
+                  "type": "string",
+                  "enum": [
+                    "braille",
+                    "dots",
+                    "ascii",
+                    "arrows",
+                    "clock",
+                    "circle",
+                    "box",
+                    "bounce",
+                    "pulse"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "raster"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "size": {
+                  "$ref": "#/$defs/constraint"
+                },
+                "block": {
+                  "$ref": "#/$defs/block"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "hide_below": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "columns": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 512
+                },
+                "rows": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 256
+                },
+                "cells": {
+                  "type": "string",
+                  "description": "base64: per cell three little-endian u32s, its character's code point, then fg and bg (0x01000000 the default colour, 0x02000000 + n the theme's colour n, else 0xRRGGBB)"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "columns",
+                "rows",
+                "cells"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "constraint": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "type": "string",
+              "pattern": "^(\\d+|\\d+%|\\d+/\\d+|>=\\d+|<=\\d+|\\d*\\*)$"
+            }
+          ]
+        },
+        "color": {
+          "type": "string",
+          "description": "a theme token ($fg, $bg, $bar, $dim, $border, $focus, $accent, $warn, $working, $blocked, $done, $idle), #rrggbb, a colour's name (red, light-blue, gray, ...), an index (0-255), or reset"
+        },
+        "style": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "modifier names, a colour (the foreground) and on <colour> (the background): \"bold italic $accent on $bar\""
+            },
+            {
+              "type": "object",
+              "properties": {
+                "fg": {
+                  "$ref": "#/$defs/color"
+                },
+                "bg": {
+                  "$ref": "#/$defs/color"
+                },
+                "underline_color": {
+                  "$ref": "#/$defs/color"
+                },
+                "bold": {
+                  "type": "boolean"
+                },
+                "dim": {
+                  "type": "boolean"
+                },
+                "italic": {
+                  "type": "boolean"
+                },
+                "underlined": {
+                  "type": "boolean"
+                },
+                "slow_blink": {
+                  "type": "boolean"
+                },
+                "rapid_blink": {
+                  "type": "boolean"
+                },
+                "reversed": {
+                  "type": "boolean"
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "crossed_out": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "span": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "icon": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                }
+              },
+              "required": [
+                "icon"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "line": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/span"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "spans": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/span"
+                  }
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "align": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right"
+                  ]
+                }
+              },
+              "required": [
+                "spans"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "text": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/line"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/line"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/line"
+                  }
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "align": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right"
+                  ]
+                }
+              },
+              "required": [
+                "lines"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "description": "one character, one cell wide"
+        },
+        "marker": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "dot",
+                "block",
+                "bar",
+                "braille",
+                "half_block",
+                "quadrant",
+                "sextant",
+                "octant"
+              ]
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1
+            }
+          ]
+        },
+        "block": {
+          "type": "object",
+          "properties": {
+            "borders": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "all",
+                    "none"
+                  ]
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "top",
+                      "right",
+                      "bottom",
+                      "left"
+                    ]
+                  }
+                }
+              ]
+            },
+            "border_type": {
+              "type": "string",
+              "enum": [
+                "plain",
+                "rounded",
+                "double",
+                "thick",
+                "light_double_dashed",
+                "heavy_double_dashed",
+                "light_triple_dashed",
+                "heavy_triple_dashed",
+                "light_quadruple_dashed",
+                "heavy_quadruple_dashed",
+                "quadrant_inside",
+                "quadrant_outside"
+              ]
+            },
+            "border_style": {
+              "$ref": "#/$defs/style"
+            },
+            "title": {
+              "$ref": "#/$defs/line"
+            },
+            "titles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "$ref": "#/$defs/line"
+                  },
+                  "position": {
+                    "type": "string",
+                    "enum": [
+                      "top",
+                      "bottom"
+                    ]
+                  },
+                  "align": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ]
+                  }
+                },
+                "required": [
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "padding": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                }
+              ]
+            },
+            "style": {
+              "$ref": "#/$defs/style"
+            },
+            "shadow": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "dark_shade",
+                        "medium_shade",
+                        "light_shade",
+                        "block",
+                        "overlay"
+                      ]
+                    },
+                    "offset": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": -65535,
+                        "maximum": 65535
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "style": {
+                      "$ref": "#/$defs/style"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "merge": {
+              "type": "string",
+              "enum": [
+                "replace",
+                "exact",
+                "fuzzy"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "cell": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "$ref": "#/$defs/text"
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "span": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "row": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/cell"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cells": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/cell"
+                  }
+                },
+                "style": {
+                  "$ref": "#/$defs/style"
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "top_margin": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "bottom_margin": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                }
+              },
+              "required": [
+                "cells"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "minItems": 1
+        },
+        "treeItem": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "text": {
+              "$ref": "#/$defs/line"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/treeItem"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "axis": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "$ref": "#/$defs/line"
+            },
+            "bounds": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/span"
+              }
+            },
+            "labels_align": {
+              "type": "string",
+              "enum": [
+                "left",
+                "center",
+                "right"
+              ]
+            },
+            "style": {
+              "$ref": "#/$defs/style"
+            }
+          },
+          "additionalProperties": false
+        },
+        "shape": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "color": {
+                  "$ref": "#/$defs/color"
+                }
+              },
+              "required": [
+                "line"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "rectangle": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "color": {
+                  "$ref": "#/$defs/color"
+                }
+              },
+              "required": [
+                "rectangle"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "circle": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "color": {
+                  "$ref": "#/$defs/color"
+                }
+              },
+              "required": [
+                "circle"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "color": {
+                  "$ref": "#/$defs/color"
+                }
+              },
+              "required": [
+                "points"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "map": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "high"
+                  ]
+                },
+                "color": {
+                  "$ref": "#/$defs/color"
+                }
+              },
+              "required": [
+                "map"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "$ref": "#/$defs/line"
+                },
+                "at": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "text",
+                "at"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "layer": {
+                  "type": "boolean",
+                  "const": true
+                }
+              },
+              "required": [
+                "layer"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    },
+    "ui.slot.clear": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "caller": {
+          "type": "string"
+        },
+        "slot": {
+          "type": "string",
+          "enum": [
+            "status.left",
+            "status.right",
+            "status.agents",
+            "status.panes",
+            "status.git",
+            "status.theme",
+            "tab",
+            "space",
+            "pane.title",
+            "pane.top_right",
+            "pane.bottom_left",
+            "pane.bottom_right",
+            "agent.row",
+            "sidebar",
+            "sidebar.agents",
+            "menu.pane",
+            "menu.tab",
+            "menu.space",
+            "palette"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "pane": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tab": {
+          "type": "string",
+          "minLength": 1
+        },
+        "space": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Takes the plugin's pieces that match all that's given away (nothing given: all of them); answers how many went."
     },
     "ui.state": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5258,6 +8541,159 @@
               "keys",
               "root",
               "rev"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "plugin": {
+                "type": "string"
+              },
+              "run": {
+                "type": "string"
+              },
+              "slot": {
+                "type": "string",
+                "enum": [
+                  "status.left",
+                  "status.right",
+                  "status.agents",
+                  "status.panes",
+                  "status.git",
+                  "status.theme",
+                  "tab",
+                  "space",
+                  "pane.title",
+                  "pane.top_right",
+                  "pane.bottom_left",
+                  "pane.bottom_right",
+                  "agent.row",
+                  "sidebar",
+                  "sidebar.agents",
+                  "menu.pane",
+                  "menu.tab",
+                  "menu.space",
+                  "palette"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "position": {
+                "type": "string",
+                "enum": [
+                  "before",
+                  "after",
+                  "replace"
+                ]
+              },
+              "order": {
+                "type": "integer"
+              },
+              "pane": {
+                "type": "string"
+              },
+              "instance": {
+                "type": "string"
+              },
+              "tab": {
+                "type": "string"
+              },
+              "space": {
+                "type": "string"
+              },
+              "line": {
+                "$ref": "#/$defs/line"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/line"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "spans": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/span"
+                          }
+                        },
+                        "style": {
+                          "$ref": "#/$defs/style"
+                        },
+                        "align": {
+                          "type": "string",
+                          "enum": [
+                            "left",
+                            "center",
+                            "right"
+                          ]
+                        },
+                        "action": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pane": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "instance": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "spans"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "element": {
+                "$ref": "#/$defs/viewNode"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "hide_below": {
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                },
+                "required": [
+                  "width"
+                ],
+                "additionalProperties": false
+              },
+              "replaces": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "plugin",
+              "run",
+              "slot",
+              "id",
+              "position",
+              "order"
             ],
             "additionalProperties": false
           }
@@ -9829,6 +13265,55 @@
               "source",
               "ref",
               "commit"
+            ],
+            "additionalProperties": false
+          },
+          "slots": {
+            "type": "object",
+            "properties": {
+              "pieces": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "holds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "status.agents",
+                    "status.panes",
+                    "status.git",
+                    "status.theme",
+                    "tab",
+                    "space",
+                    "pane.title",
+                    "agent.row",
+                    "sidebar.agents"
+                  ]
+                }
+              },
+              "asks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "status.agents",
+                    "status.panes",
+                    "status.git",
+                    "status.theme",
+                    "tab",
+                    "space",
+                    "pane.title",
+                    "agent.row",
+                    "sidebar.agents"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "pieces",
+              "holds",
+              "asks"
             ],
             "additionalProperties": false
           }

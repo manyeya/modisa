@@ -502,6 +502,15 @@ impl Cli<'_> {
                                 outln!("{}: key {key} ({}) is off in the server's config: {}", tpl(p.get("name")), tpl(what), tpl(k.get("reason")));
                             }
                         }
+                        // where it draws instead of modisa, and where it asked to but config.toml's [slots] gives it to modisa or
+                        // another plugin
+                        let names = |k: &str| arr(&p["slots"][k]).iter().map(js_str).collect::<Vec<_>>().join(", ");
+                        if !names("holds").is_empty() {
+                            outln!("{}: draws instead of modisa in {}", tpl(p.get("name")), names("holds"));
+                        }
+                        if !names("asks").is_empty() {
+                            outln!("{}: asked to draw instead of modisa in {}; [slots] or a plugin before it by name has that", tpl(p.get("name")), names("asks"));
+                        }
                     }
                 }
             }

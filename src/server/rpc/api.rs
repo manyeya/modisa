@@ -614,7 +614,7 @@ fn notify(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
         _ => title,
     };
     let text = regex::Regex::new(r"\s*\n\s*").unwrap().replace_all(&text, " ").into_owned(); // one line
-    let clients = srv.toast(Toast { from, source, plugin: plugin.is_some(), text, tone, system, sound })?;
+    let clients = srv.toast(Toast { from, source, plugin: plugin.is_some(), text, tone, system, sound, more: Default::default() })?;
     Ok(json!({ "clients": clients }))
 }
 

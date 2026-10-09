@@ -16,6 +16,7 @@ pub mod plugins;
 pub mod pty;
 pub mod rpc;
 pub mod session;
+pub mod slots;
 pub mod views;
 
 use std::cell::RefCell;
@@ -52,17 +53,22 @@ pub struct Client {
 }
 
 // what a client can draw, by the plugin UI version it attached with (types.rs PLUGIN_UI): 1 status segments, sidebar
-// sections, badges, menu entries, popups and toasts; 3 views too (examples/plugins/VIEWS.md; 2's are gone)
+// sections, badges, menu entries, popups and toasts; 3 views too (examples/plugins/VIEWS.md; 2's are gone); 4 slots
+// (examples/plugins/CHROME.md) in place of 1's status segments, sidebar sections, badges and menu entries
 pub fn understands_plugins(c: &Client) -> bool {
     c.ui >= 1
 }
 pub fn understands_views(c: &Client) -> bool {
     c.ui >= 3
 }
+pub fn understands_slots(c: &Client) -> bool {
+    c.ui >= 4
+}
 
 // A toast for the TUI, from a plugin (ui.toast) or anyone else (notify): `from` titles it, `source` is who's counted (a
 // plugin's run, a pane, the user), `plugin` says which shared budget it comes out of. system and sound ask each client
-// for those too, which it gives only where its user has them on.
+// for those too, which it gives only where its user has them on. `more`: what a plugin's toast has besides its text
+// (its run, and UI 4's lines, buttons, timeout and id), checked already.
 pub struct Toast {
     pub from: String,
     pub source: String,
@@ -71,6 +77,7 @@ pub struct Toast {
     pub tone: String,
     pub system: bool,
     pub sound: bool,
+    pub more: serde_json::Map<String, Value>,
 }
 // at most 3 every 10s from one source, and 6 from the session's plugins together, or from all the rest together
 const TOASTS_PER_SOURCE: usize = 3;
@@ -164,6 +171,9 @@ impl Server {
         let mut data = json!({ "plugin": t.from, "text": clean_text(&t.text, TOAST_TEXT), "tone": t.tone, "system": t.system });
         if t.sound {
             data["sound"] = json!(true);
+        }
+        if let Value::Object(o) = &mut data {
+            o.extend(t.more);
         }
         self.broadcast_to("plugin.toast", data, &to);
         Ok(to.len())
@@ -272,6 +282,7 @@ impl Server {
             tokio::task::spawn_local(async move {
                 let mut srv = shared.borrow_mut();
                 srv.view_queued = false;
+                plugins::prune(&mut srv); // what plugins showed for a pane's process, a tab or a space that went
                 srv.push_view();
             });
         }
@@ -291,12 +302,18 @@ impl Server {
     pub fn push_view(&self) {
         let mut view = serde_json::to_value(self.s.view()).unwrap();
         view["paused"] = json!(self.mail.paused);
-        let plugins = self.plugin_ui(); // once per push, however many clients
+        let (mut current, mut legacy) = (None, None); // each once per push, however many clients
         for id in self.attached() {
             let c = &self.clients[&id];
             let mut v = view.clone();
-            if understands_plugins(c) {
+            if understands_slots(c) {
+                let (plugins, slots) = current.get_or_insert_with(|| (self.plugin_ui(false), self.slots()));
                 v["plugins"] = plugins.clone();
+                if !slots.as_array().is_some_and(Vec::is_empty) {
+                    v["slots"] = slots.clone();
+                }
+            } else if understands_plugins(c) {
+                v["plugins"] = legacy.get_or_insert_with(|| self.plugin_ui(true)).clone();
             } else if let Some(o) = v.as_object_mut() {
                 o.remove("plugins");
             }
@@ -304,9 +321,14 @@ impl Server {
         }
     }
 
-    // what plugins show in the TUI
-    pub fn plugin_ui(&self) -> Value {
-        plugins::ui_view(self)
+    // what plugins show in the TUI; `legacy`: with the status segments, sidebar sections, badges and menu entries of a
+    // UI 3 client (a UI 4 one gets them as slots)
+    pub fn plugin_ui(&self, legacy: bool) -> Value {
+        plugins::ui_view(self, legacy)
+    }
+    // plugins' pieces of modisa's chrome, for a UI 4 client's View.slots
+    pub fn slots(&self) -> Value {
+        json!(plugins::slot_list(self))
     }
     // the views plugins have open, for a client attaching
     pub fn plugin_views(&self) -> Value {
@@ -532,6 +554,7 @@ pub async fn run_server(session: &str) -> i32 {
                 srv.cfg = config::load_config();
                 srv.adapters = config::adapters::load_adapters(&srv.cfg);
                 srv.broadcast("config", json!({}));
+                plugins::slots_changed(&mut srv); // [slots] may say someone else replaces what
             }
         });
     }

@@ -10,8 +10,9 @@
 // A run's connection binds with its token (plugin.hello) and can offer actions, which plugin.invoke (`modisa plugin
 // run`, the palette, a status segment, a sidebar row, a menu entry) calls. An action that doesn't answer in time has an
 // unknown outcome: the plugin is told to cancel (advisory), a late reply is logged, and nothing retries. The bound
-// connection can also put data into the TUI (ui.*): status segments, a sidebar section, pane badges, menu entries and
-// toasts, which modisa draws itself. Nothing restarts a plugin; plugin.start does, when asked.
+// connection can also put data into the TUI (ui.*): pieces in modisa's chrome (slots.rs; status segments, sidebar
+// sections, badges and menu entries are pieces too), views and toasts, which modisa draws itself. Nothing restarts a
+// plugin; plugin.start does, when asked.
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
@@ -26,6 +27,7 @@ use tokio::io::AsyncReadExt;
 
 use super::rpc::dispatch::Handler;
 use super::session::SpawnOpts;
+use super::slots::{self, Piece, Shown, Target, World};
 use super::views::{check_cells, check_view, BLITS, VIEW_LIMIT};
 use super::{understands_plugins, understands_views, Server, Shared};
 use crate::async_handler;
@@ -40,6 +42,7 @@ use crate::protocol::conn::{fail, RpcError, RpcResult};
 use crate::protocol::links::link_matches;
 use crate::protocol::plugin::PluginManifest;
 use crate::protocol::schema::{Params, PROTOCOL};
+use crate::protocol::types::SlotPiece;
 use crate::server::persist::template::quote;
 use crate::server::session::pane::{now_ms, random_hex};
 
@@ -124,12 +127,10 @@ pub struct OpenView {
     pub rasters: HashMap<String, (u64, u64)>,
 }
 
+// slots: its pieces in modisa's chrome, by their key (slots.rs), in the order it first set them
 #[derive(Default)]
 struct UiState {
-    status: IndexMap<String, Value>,
-    sidebar: Option<Value>,
-    badges: IndexMap<String, Value>,
-    menu: Vec<Value>,
+    slots: IndexMap<String, Piece>,
     views: IndexMap<String, OpenView>,
     tokens: Option<Bucket>,
     blits: Option<Bucket>,
@@ -138,6 +139,13 @@ struct UiState {
 impl UiState {
     fn new() -> UiState {
         UiState { tokens: Some(Bucket::full(UPDATES_BURST)), blits: Some(Bucket::full(BLITS.0)), ..Default::default() }
+    }
+    // what an older method set in a slot
+    fn legacy_in<'a>(&'a self, slot: &'a str) -> impl Iterator<Item = &'a Piece> + 'a {
+        self.slots.values().filter(move |p| p.slot == slot && p.legacy.is_some())
+    }
+    fn legacy_at(&self, key: &str) -> bool {
+        self.slots.get(key).is_some_and(|p| p.legacy.is_some())
     }
 }
 
@@ -251,6 +259,7 @@ struct Popup {
     client: u64,
 }
 
+// slots_pushed: when a slot change last went to clients; slots_queued: the next is on its way (slots_changed)
 #[derive(Default)]
 pub struct Host {
     pub plugins: IndexMap<String, Plugin>,
@@ -258,6 +267,8 @@ pub struct Host {
     popups: HashMap<String, Popup>,
     invocations: u64,
     session_ui: Option<Bucket>,
+    slots_pushed: u64,
+    slots_queued: bool,
 }
 
 // A plugin's own directories: DATA for its state (under modisa's state directory), CONFIG for settings the user edits
@@ -637,11 +648,17 @@ fn status_of(srv: &Server, pl: &Plugin) -> Value {
     if pl.live() {
         o.insert("keys".into(), json!(keys_of(srv, &pl.name)));
     }
+    // how much it has in modisa's chrome, the slots it draws instead of modisa in, and those it asked to that it doesn't
+    if pl.live() && !pl.ui.slots.is_empty() {
+        let (holds, asks) = slots::replacing(&shown(srv), &srv.cfg.slots, &srv.cfg.sidebar.agents, &pl.name);
+        o.insert("slots".into(), json!({ "pieces": pl.ui.slots.len(), "holds": holds, "asks": asks }));
+    }
     v
 }
 
-// what one plugin shows in the TUI now
-fn ui_of(pl: &Plugin) -> Value {
+// what one plugin shows in the TUI now; `legacy`: with what the older methods set as they set it, for a UI 3 client
+// (a UI 4 client gets every piece in the slots list)
+fn ui_of(pl: &Plugin, legacy: bool) -> Value {
     let titles: HashMap<&String, &crate::protocol::plugin::ManifestAction> = pl.manifest.iter().flat_map(|m| m.actions.iter().flatten()).map(|a| (&a.id, a)).collect();
     let actions: Vec<Value> = if pl.client.is_some() {
         pl.actions
@@ -658,14 +675,18 @@ fn ui_of(pl: &Plugin) -> Value {
     } else {
         vec![]
     };
-    let mut v = json!({ "plugin": pl.name, "run": pl.run.as_ref().map(|r| r.id.clone()).unwrap_or_default(), "actions": actions, "status": pl.ui.status.values().collect::<Vec<_>>() });
-    if let Some(s) = &pl.ui.sidebar {
-        v["sidebar"] = s.clone();
+    let mut v = json!({ "plugin": pl.name, "run": pl.run.as_ref().map(|r| r.id.clone()).unwrap_or_default(), "actions": actions });
+    if legacy {
+        let old = slots::legacy(&pl.ui.slots);
+        v["status"] = json!(old.status);
+        if let Some(s) = old.sidebar {
+            v["sidebar"] = s;
+        }
+        v["badges"] = json!(old.badges);
+        v["menu"] = json!(old.menu);
     }
     let live = pl.live();
     let manifest = pl.manifest.as_ref();
-    v["badges"] = json!(pl.ui.badges.values().collect::<Vec<_>>());
-    v["menu"] = json!(pl.ui.menu);
     // plugin.json's defaults: each client binds them with its own config
     v["keys"] = if live { json!(manifest.iter().flat_map(|m| m.keys.iter().flatten()).map(|k| { let mut x = json!({ "key": k.key }); if let Some(a) = &k.action { x["action"] = json!(a) } if let Some(p) = &k.pane { x["pane"] = json!(p) } x["description"] = json!(k.description); x }).collect::<Vec<_>>()) } else { json!([]) };
     v["panes"] = if live { json!(manifest.iter().flat_map(|m| m.panes.iter().flatten()).map(|p| json!({ "id": p.id, "title": p.title, "placement": p.placement })).collect::<Vec<_>>()) } else { json!([]) };
@@ -674,15 +695,65 @@ fn ui_of(pl: &Plugin) -> Value {
 }
 
 // What plugins show in the TUI, for the session's view: the running ones that show anything.
-pub fn ui_view(srv: &Server) -> Value {
+pub fn ui_view(srv: &Server, legacy: bool) -> Value {
     json!(srv
         .host
         .plugins
         .values()
         .filter(|p| p.live())
-        .map(ui_of)
+        .map(|p| ui_of(p, legacy))
         .filter(|v| ["actions", "status", "badges", "menu", "keys", "panes", "links"].iter().any(|k| v[k].as_array().is_some_and(|a| !a.is_empty())) || v.get("sidebar").is_some())
         .collect::<Vec<_>>())
+}
+
+// ---------- slots ----------
+
+fn shown(srv: &Server) -> Vec<Shown<'_>> {
+    srv.host.plugins.values().filter(|p| p.live()).map(|p| Shown { plugin: &p.name, run: p.run.as_ref().map_or("", |r| &r.id), pieces: &p.ui.slots }).collect()
+}
+
+// Every piece UI 4 clients draw (View.slots), in order, with who replaces what decided (slots.rs resolve).
+pub fn slot_list(srv: &Server) -> Vec<SlotPiece> {
+    slots::resolve(&shown(srv), &srv.cfg.slots, &srv.cfg.sidebar.agents)
+}
+
+// Pieces changed, or who may draw what (config.toml's [slots]): clients get a new view, at most slots::PER_SECOND
+// times a second however many updates there were.
+// ponytail: every view carries every piece, a sidebar element too; past a few, it'd want a channel of its own (as views
+// have).
+pub fn slots_changed(srv: &mut Server) {
+    if srv.host.slots_queued {
+        return;
+    }
+    let wait = (srv.host.slots_pushed + 1000 / slots::PER_SECOND + 1).saturating_sub(now_ms());
+    if wait == 0 {
+        srv.host.slots_pushed = now_ms();
+        return srv.changed();
+    }
+    srv.host.slots_queued = true;
+    let me = srv.me.clone();
+    tokio::task::spawn_local(async move {
+        tokio::time::sleep(Duration::from_millis(wait)).await;
+        let Some(shared) = me.upgrade() else { return };
+        let mut srv = shared.borrow_mut();
+        srv.host.slots_queued = false;
+        srv.host.slots_pushed = now_ms();
+        srv.changed();
+    });
+}
+
+// Pieces for a pane's process that ended, or a tab or space that's gone, go with it: before every view is sent.
+pub fn prune(srv: &mut Server) {
+    let (s, host) = (&srv.s, &mut srv.host);
+    let alive = |t: &Target| match t {
+        Target::Nothing => true,
+        Target::Pane(id, instance) => s.panes.get(id).is_some_and(|p| &p.info.instance == instance && p.info.running()),
+        Target::Tab(id) => s.workspaces.iter().any(|w| w.tabs.iter().any(|t| &t.id == id)),
+        Target::Space(name) => s.workspaces.iter().any(|w| &w.name == name),
+    };
+    for pl in host.plugins.values_mut() {
+        slots::prune(&mut pl.ui.slots, alive);
+    }
 }
 
 // Views go to the clients that draw them on their own channel, only when one changes: a tree can be big, and the
@@ -772,13 +843,26 @@ pub fn forget(srv: &mut Server, name: &str) {
 
 // A ui.* call: from the plugin's bound connection, within its rate, naming only actions it offered. The plugin's name.
 fn ui_call(srv: &mut Server, c: u64, action: Option<&str>) -> RpcResult<String> {
-    let Some(name) = srv.host.plugins.values().find(|p| p.client == Some(c) && p.live()).map(|p| p.name.clone()) else {
-        return Err(fail("plugin_unavailable", "ui calls work only on a plugin's bound connection: call plugin.hello first"));
-    };
+    let name = bound(srv, c)?;
+    spend(srv, &name)?;
+    let pl = &srv.host.plugins[&name];
+    if let Some(a) = action.filter(|a| !pl.actions.iter().any(|x| x == a)) {
+        return Err(no_action(pl, a, " in hello"));
+    }
+    Ok(name)
+}
+
+// the plugin whose bound connection this is
+fn bound(srv: &Server, c: u64) -> RpcResult<String> {
+    srv.host.plugins.values().find(|p| p.client == Some(c) && p.live()).map(|p| p.name.clone()).ok_or_else(|| fail("plugin_unavailable", "ui calls work only on a plugin's bound connection: call plugin.hello first"))
+}
+
+// one update out of the plugin's budget and the session's
+fn spend(srv: &mut Server, name: &str) -> RpcResult<()> {
     let session = srv.host.session_ui.get_or_insert_with(|| Bucket::full(SESSION_BURST));
     session.refill(SESSION_BURST, SESSION_PER_SECOND);
     let session_tokens = session.tokens;
-    let pl = srv.host.plugins.get_mut(&name).unwrap();
+    let pl = srv.host.plugins.get_mut(name).unwrap();
     let mine = pl.ui.tokens.get_or_insert_with(|| Bucket::full(UPDATES_BURST));
     mine.refill(UPDATES_BURST, UPDATES_PER_SECOND);
     // both checked before either is spent, so an update one refuses doesn't use up the other
@@ -790,11 +874,7 @@ fn ui_call(srv: &mut Server, c: u64, action: Option<&str>) -> RpcResult<String> 
     }
     mine.tokens -= 1.0;
     srv.host.session_ui.as_mut().unwrap().tokens -= 1.0;
-    let pl = &srv.host.plugins[&name];
-    if let Some(a) = action.filter(|a| !pl.actions.iter().any(|x| x == a)) {
-        return Err(no_action(pl, a, " in hello"));
-    }
-    Ok(name)
+    Ok(())
 }
 
 fn no_action(pl: &Plugin, action: &str, how: &str) -> RpcError {
@@ -802,9 +882,11 @@ fn no_action(pl: &Plugin, action: &str, how: &str) -> RpcError {
     fail("no_such_action", format!("{} didn't offer action {action}{how} (it offers: {offers})", pl.name))
 }
 
+// an older method changed what it showed (within its own rate): UI 3 clients get it in the view as it was, UI 4 ones
+// as slots
 fn changed(srv: &mut Server, name: &str) -> RpcResult {
     srv.changed();
-    Ok(ui_of(&srv.host.plugins[name]))
+    Ok(ui_of(&srv.host.plugins[name], true))
 }
 
 fn others<'a>(srv: &'a Server, name: &'a str) -> impl Iterator<Item = &'a Plugin> {
@@ -827,7 +909,7 @@ pub fn route(method: &str) -> Option<Handler> {
         "ui.sidebar.clear" => Sync(|srv, p, c| {
             Params::new(p)?;
             let name = ui_call(srv, c, None)?;
-            srv.host.plugins.get_mut(&name).unwrap().ui.sidebar = None;
+            srv.host.plugins.get_mut(&name).unwrap().ui.slots.shift_remove(&slots::key("sidebar", "", "sidebar"));
             changed(srv, &name)
         }),
         "ui.badge.set" => Sync(badge_set),
@@ -835,17 +917,37 @@ pub fn route(method: &str) -> Option<Handler> {
             let pr = Params::new(p)?;
             let pane = pr.len("pane", 1, None)?;
             let name = ui_call(srv, c, None)?;
-            srv.host.plugins.get_mut(&name).unwrap().ui.badges.shift_remove(&pane);
+            srv.host.plugins.get_mut(&name).unwrap().ui.slots.shift_remove(&slots::key("pane.title", &pane, "badge"));
             changed(srv, &name)
         }),
         "ui.menu.set" => Sync(menu_set),
+        "ui.slot.set" => Sync(slot_set),
+        "ui.slot.clear" => Sync(slot_clear),
         "ui.toast" => Sync(toast),
         "ui.state" => Sync(|srv, p, _| {
             let pr = Params::new(p)?;
             let plugin = pr.len("plugin", 1, None)?;
-            let pl = need(srv, &plugin)?;
-            let mut v = ui_of(pl);
+            need(srv, &plugin)?;
+            let pl = &srv.host.plugins[&plugin];
+            let mut v = ui_of(pl, true);
             v["views"] = json!(pl.ui.views.values().map(|v| v.state.clone()).collect::<Vec<_>>());
+            // what it set with ui.slot.set, as clients get it: a replacing piece `replaces` when it's drawn
+            let (holds, _) = slots::replacing(&shown(srv), &srv.cfg.slots, &srv.cfg.sidebar.agents, &plugin);
+            let run = pl.run.as_ref().map_or("", |r| &r.id);
+            let mine: Vec<Value> = pl
+                .ui
+                .slots
+                .values()
+                .filter(|x| x.legacy.is_none())
+                .map(|x| {
+                    let mut w = x.wire(&plugin, run);
+                    w.replaces = x.position == "replace" && holds.contains(&x.slot);
+                    json!(w)
+                })
+                .collect();
+            if !mine.is_empty() {
+                v["slots"] = json!(mine);
+            }
             Ok(v)
         }),
         "plugin.pane.open" => Sync(pane_open),
@@ -1053,19 +1155,22 @@ fn status_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
     let tone = pr.enum_or("tone", TONES, "fg")?;
     let action = pr.opt_len("action", 1, None)?;
     let name = ui_call(srv, c, action.as_deref())?;
-    let has = srv.host.plugins[&name].ui.status.contains_key(&id);
-    let size = srv.host.plugins[&name].ui.status.len();
+    let key = slots::key("status.right", "", &id);
+    let ui = &srv.host.plugins[&name].ui;
+    let has = ui.legacy_at(&key);
+    let size = ui.legacy_in("status.right").count();
     if !has && size >= STATUS_SEGMENTS {
         return Err(fail("error", format!("at most {STATUS_SEGMENTS} status segments per plugin")));
     }
-    if !has && others(srv, &name).map(|x| x.ui.status.len()).sum::<usize>() + size >= SESSION_STATUS_SEGMENTS {
+    if !has && others(srv, &name).map(|x| x.ui.legacy_in("status.right").count()).sum::<usize>() + size >= SESSION_STATUS_SEGMENTS {
         return Err(fail("error", format!("at most {SESSION_STATUS_SEGMENTS} status segments across the session's plugins")));
     }
     let mut seg = json!({ "id": id, "text": clean_text(&text, STATUS_TEXT), "tone": tone });
     if let Some(a) = action {
         seg["action"] = json!(a);
     }
-    srv.host.plugins.get_mut(&name).unwrap().ui.status.insert(id, seg);
+    let piece = slots::status(&name, seg);
+    srv.host.plugins.get_mut(&name).unwrap().ui.slots.insert(key, piece);
     changed(srv, &name)
 }
 
@@ -1073,7 +1178,7 @@ fn status_clear(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
     let pr = Params::new(p)?;
     let id = pr.len("id", 1, Some(40))?;
     let name = ui_call(srv, c, None)?;
-    srv.host.plugins.get_mut(&name).unwrap().ui.status.shift_remove(&id);
+    srv.host.plugins.get_mut(&name).unwrap().ui.slots.shift_remove(&slots::key("status.right", "", &id));
     changed(srv, &name)
 }
 
@@ -1110,7 +1215,8 @@ fn sidebar_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
             return Err(fail("no_such_action", format!("{name} didn't offer action {a} in hello")));
         }
     }
-    if pl.ui.sidebar.is_none() && others(srv, &name).filter(|x| x.ui.sidebar.is_some()).count() >= SESSION_SIDEBAR_SECTIONS {
+    let key = slots::key("sidebar", "", "sidebar");
+    if !pl.ui.legacy_at(&key) && others(srv, &name).filter(|x| x.ui.legacy_at(&key)).count() >= SESSION_SIDEBAR_SECTIONS {
         return Err(fail("error", format!("at most {SESSION_SIDEBAR_SECTIONS} plugins' sidebar sections in a session")));
     }
     // a row that focuses a pane names the process it's for; clicking it later reaches that process or nothing
@@ -1145,7 +1251,8 @@ fn sidebar_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
             v
         })
         .collect();
-    srv.host.plugins.get_mut(&name).unwrap().ui.sidebar = Some(json!({ "title": clean_text(&title, SIDEBAR_TITLE), "rows": rows }));
+    let piece = slots::section(json!({ "title": clean_text(&title, SIDEBAR_TITLE), "rows": rows }));
+    srv.host.plugins.get_mut(&name).unwrap().ui.slots.insert(key, piece);
     changed(srv, &name)
 }
 
@@ -1160,14 +1267,16 @@ fn badge_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
         return Err(fail("pane_gone", format!("no pane {pane} with instance {instance}: it closed or was restarted")));
     }
     let pl = &srv.host.plugins[&name];
-    let has = pl.ui.badges.contains_key(&pane);
-    if !has && pl.ui.badges.len() >= BADGES {
+    let key = slots::key("pane.title", &pane, "badge");
+    let has = pl.ui.legacy_at(&key);
+    if !has && pl.ui.legacy_in("pane.title").count() >= BADGES {
         return Err(fail("error", format!("at most {BADGES} badges per plugin")));
     }
-    if !has && others(srv, &name).filter(|x| x.ui.badges.contains_key(&pane)).count() >= SESSION_BADGES_PER_PANE {
+    if !has && others(srv, &name).filter(|x| x.ui.legacy_at(&key)).count() >= SESSION_BADGES_PER_PANE {
         return Err(fail("error", format!("at most {SESSION_BADGES_PER_PANE} plugins' badges on one pane")));
     }
-    srv.host.plugins.get_mut(&name).unwrap().ui.badges.insert(pane.clone(), json!({ "pane": pane, "instance": instance, "text": clean_text(&text, BADGE_TEXT), "tone": tone }));
+    let piece = slots::badge(&name, json!({ "pane": pane, "instance": instance, "text": clean_text(&text, BADGE_TEXT), "tone": tone }));
+    srv.host.plugins.get_mut(&name).unwrap().ui.slots.insert(key, piece);
     changed(srv, &name)
 }
 
@@ -1191,24 +1300,71 @@ fn menu_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
             return Err(fail("no_such_action", format!("{name} didn't offer action {a} in hello")));
         }
     }
-    if others(srv, &name).map(|x| x.ui.menu.len()).sum::<usize>() + items.len().min(MENU_ITEMS) > SESSION_MENU_ITEMS {
+    if others(srv, &name).map(|x| x.ui.legacy_in("menu.pane").count()).sum::<usize>() + items.len().min(MENU_ITEMS) > SESSION_MENU_ITEMS {
         return Err(fail("error", format!("at most {SESSION_MENU_ITEMS} menu entries across the session's plugins")));
     }
-    let menu = items.iter().take(MENU_ITEMS).map(|it| json!({ "id": it["id"], "title": clean_text(it["title"].as_str().unwrap_or(""), MENU_TITLE), "action": it["action"] })).collect();
-    srv.host.plugins.get_mut(&name).unwrap().ui.menu = menu;
+    let ui = &mut srv.host.plugins.get_mut(&name).unwrap().ui;
+    ui.slots.retain(|_, x| !(x.slot == "menu.pane" && x.legacy.is_some()));
+    for it in items.iter().take(MENU_ITEMS) {
+        let piece = slots::menu_entry(json!({ "id": it["id"], "title": clean_text(it["title"].as_str().unwrap_or(""), MENU_TITLE), "action": it["action"] }));
+        ui.slots.insert(piece.key(), piece);
+    }
     changed(srv, &name)
 }
 
+// One piece in modisa's chrome (examples/plugins/CHROME.md), checked by slots.rs. Clients get it with the rest, at most
+// slots::PER_SECOND times a second; no budget is spent but a sidebar element's, which can be as big as a view.
+fn slot_set(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
+    let name = bound(srv, c)?;
+    let piece = {
+        let s = &srv.s;
+        let process = |id: &str, instance: &str| s.panes.get(id).is_some_and(|p| p.info.instance == instance && p.info.running());
+        let tab = |t: &str| s.find_tab(t).map(|(wi, ti)| s.workspaces[wi].tabs[ti].id.clone());
+        let space = |w: &str| s.find_workspace(w).map(|wi| s.workspaces[wi].name.clone());
+        slots::check(p, &World { process: &process, tab: &tab, space: &space, actions: &srv.host.plugins[&name].actions })?
+    };
+    if piece.body.contains_key("element") {
+        spend(srv, &name)?;
+    }
+    let key = piece.key();
+    let ui = &mut srv.host.plugins.get_mut(&name).unwrap().ui;
+    if !ui.slots.contains_key(&key) && ui.slots.len() >= slots::PIECES {
+        return Err(fail("error", format!("at most {} pieces per plugin, across every slot", slots::PIECES)));
+    }
+    ui.slots.insert(key, piece);
+    slots_changed(srv);
+    Ok(json!(true))
+}
+
+// Takes the plugin's pieces that match away. How many.
+fn slot_clear(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
+    let matches = slots::matcher(p)?;
+    let name = bound(srv, c)?;
+    let ui = &mut srv.host.plugins.get_mut(&name).unwrap().ui;
+    let before = ui.slots.len();
+    ui.slots.retain(|_, x| !matches(x));
+    let gone = before - ui.slots.len();
+    if gone > 0 {
+        slots_changed(srv);
+    }
+    Ok(json!(gone))
+}
+
 // every attached client shows it (and a system notification, if asked and the user has those on); counted per run, so
-// a restarted plugin starts with a fresh budget
+// a restarted plugin starts with a fresh budget. Lines, buttons, a timeout and an id (slots.rs toast) are UI 4's: an
+// older client shows the text, which with no `text` is the lines'.
 fn toast(srv: &mut Server, p: &Value, c: u64) -> RpcResult {
     let pr = Params::new(p)?;
-    let text = pr.str("text")?;
+    let text = if pr.has("lines") { pr.opt_str("text")? } else { Some(pr.str("text")?) };
     let tone = pr.enum_or("tone", TONES, "fg")?;
     let system = pr.flag("system")?;
     let name = ui_call(srv, c, None)?;
+    let (plain, mut more) = slots::toast(p, &srv.host.plugins[&name].actions)?;
     let run = srv.host.plugins[&name].run.as_ref().unwrap().id.clone();
-    srv.toast(super::Toast { from: name.clone(), source: format!("plugin:{name}:{run}"), plugin: true, text, tone, system, sound: false })?;
+    more.insert("slot".into(), json!("toast"));
+    more.insert("run".into(), json!(run));
+    let text = text.or(plain).unwrap_or_default();
+    srv.toast(super::Toast { from: name.clone(), source: format!("plugin:{name}:{run}"), plugin: true, text, tone, system, sound: false, more })?;
     Ok(json!(true))
 }
 
