@@ -68,7 +68,7 @@ pub fn span_text(app: &App, spans: &[Value], base: &str, w: usize) -> Vec<(Strin
     out
 }
 
-fn title_of(app: &App, plugin: &str, action: &str) -> String {
+pub fn title_of(app: &App, plugin: &str, action: &str) -> String {
     plugin_ui(app).iter().find(|p| p["plugin"] == plugin).and_then(|p| list_of(p, "actions").iter().find(|a| a["id"] == action)).and_then(|a| a["title"].as_str()).unwrap_or(action).to_string()
 }
 
@@ -78,8 +78,10 @@ fn short(value: &Value) -> String {
 }
 
 // Run a plugin's action and say how it went: its result, its error, or that a timeout left the outcome unknown. `run` is
-// the run whose UI it was taken from (captured when that was drawn): the server refuses it if that run ended.
-pub fn run_plugin_action(app: &App, plugin: &str, run: &str, action: &str, params: Value, target: Option<(String, String)>, link: Option<String>) {
+// the run whose UI it was taken from (captured when that was drawn): the server refuses it if that run ended. `ui` says
+// where in modisa's chrome it was clicked (slots.rs).
+#[allow(clippy::too_many_arguments)]
+pub fn run_plugin_action(app: &App, plugin: &str, run: &str, action: &str, params: Value, target: Option<(String, String)>, link: Option<String>, ui: Option<Value>) {
     let Some(conn) = app.conn.clone() else { return };
     let label = format!("{plugin}: {}", title_of(app, plugin, action));
     let mut p = json!({ "plugin": plugin, "action": action, "params": params, "run": run });
@@ -88,6 +90,9 @@ pub fn run_plugin_action(app: &App, plugin: &str, run: &str, action: &str, param
     }
     if let Some(l) = link {
         p["link"] = json!(l);
+    }
+    if let Some(u) = ui {
+        p["ui"] = u;
     }
     let me = app.me.clone();
     tokio::task::spawn_local(async move {
@@ -142,7 +147,7 @@ pub fn plugin_key(app: &mut App, key: &str) {
     let target = focused_target(app);
     let plugin = bound.declared.plugin.clone();
     if let Some(action) = &bound.declared.action {
-        return run_plugin_action(app, &plugin, &run, action, json!({}), target, None);
+        return run_plugin_action(app, &plugin, &run, action, json!({}), target, None, None);
     }
     if let Some(pane) = &bound.declared.pane {
         open_plugin_pane(app, &plugin, &run, pane, json!({}), target);
@@ -175,7 +180,7 @@ pub fn plugin_link(app: &mut App, pane: &str, url: &str, x: i32, y: i32) {
     }
     if handlers.len() == 1 {
         let (p, r, a) = &handlers[0];
-        return run_plugin_action(app, p, r, a, json!({}), target, Some(url.to_string()));
+        return run_plugin_action(app, p, r, a, json!({}), target, Some(url.to_string()), None);
     }
     // the title says what's being chosen, with the URL cut to fit the menu (fit also blanks control characters)
     let title = format!("Open {} with", fit(url, 18));
@@ -185,7 +190,7 @@ pub fn plugin_link(app: &mut App, pane: &str, url: &str, x: i32, y: i32) {
         let options = names.iter().map(|(n, v)| (n.as_str(), "", v.as_str(), false)).collect();
         let chosen = modals::menu(&shared, &title, options, x, y).await;
         if let Some((p, r, a)) = chosen.and_then(|i| i.parse::<usize>().ok()).and_then(|i| handlers.get(i)) {
-            run_plugin_action(&shared.borrow(), p, r, a, json!({}), target, Some(url));
+            run_plugin_action(&shared.borrow(), p, r, a, json!({}), target, Some(url), None);
         }
     });
 }
@@ -410,7 +415,7 @@ pub fn clicked(shared: &Shared, plugin: &str, run: &str, action: Option<&str>, p
             }
         });
     } else if let Some(a) = action {
-        run_plugin_action(&app, plugin, run, a, json!({}), None, None);
+        run_plugin_action(&app, plugin, run, a, json!({}), None, None, None);
     }
 }
 

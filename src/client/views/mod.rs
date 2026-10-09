@@ -146,11 +146,13 @@ pub fn animate(app: &mut App) {
 }
 
 fn spinning(app: &App) -> bool {
-    super::modals::busy(app) || app.views.iter().any(|v| {
-        let mut any = false;
-        build::walk(&v.state["root"], "0".into(), &mut |n, _| any |= n["type"] == "spinner");
-        any
-    })
+    super::modals::busy(app)
+        || super::slots::spinning(app)
+        || app.views.iter().any(|v| {
+            let mut any = false;
+            build::walk(&v.state["root"], "0".into(), &mut |n, _| any |= n["type"] == "spinner");
+            any
+        })
 }
 
 pub fn tick() -> u64 {
@@ -425,17 +427,21 @@ fn close_by_user(app: &mut App, i: usize) {
     });
 }
 
-// An element was used: its plugin's actions, with what it holds. Only a failure is shown; what an action does, its
-// plugin shows.
+// An element was used: its plugin's actions, with what it holds.
 fn fire(app: &mut App, i: usize, fired: Vec<Fired>) {
     let Some(v) = app.views.get(i) else { return };
+    let view = Map::from_iter([("view".to_string(), v.state["id"].clone())]);
+    send(app, v.state["plugin"].as_str().unwrap_or(""), &v.state["run"], view, fired);
+}
+
+// Elements' actions to their plugin (a view's, or a sidebar section's), each with what it holds as `ui` over `base`. Only
+// a failure is shown; what an action does, its plugin shows.
+pub fn send(app: &App, plugin: &str, run: &Value, base: Map<String, Value>, fired: Vec<Fired>) {
     let Some(conn) = app.conn.clone() else { return };
-    let (plugin, run, view) = (v.state["plugin"].as_str().unwrap_or("").to_string(), v.state["run"].clone(), v.state["id"].clone());
     for f in fired {
-        let mut ui = Map::new();
-        ui.insert("view".into(), view.clone());
+        let mut ui = base.clone();
         ui.extend(f.ui);
-        let (conn, me, plugin, action) = (conn.clone(), app.me.clone(), plugin.clone(), f.action);
+        let (conn, me, plugin, action) = (conn.clone(), app.me.clone(), plugin.to_string(), f.action);
         let params = json!({ "plugin": plugin, "action": action, "params": f.params, "run": run, "ui": ui });
         tokio::task::spawn_local(async move {
             if let Err(e) = conn.request("plugin.invoke", params, None).await {
@@ -451,7 +457,7 @@ fn fire(app: &mut App, i: usize, fired: Vec<Fired>) {
 
 // ---------- the pointer ----------
 
-const DOUBLE: Duration = Duration::from_millis(400);
+pub const DOUBLE: Duration = Duration::from_millis(400);
 
 // A click on an element of a view: it takes the keyboard, and what's clicked in it is chosen or pressed.
 pub fn click(app: &mut App, view: &str, key: &str, part: i32) {

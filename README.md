@@ -319,7 +319,7 @@ git history and points its harness at this binary, so the behaviour it pins down
   - `session/` — spaces, tabs, panes; a `PtyPane` is a pty + a headless terminal (`src/vt.rs`)
   - `agents/` — detection (process identification, the manifest rule engine, integration authority), the monitor tick, the mailbox
   - `persist/` — SQLite store, restore, `modisa.toml` templates
-- `src/client/` — the ratatui client: `mod.rs` startup and the `App` state, `draw.rs`, `input.rs`, `keys.rs` (keys as a pane's program expects them, kitty protocol included), `actions.rs`, `modals.rs`, `settings.rs`, `views/` (plugin views), `sound.rs`
+- `src/client/` — the ratatui client: `mod.rs` startup and the `App` state, `draw.rs`, `input.rs`, `keys.rs` (keys as a pane's program expects them, kitty protocol included), `actions.rs`, `modals.rs`, `settings.rs`, `views/` (plugin views), `slots.rs` (plugins' pieces of the chrome), `sound.rs`
 - `src/vt.rs` — the headless terminal: `alacritty_terminal`, with text and ANSI export and replay
 - `src/platform/` — process facts from the kernel (`procs.rs`: libproc on macOS, `/proc` on Linux) and the logo font
 - `src/integrations/` — every agent integration (`targets.rs`), config-file editing, plugin sources, and `modisa hook`
