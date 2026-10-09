@@ -263,7 +263,7 @@ pub fn line(v: &Value, ink: &Ink) -> Res<Line<'static>> {
         Value::Object(o) if o.contains_key("spans") => {
             let xs = o["spans"].as_array().ok_or("spans must be an array")?;
             let mut l = Line::from(of(xs)?).style(style_at(v, "style", ink.th)?);
-            l.alignment = align(&o["align"])?;
+            l.alignment = align(o.get("align").unwrap_or(&Value::Null))?;
             l
         }
         Value::Object(_) => Line::from(spans(v, ink)?),
@@ -279,7 +279,7 @@ pub fn text(v: &Value, ink: &Ink) -> Res<Text<'static>> {
         Value::Array(xs) => Text::from(xs.iter().map(|x| line(x, ink)).collect::<Res<Vec<_>>>()?),
         Value::Object(o) if o.contains_key("lines") => {
             let mut t = text(&o["lines"], ink)?.style(style_at(v, "style", ink.th)?);
-            t.alignment = align(&o["align"])?;
+            t.alignment = align(o.get("align").unwrap_or(&Value::Null))?;
             t
         }
         Value::Object(_) => Text::from(line(v, ink)?),
@@ -389,6 +389,22 @@ pub fn block(v: &Value, ink: &Ink) -> Res<Block<'static>> {
     Ok(b)
 }
 
+// ---------- code ----------
+
+// The syntax themes `code`, `diff` and `markdown` take as `syntax_theme` (two-face's, which the client draws with).
+pub const SYNTAX_THEMES: &[&str] = &[
+    "1337", "ansi", "base16", "base16-256", "base16-eighties.dark", "base16-mocha.dark", "base16-ocean.dark", "base16-ocean.light", "Catppuccin Frappe", "Catppuccin Latte", "Catppuccin Macchiato",
+    "Catppuccin Mocha", "Coldark-Cold", "Coldark-Dark", "DarkNeon", "Dracula", "GitHub", "gruvbox-dark", "gruvbox-light", "InspiredGitHub", "Monokai Extended", "Monokai Extended Bright",
+    "Monokai Extended Light", "Monokai Extended Origin", "Nord", "OneHalfDark", "OneHalfLight", "Solarized (dark)", "Solarized (light)", "Sublime Snazzy", "TwoDark", "zenburn",
+];
+
+// A syntax theme by its name, in any case and with or without its punctuation ("solarized-dark", "Solarized (dark)").
+pub fn syntax_theme(name: &str) -> Res<&'static str> {
+    let key = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let want = key(name);
+    SYNTAX_THEMES.iter().find(|t| key(t) == want).copied().ok_or_else(|| format!("syntax_theme {name:?} isn't one of {}", SYNTAX_THEMES.join(", ")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,6 +450,7 @@ mod tests {
         assert_eq!(t.lines[1].spans[0].style.add_modifier, Modifier::BOLD);
         assert_eq!(t.lines[2].alignment, Some(HorizontalAlignment::Right));
         assert_eq!(text(&json!("one\ntwo"), &ink).unwrap().lines.len(), 2);
+        assert_eq!(text(&json!({ "lines": [{ "spans": ["no align"] }] }), &ink).unwrap().alignment, None);
         assert!(line(&json!(3), &ink).is_err());
     }
 
@@ -445,5 +462,12 @@ mod tests {
         assert!(block(&json!({ "padding": [1, 2, 3] }), &ink).is_err());
         assert_eq!(marker(&json!("x")), Ok(Marker::Custom('x')));
         assert!(marker(&json!("xy")).is_err());
+    }
+
+    #[test]
+    fn reads_syntax_themes() {
+        assert_eq!(syntax_theme("solarized-dark"), Ok("Solarized (dark)"));
+        assert_eq!(syntax_theme("Dracula"), Ok("Dracula"));
+        assert!(syntax_theme("nope").is_err());
     }
 }

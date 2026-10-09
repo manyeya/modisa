@@ -1,279 +1,304 @@
-// Charts a plugin view asks for by their data, drawn here at whatever size the layout gives them, as cells of text:
-// eighth blocks for bars (8 steps a cell), half blocks for heatmaps (2 rows a cell), braille for lines and arcs (2×4
-// dots a cell). Pure: the view renderer paints the cells in the theme's colours.
+// Charts a plugin view draws from its data, with ratatui's widgets: gauges and line gauges, sparklines, bar charts,
+// charts (lines, scatter, bars, areas), canvases (shapes, the world map, text, in layers) and month calendars.
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Direction, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::symbols;
+use ratatui::text::Line;
+use ratatui::widgets::calendar::{CalendarEventStore, Monthly};
+use ratatui::widgets::canvas::{self, Circle, Map, MapResolution, Points, Rectangle};
+use ratatui::widgets::{Axis, Bar, BarChart, BarGroup, Chart, Dataset, Gauge, GraphType, LegendPosition, LineGauge, RenderDirection, Sparkline, SparklineBar, Widget};
+use serde_json::Value;
 
-// What a cell is painted in: a tone of the theme, "track" (the dim groove under a bar or arc), or `mix` of track and a
-// tone (0: track, 1: the tone) for heatmaps; `rgb` (#rrggbb) for a colour a plugin's Raster gives itself.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Ink {
-    pub tone: &'static str,
-    pub mix: Option<f64>,
-    pub rgb: Option<String>,
-}
+use super::build::{ty, Ctx};
+use crate::protocol::ui;
 
-impl Ink {
-    pub fn tone(tone: &'static str) -> Ink {
-        Ink { tone, mix: None, rgb: None }
+pub fn draw(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    match ty(n) {
+        "gauge" => gauge(ctx, buf, n, area),
+        "line_gauge" => line_gauge(ctx, buf, n, area),
+        "sparkline" => sparkline(ctx, buf, n, area),
+        "bar_chart" => bar_chart(ctx, buf, n, area),
+        "chart" => chart(ctx, buf, n, area),
+        "canvas" => canvas(ctx, buf, n, area),
+        "calendar" => calendar(ctx, buf, n, area),
+        _ => {}
     }
-    fn mixed(tone: &'static str, mix: f64) -> Ink {
-        Ink { tone, mix: Some(mix), rgb: None }
+}
+
+// 0 to 1, from `ratio` or `percent`
+fn ratio(n: &Value) -> f64 {
+    let r = n["ratio"].as_f64().or_else(|| n["percent"].as_f64().map(|p| p / 100.0)).unwrap_or(0.0);
+    if r.is_finite() { r.clamp(0.0, 1.0) } else { 0.0 }
+}
+
+// a count for a widget that draws whole numbers: rounded, and nothing below 0
+fn whole(v: &Value) -> u64 {
+    v.as_f64().filter(|f| f.is_finite()).map_or(0, |f| f.max(0.0).round() as u64)
+}
+
+// a number as a label: no decimals when it has none
+fn label(x: f64) -> String {
+    if x.fract() == 0.0 && x.abs() < 1e15 { format!("{x:.0}") } else { format!("{x:.2}").trim_end_matches('0').to_string() }
+}
+
+fn gauge(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    let mut g = Gauge::default()
+        .ratio(ratio(n))
+        .use_unicode(n["unicode"].as_bool().unwrap_or(true))
+        .gauge_style(ctx.style_or(n, "gauge_style", Style::new().fg(ctx.tone("accent")).bg(ctx.tone("bar"))));
+    if !n["label"].is_null() {
+        g = g.label(ctx.span(&n["label"]));
     }
+    g.render(area, buf);
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Cell {
-    pub ch: char,
-    pub fg: Option<Ink>,
-    pub bg: Option<Ink>,
-}
-
-pub type Grid = Vec<Vec<Cell>>; // rows of cells
-
-const EIGHTHS: [char; 8] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉']; // left-aligned, for horizontal bars
-const LEVELS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']; // bottom-aligned, for columns
-
-fn clamp(n: f64, lo: f64, hi: f64) -> f64 {
-    if n.is_finite() { n.max(lo).min(hi) } else { lo }
-}
-fn unit(n: f64) -> f64 {
-    clamp(n, 0.0, 1.0)
-}
-// JavaScript's Math.round: halves go up
-fn round(n: f64) -> f64 {
-    (n + 0.5).floor()
-}
-fn blank(w: usize, h: usize) -> Grid {
-    (0..h).map(|_| (0..w).map(|_| Cell { ch: ' ', fg: None, bg: None }).collect()).collect()
-}
-// the largest of `from` and `values`, as Math.max(from, ...values)
-fn largest(from: f64, values: impl IntoIterator<Item = f64>) -> f64 {
-    values.into_iter().fold(from, f64::max)
-}
-
-// The tone names a plugin may use, as the theme knows them (anything else is the text colour).
-pub const TONES: [&str; 8] = ["fg", "dim", "accent", "warn", "working", "blocked", "done", "idle"];
-pub fn tone_name(s: &str) -> &'static str {
-    TONES.iter().find(|t| **t == s).copied().unwrap_or("fg")
-}
-
-// A horizontal bar `width` cells long, filled to `value` (0-1) at an eighth of a cell, over a track.
-pub fn progress(value: f64, width: usize, tone: &'static str) -> Vec<Cell> {
-    let eighths = round(unit(value) * width as f64 * 8.0) as usize;
-    let (full, part) = (eighths / 8, eighths % 8);
-    (0..width)
-        .map(|i| {
-            if i < full {
-                Cell { ch: '█', fg: Some(Ink::tone(tone)), bg: None }
-            } else if i == full && part > 0 {
-                Cell { ch: EIGHTHS[part], fg: Some(Ink::tone(tone)), bg: Some(Ink::tone("track")) }
-            } else {
-                Cell { ch: ' ', fg: None, bg: Some(Ink::tone("track")) }
-            }
-        })
-        .collect()
-}
-
-// Columns rising from the bottom of a `width`×`height` box, one a value, the last `width` values; `min`/`max` default
-// to 0 and the largest value. One row high, it's a sparkline.
-pub fn columns(values: &[f64], width: usize, height: usize, tone: &'static str, min: f64, max: Option<f64>) -> Grid {
-    let shown = &values[values.len().saturating_sub(width)..];
-    let top = max.unwrap_or_else(|| largest(min, shown.iter().copied()));
-    let mut grid = blank(width, height);
-    let start = width - shown.len(); // right-aligned: the newest value is at the right edge
-    for (i, v) in shown.iter().enumerate() {
-        let mut level = round(unit(if top > min { (v - min) / (top - min) } else { 0.0 }) * height as f64 * 8.0) as i64;
-        let mut row = height as i64 - 1;
-        while row >= 0 && level > 0 {
-            grid[row as usize][start + i] = Cell { ch: LEVELS[level.min(8) as usize], fg: Some(Ink::tone(tone)), bg: None };
-            row -= 1;
-            level -= 8;
-        }
+fn line_gauge(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    let mut g = LineGauge::default()
+        .ratio(ratio(n))
+        .filled_style(ctx.style_or(n, "filled_style", Style::new().fg(ctx.tone("accent"))))
+        .unfilled_style(ctx.style_or(n, "unfilled_style", Style::new().fg(ctx.tone("border"))));
+    if let Some(s) = n["filled_symbol"].as_str() {
+        g = g.filled_symbol(s);
     }
-    grid
+    if let Some(s) = n["unfilled_symbol"].as_str() {
+        g = g.unfilled_symbol(s);
+    }
+    if !n["label"].is_null() {
+        g = g.label(Line::from(ctx.span(&n["label"])));
+    }
+    g.render(area, buf);
 }
 
-// Rows of values as half-block cells, two values a cell (top, bottom), each coloured from the track up to `tone` by
-// where it sits between 0 (or `min`) and the largest value.
-pub fn heatmap(values: &[Vec<f64>], tone: &'static str, min: f64, max: Option<f64>) -> Grid {
-    let top = max.unwrap_or_else(|| largest(min, values.iter().flatten().copied()));
-    let level = |v: Option<&f64>| v.map(|v| Ink::mixed(tone, unit(if top > min { (v - min) / (top - min) } else { 0.0 })));
-    let width = values.iter().map(Vec::len).max().unwrap_or(0);
-    let mut grid = vec![];
-    for r in (0..values.len()).step_by(2) {
-        grid.push(
-            (0..width)
-                .map(|c| {
-                    let up = level(values[r].get(c));
-                    let down = level(values.get(r + 1).and_then(|row| row.get(c)));
-                    Cell { ch: '▀', fg: Some(up.unwrap_or(Ink::mixed("track", 0.0))), bg: down }
-                })
-                .collect(),
-        );
+fn sparkline(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    let data: Vec<SparklineBar> = n["data"].as_array().into_iter().flatten().map(|v| SparklineBar::from((!v.is_null()).then(|| whole(v)))).collect();
+    let mut s = Sparkline::default()
+        .data(data)
+        .style(ctx.style_or(n, "style", Style::new().fg(ctx.tone("accent"))))
+        .bar_set(if n["bar_set"] == "three_levels" { symbols::bar::THREE_LEVELS } else { symbols::bar::NINE_LEVELS })
+        .direction(if n["direction"] == "right_to_left" { RenderDirection::RightToLeft } else { RenderDirection::LeftToRight })
+        .absent_value_style(ctx.style_or(n, "absent_style", Style::new().fg(ctx.tone("dim"))));
+    if let Some(sym) = n["absent_symbol"].as_str() {
+        s = s.absent_value_symbol(sym);
     }
-    grid
+    if !n["max"].is_null() {
+        s = s.max(whole(&n["max"]));
+    }
+    s.render(area, buf);
 }
 
-// ---------- braille ----------
-
-const DOT: [[u8; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]]; // DOT[y % 4][x % 2]
-
-// A `width`×`height` cell box as 2×4 dots a cell. A cell has one colour: the last dot set in it decides it.
-pub struct Braille {
-    pub width: usize,
-    pub height: usize,
-    bits: Vec<Vec<u8>>,
-    ink: Vec<Vec<Option<Ink>>>,
+// A bar: `{ "value": n, "label": Line, "text_value": "…", "style": Style, "value_style": Style }`.
+fn bar(ctx: &Ctx, b: &Value) -> Bar<'static> {
+    let mut bar = Bar::default().value(whole(&b["value"]));
+    if !b["label"].is_null() {
+        bar = bar.label(ctx.line(&b["label"]));
+    }
+    if let Some(t) = b["text_value"].as_str() {
+        bar = bar.text_value(t.to_string());
+    }
+    if !b["style"].is_null() {
+        bar = bar.style(ctx.style(&b["style"]));
+    }
+    if !b["value_style"].is_null() {
+        bar = bar.value_style(ctx.style(&b["value_style"]));
+    }
+    bar
 }
 
-impl Braille {
-    pub fn new(width: usize, height: usize) -> Braille {
-        Braille { width, height, bits: vec![vec![0; width]; height], ink: vec![vec![None; width]; height] }
-    }
-    pub fn dots_wide(&self) -> f64 {
-        (self.width * 2) as f64
-    }
-    pub fn dots_high(&self) -> f64 {
-        (self.height * 4) as f64
-    }
-    pub fn set(&mut self, x: f64, y: f64, ink: &Ink) {
-        let (x, y) = (round(x), round(y));
-        if !(x >= 0.0 && y >= 0.0 && x < self.dots_wide() && y < self.dots_high()) {
-            return;
-        }
-        let (x, y) = (x as usize, y as usize);
-        let (cx, cy) = (x >> 1, y >> 2);
-        self.bits[cy][cx] |= DOT[y & 3][x & 1];
-        self.ink[cy][cx] = Some(ink.clone());
-    }
-    pub fn line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, ink: &Ink) {
-        let steps = (x1 - x0).abs().max((y1 - y0).abs()).ceil().max(1.0) as usize;
-        for i in 0..=steps {
-            let t = i as f64 / steps as f64;
-            self.set(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, ink);
-        }
-    }
-    pub fn grid(&self) -> Grid {
-        self.bits
+fn bar_chart(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    let groups: Vec<BarGroup> = match n["groups"].as_array() {
+        Some(gs) => gs
             .iter()
-            .enumerate()
-            .map(|(y, row)| row.iter().enumerate().map(|(x, b)| if *b > 0 { Cell { ch: char::from_u32(0x2800 + *b as u32).unwrap(), fg: self.ink[y][x].clone(), bg: None } } else { Cell { ch: ' ', fg: None, bg: None } }).collect())
-            .collect()
+            .map(|g| {
+                let bars: Vec<Bar> = g["bars"].as_array().into_iter().flatten().map(|b| bar(ctx, b)).collect();
+                let group = BarGroup::new(bars);
+                if g["label"].is_null() { group } else { group.label(ctx.line(&g["label"])) }
+            })
+            .collect(),
+        // `data`: one group of [label, value] pairs
+        None => vec![BarGroup::new(
+            n["data"].as_array().into_iter().flatten().map(|p| Bar::default().label(Line::from(p[0].as_str().unwrap_or("").to_string())).value(whole(&p[1]))).collect::<Vec<_>>(),
+        )],
+    };
+    let small = |k: &str, d: u16| n[k].as_u64().map_or(d, |v| v.min(u16::MAX as u64) as u16);
+    let mut c = BarChart::default()
+        .direction(if n["direction"] == "horizontal" { Direction::Horizontal } else { Direction::Vertical })
+        .bar_width(small("bar_width", 3))
+        .bar_gap(small("bar_gap", 1))
+        .group_gap(small("group_gap", 2))
+        .bar_style(ctx.style_or(n, "bar_style", Style::new().fg(ctx.tone("accent"))))
+        .label_style(ctx.style_or(n, "label_style", Style::new().fg(ctx.tone("dim"))));
+    if !n["value_style"].is_null() {
+        c = c.value_style(ctx.style(&n["value_style"]));
     }
+    if !n["max"].is_null() {
+        c = c.max(whole(&n["max"]));
+    }
+    for g in groups {
+        c = c.data(g);
+    }
+    c.render(area, buf);
 }
 
-// Series as lines across a `width`×`height` box, every series on one scale (`min`/`max` default to the data's).
-pub fn lines(series: &[(Vec<f64>, &'static str)], width: usize, height: usize, min: Option<f64>, max: Option<f64>) -> Grid {
-    let all: Vec<f64> = series.iter().flat_map(|(v, _)| v.iter().copied()).filter(|v| v.is_finite()).collect();
-    let lo = min.unwrap_or_else(|| all.iter().copied().fold(0.0, f64::min));
-    let hi = max.unwrap_or_else(|| largest(lo + 1e-9, all.iter().copied()));
-    let mut b = Braille::new(width, height);
-    let high = b.dots_high();
-    let y = |v: f64| (high - 1.0) * (1.0 - unit((v - lo) / (hi - lo)));
-    for (values, tone) in series {
-        let n = values.len();
-        if n == 0 {
-            continue;
-        }
-        let wide = b.dots_wide();
-        let x = |i: usize| if n == 1 { 0.0 } else { (i as f64 * (wide - 1.0)) / (n - 1) as f64 };
-        let ink = Ink::tone(tone);
-        if n == 1 {
-            b.set(0.0, y(values[0]), &ink);
-        }
-        for i in 1..n {
-            b.line(x(i - 1), y(values[i - 1]), x(i), y(values[i]), &ink);
-        }
+// An axis: `{ "title": Line, "bounds": [min, max], "labels": [Span…], "labels_align": …, "style": Style }`; without
+// bounds it spans the data, and without labels it's labelled at its ends.
+fn axis(ctx: &Ctx, v: &Value, data: (f64, f64)) -> Axis<'static> {
+    let given = v["bounds"].as_array().and_then(|b| Some((b.first()?.as_f64()?, b.get(1)?.as_f64()?)));
+    let (lo, hi) = given.unwrap_or(data);
+    let (lo, hi) = if lo < hi { (lo, hi) } else { (lo - 1.0, hi + 1.0) };
+    let labels: Vec<Line> = match v["labels"].as_array() {
+        Some(ls) => ls.iter().map(|l| Line::from(ctx.span(l))).collect(),
+        None => vec![Line::raw(label(lo)), Line::raw(label(hi))],
+    };
+    let mut a = Axis::default().bounds([lo, hi]).labels(labels).style(ctx.style_or(v, "style", Style::new().fg(ctx.tone("dim"))));
+    if !v["title"].is_null() {
+        a = a.title(ctx.line(&v["title"]));
     }
-    b.grid()
+    if let Ok(Some(al)) = ui::align(&v["labels_align"]) {
+        a = a.labels_alignment(al);
+    }
+    a
 }
 
-// A gauge: an arc over 240°, open at the bottom, its track dim and filled clockwise to `value` (0-1), with `label`
-// (the percentage when absent) in the middle. Sized to the box: as big a circle as fits.
-pub fn gauge(value: f64, width: usize, height: usize, tone: &'static str, label: Option<&str>) -> Grid {
-    let mut b = Braille::new(width, height);
-    // the arc reaches r above its centre and r·sin 30° = r/2 below: 1.5r tall, centred in the box that way
-    let cx = (b.dots_wide() - 1.0) / 2.0;
-    let r = cx.min((b.dots_high() - 1.0) / 1.5).max(1.0);
-    let thick = round(r / 5.0).max(1.0) as usize;
-    let cy = r + (b.dots_high() - 1.0 - 1.5 * r) / 2.0;
-    let (from, sweep) = (210f64.to_radians(), 240f64.to_radians()); // from lower left, clockwise over the top
-    let filled = unit(value) * sweep;
-    let steps = (sweep * r * 2.0).ceil() as usize;
-    // the track first, then the fill over it: a cell both reach is the fill's colour
-    for (upto, ink) in [(sweep, Ink::tone("track")), (filled, Ink::tone(tone))] {
-        for i in 0..=steps {
-            let a = (i as f64 / steps as f64) * sweep;
-            if a > upto {
-                break;
+// the colours datasets take in turn when they don't say
+const SERIES: [&str; 6] = ["accent", "done", "warn", "working", "blocked", "focus"];
+
+fn chart(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    let sets = n["datasets"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let data: Vec<Vec<(f64, f64)>> = sets
+        .iter()
+        .map(|s| s["data"].as_array().into_iter().flatten().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect())
+        .collect();
+    let span = |f: fn(&(f64, f64)) -> f64| {
+        let all = data.iter().flatten().map(f);
+        all.fold(None, |m: Option<(f64, f64)>, x| Some(m.map_or((x, x), |(lo, hi)| (lo.min(x), hi.max(x))))).unwrap_or((0.0, 1.0))
+    };
+    let datasets: Vec<Dataset> = sets
+        .iter()
+        .zip(&data)
+        .enumerate()
+        .map(|(i, (s, points))| {
+            let graph = match s["graph_type"].as_str() {
+                Some("scatter") => GraphType::Scatter,
+                Some("bar") => GraphType::Bar,
+                Some("area") => GraphType::Area,
+                _ => GraphType::Line,
+            };
+            let mut d = Dataset::default()
+                .data(points)
+                .graph_type(graph)
+                .marker(ui::marker(&s["marker"]).unwrap_or(symbols::Marker::Braille))
+                .style(ctx.style_or(s, "style", Style::new().fg(ctx.tone(SERIES[i % SERIES.len()]))));
+            if !s["name"].is_null() {
+                d = d.name(ctx.line(&s["name"]));
             }
-            let t = from - a;
-            for k in 0..thick {
-                let rr = r - k as f64;
-                b.set(cx + rr * t.cos(), cy - rr * t.sin(), &ink);
+            if let Some(y) = s["fill_to"].as_f64() {
+                d = d.fill_to_y(y);
             }
-        }
-    }
-    let mut grid = b.grid();
-    let text = label.map(String::from).unwrap_or_else(|| format!("{}%", round(unit(value) * 100.0)));
-    let chars: Vec<char> = text.chars().collect();
-    let row = round(cy / 4.0) as usize;
-    let col = ((width as i64 - chars.len() as i64) / 2).max(0) as usize;
-    if let Some(line) = grid.get_mut(row) {
-        for (i, ch) in chars.into_iter().take(width).enumerate() {
-            if col + i < width {
-                line[col + i] = Cell { ch, fg: Some(Ink::tone(tone)), bg: None };
-            }
-        }
-    }
-    grid
+            d
+        })
+        .collect();
+    let legend = match n["legend"].as_str() {
+        Some("none") => None,
+        Some("top_left") => Some(LegendPosition::TopLeft),
+        Some("top") => Some(LegendPosition::Top),
+        Some("left") => Some(LegendPosition::Left),
+        Some("right") => Some(LegendPosition::Right),
+        Some("bottom") => Some(LegendPosition::Bottom),
+        Some("bottom_left") => Some(LegendPosition::BottomLeft),
+        Some("bottom_right") => Some(LegendPosition::BottomRight),
+        _ => Some(LegendPosition::TopRight),
+    };
+    Chart::new(datasets).x_axis(axis(ctx, &n["x_axis"], span(|p| p.0))).y_axis(axis(ctx, &n["y_axis"], span(|p| p.1))).legend_position(legend).render(area, buf);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+enum Shape {
+    Line(canvas::Line),
+    Rectangle(Rectangle),
+    Circle(Circle),
+    Points(Vec<(f64, f64)>, Color),
+    Map(MapResolution, Color),
+    Text(f64, f64, Line<'static>),
+    Layer,
+}
 
-    fn text(g: &Grid) -> Vec<String> {
-        g.iter().map(|r| r.iter().map(|c| c.ch).collect()).collect()
-    }
+fn shape(ctx: &Ctx, s: &Value) -> Option<Shape> {
+    let c = ctx.color(&s["color"]).unwrap_or(ctx.tone("fg"));
+    let nums = |k: &str| -> Option<Vec<f64>> { s[k].as_array()?.iter().map(Value::as_f64).collect() };
+    Some(if s["layer"] == true {
+        Shape::Layer
+    } else if let Some([x1, y1, x2, y2]) = nums("line").as_deref() {
+        Shape::Line(canvas::Line::new(*x1, *y1, *x2, *y2, c))
+    } else if let Some([x, y, w, h]) = nums("rectangle").as_deref() {
+        Shape::Rectangle(Rectangle::new(*x, *y, *w, *h, c))
+    } else if let Some([x, y, r]) = nums("circle").as_deref() {
+        Shape::Circle(Circle::new(*x, *y, *r, c))
+    } else if let Some(ps) = s["points"].as_array() {
+        Shape::Points(ps.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect(), c)
+    } else if let Some(m) = s["map"].as_str() {
+        Shape::Map(if m == "high" { MapResolution::High } else { MapResolution::Low }, c)
+    } else if !s["text"].is_null() {
+        let at = nums("at").unwrap_or_default();
+        Shape::Text(*at.first()?, *at.get(1)?, ctx.line(&s["text"]))
+    } else {
+        return None;
+    })
+}
 
-    #[test]
-    fn a_progress_bar_fills_to_an_eighth_of_a_cell_over_a_track() {
-        assert_eq!(progress(0.23, 20, "accent").iter().map(|c| c.ch).collect::<String>(), format!("████▋{}", " ".repeat(15)));
-        assert!(progress(1.0, 4, "accent").iter().all(|c| c.ch == '█'));
-        assert!(progress(-3.0, 3, "accent").iter().all(|c| c.ch == ' ' && c.bg.as_ref().is_some_and(|b| b.tone == "track")));
-        assert_eq!(progress(0.5, 3, "warn")[1], Cell { ch: '▌', fg: Some(Ink::tone("warn")), bg: Some(Ink::tone("track")) });
+fn canvas(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    let shapes: Vec<Shape> = n["shapes"].as_array().into_iter().flatten().filter_map(|s| shape(ctx, s)).collect();
+    // without bounds: the world for a map, else 0 to 100 each way
+    let world = shapes.iter().any(|s| matches!(s, Shape::Map(..)));
+    let bounds = |k: &str, d: [f64; 2]| n[k].as_array().and_then(|b| Some([b.first()?.as_f64()?, b.get(1)?.as_f64()?])).unwrap_or(d);
+    let mut c = canvas::Canvas::default()
+        .x_bounds(bounds("x_bounds", if world { [-180.0, 180.0] } else { [0.0, 100.0] }))
+        .y_bounds(bounds("y_bounds", if world { [-90.0, 90.0] } else { [0.0, 100.0] }))
+        .marker(ui::marker(&n["marker"]).unwrap_or(symbols::Marker::Braille))
+        .paint(|p| {
+            for s in &shapes {
+                match s {
+                    Shape::Line(l) => p.draw(l),
+                    Shape::Rectangle(r) => p.draw(r),
+                    Shape::Circle(c) => p.draw(c),
+                    Shape::Points(ps, c) => p.draw(&Points::new(ps, *c)),
+                    Shape::Map(r, c) => p.draw(&Map { resolution: *r, color: *c }),
+                    Shape::Text(x, y, l) => p.print(*x, *y, l.clone()),
+                    Shape::Layer => p.layer(),
+                }
+            }
+        });
+    if let Some(bg) = ctx.color(&n["background"]) {
+        c = c.background_color(bg);
     }
+    c.render(area, buf);
+}
 
-    #[test]
-    fn columns_rise_from_the_bottom_newest_at_the_right() {
-        assert_eq!(text(&columns(&[0.0, 4.0, 8.0], 5, 1, "accent", 0.0, None)), ["   ▄█"]);
-        assert_eq!(text(&columns(&[8.0, 16.0], 2, 2, "accent", 0.0, Some(16.0))), [" █", "██"]);
-        assert_eq!(text(&columns(&[1.0, 2.0, 3.0], 2, 1, "accent", 0.0, None)), ["▅█"]); // only the last `width` values
+// A month: its header and the weekdays' unless `false`, other months' days only in a style given for them, and the
+// days in `events` in theirs.
+fn calendar(ctx: &Ctx, buf: &mut Buffer, n: &Value, area: Rect) {
+    use time::{Date, Month, OffsetDateTime};
+    let today = OffsetDateTime::now_utc().date();
+    let year = n["year"].as_i64().map_or(today.year(), |y| y.clamp(-9999, 9999) as i32);
+    let month = n["month"].as_u64().and_then(|m| Month::try_from(m as u8).ok()).unwrap_or(today.month());
+    let Ok(first) = Date::from_calendar_date(year, month, 1) else { return };
+    let mut events = CalendarEventStore::default();
+    for (day, style) in n["events"].as_object().into_iter().flatten() {
+        let mut parts = day.splitn(3, '-').map(|p| p.parse::<i32>().ok());
+        if let (Some(Some(y)), Some(Some(m)), Some(Some(d))) = (parts.next(), parts.next(), parts.next()) {
+            if let Ok(date) = Month::try_from(m as u8).and_then(|m| Date::from_calendar_date(y, m, d as u8)) {
+                events.add(date, ctx.style(style));
+            }
+        }
     }
-
-    #[test]
-    fn braille_two_by_four_dots_a_cell_the_last_dot_colours_it() {
-        let mut b = Braille::new(2, 1);
-        b.set(0.0, 0.0, &Ink::tone("accent"));
-        b.set(3.0, 3.0, &Ink::tone("warn"));
-        b.set(9.0, 9.0, &Ink::tone("warn")); // outside: ignored
-        assert_eq!(b.grid(), vec![vec![Cell { ch: '⠁', fg: Some(Ink::tone("accent")), bg: None }, Cell { ch: '⢀', fg: Some(Ink::tone("warn")), bg: None }]]);
+    let mut cal = Monthly::new(first, events).default_style(ctx.style_or(n, "default_style", Style::new().fg(ctx.tone("fg"))));
+    if n["month_header"] != false {
+        cal = cal.show_month_header(ctx.style_or(n, "month_header", Style::new().fg(ctx.tone("accent")).add_modifier(Modifier::BOLD)));
     }
-
-    #[test]
-    fn lines_gauges_and_heatmaps_fill_the_box_they_are_given() {
-        let l = lines(&[(vec![0.0, 10.0], "accent")], 4, 2, None, None);
-        assert_eq!(l.len(), 2);
-        assert_ne!(text(&l)[1].chars().next(), Some(' ')); // starts bottom left
-        assert_ne!(text(&l)[0].chars().nth(3), Some(' ')); // ends top right
-        let g = gauge(0.5, 12, 5, "accent", None);
-        assert_eq!(g.len(), 5);
-        assert!(text(&g).join("\n").contains("50%"));
-        assert!(g.iter().flatten().any(|c| c.fg.as_ref().is_some_and(|f| f.tone == "track"))); // the unfilled half
-        assert!(text(&gauge(0.9, 20, 8, "blocked", Some("5h 90%"))).join("").contains("5h 90%"));
-        assert_eq!(
-            heatmap(&[vec![0.0, 10.0], vec![10.0, 0.0]], "accent", 0.0, None),
-            vec![vec![Cell { ch: '▀', fg: Some(Ink::mixed("accent", 0.0)), bg: Some(Ink::mixed("accent", 1.0)) }, Cell { ch: '▀', fg: Some(Ink::mixed("accent", 1.0)), bg: Some(Ink::mixed("accent", 0.0)) }]]
-        );
+    if n["weekday_header"] != false {
+        cal = cal.show_weekdays_header(ctx.style_or(n, "weekday_header", Style::new().fg(ctx.tone("dim"))));
     }
+    if !n["surrounding"].is_null() && n["surrounding"] != false {
+        cal = cal.show_surrounding(ctx.style(&n["surrounding"]));
+    }
+    cal.render(area, buf);
 }
