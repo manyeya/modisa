@@ -135,6 +135,7 @@ modisa integration uninstall claude   # takes the skill back out too`) + p(`Rest
 modisa plugin check my-plugin   # manifest, build, then a throwaway session: starts, connects, passes its tests
 modisa plugin link my-plugin    # every session starts it; the running one starts it now`) + p(
         `A plugin is a directory with a ${c("plugin.json")}: its name, its protocol version, how to start it (${c("run")}, an argv run in its directory), and what it offers — ${c("actions")}, ${c("panes")}, ${c("keys")} and ${c("links")}. ${c("plugin new")} writes it in TypeScript with modisa's client library, which handles the protocol, and ${c("AGENTS.md")}, a guide an agent can follow to write the rest.`,
+        `Nothing needs the library, or TypeScript. A plugin is any program that speaks newline-delimited JSON on the session's socket: Bun, Python, Go, or a shell script around the ${c("modisa")} CLI. It never draws anything itself. It sends text, element trees and panes, and modisa draws them in your theme. <a href="https://github.com/manyeya/modisa/blob/main/examples/plugins/README.md">The protocol</a> is the same for every language.`,
         `A plugin runs as you, with your files and network. It isn't sandboxed.`,
       ) },
       { id: "install", title: "Install one", html: code("sh", `modisa plugin install https://github.com/you/modisa-plugins --subdir attention-log --ref v1.2.0
