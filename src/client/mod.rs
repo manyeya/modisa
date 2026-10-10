@@ -40,7 +40,7 @@ use crate::config::keys::{all_keys, Bindings, Mode};
 use crate::config::themes::{theme, Role, Theme};
 use crate::config::{self, parse_prefix, Config, NotifyKind, Prefix};
 use crate::core::layout::{panes as tree_panes, Rect};
-use crate::core::paths::code_version;
+use crate::core::paths::{self_exe, version_of};
 use crate::protocol::conn::{unb64, Conn};
 use crate::protocol::types::{AgentState, PaneInfo, TabView, View, WorkspaceView, PLUGIN_UI};
 use crate::vt::Screen;
@@ -732,7 +732,13 @@ async fn attach(shared: &Shared, spawn: bool) -> crate::protocol::conn::RpcResul
         for id in res["prompts"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
             modals::permission(&mut app, id, "(pending permission request)".into());
         }
-        if res["version"].as_str() != Some(&code_version()) {
+        let (exe, mine) = started();
+        if res["version"].as_str() == Some(&version_of(exe)) && res["version"].as_str() != Some(mine) {
+            // this client's binary was replaced (modisa update, a build) and the session's server already runs the new
+            // one: so does this client, in place
+            REEXEC.store(true, std::sync::atomic::Ordering::Relaxed);
+            quit(&mut app, "");
+        } else if res["version"].as_str() != Some(mine) {
             let palette = app.key_for("palette");
             let how = match palette {
                 Some(k) => format!("{} {k}", app.cfg.prefix.replace("C-", "^").to_uppercase()),
@@ -847,6 +853,19 @@ pub mod process_exit {
     }
 }
 
+// The binary this client started from, and its build then (paths::code_version). Taken at start: a running process
+// can't ask after its file is replaced (Linux names it "(deleted)").
+static STARTED: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+static REEXEC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn started() -> &'static (String, String) {
+    STARTED.get_or_init(|| {
+        let exe = self_exe();
+        let v = version_of(&exe);
+        (exe, v)
+    })
+}
+
 fn setup_terminal() -> std::io::Result<Terminal<CrosstermBackend<std::io::Stdout>>> {
     use crossterm::event::{EnableBracketedPaste, EnableFocusChange, EnableMouseCapture, KeyboardEnhancementFlags, PushKeyboardEnhancementFlags};
     crossterm::terminal::enable_raw_mode()?;
@@ -869,6 +888,7 @@ fn restore_terminal() {
 }
 
 pub async fn run_client(opts: ClientOptions) -> i32 {
+    started();
     let cfg = config::load_config();
     let mut terminal = match setup_terminal() {
         Ok(t) => t,
@@ -974,6 +994,12 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
         // a moment for the detach request to leave
         tokio::time::sleep(Duration::from_millis(50)).await;
         c.close();
+    }
+    if REEXEC.load(std::sync::atomic::Ordering::Relaxed) {
+        use std::os::unix::process::CommandExt;
+        let e = std::process::Command::new(&started().0).args(std::env::args_os().skip(1)).exec();
+        eprintln!("modisa: could not start the updated client ({e}); run modisa to attach again");
+        return 1;
     }
     println!("{why}");
     process_exit::CODE.load(std::sync::atomic::Ordering::Relaxed)

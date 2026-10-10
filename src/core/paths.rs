@@ -65,7 +65,12 @@ fn is_executable(p: &str) -> bool {
 
 // Identifies the code a process runs, so a client can tell its server is out of date.
 pub fn code_version() -> String {
-    let meta = std::fs::metadata(self_exe()).ok();
+    version_of(&self_exe())
+}
+
+// What code_version says of the binary at `exe` now: a replaced file (an update, a build) reads differently.
+pub fn version_of(exe: &str) -> String {
+    let meta = std::fs::metadata(exe).ok();
     let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
     let modified = meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0);
     format!("bin-{size}-{modified}")
