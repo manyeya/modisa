@@ -94,46 +94,59 @@ pub fn parse_manifest(raw: &Value) -> Option<Manifest> {
     Some(Manifest { version: version.into(), channel: text("channel", "stable"), notes: text("notes", ""), assets: assets.collect() })
 }
 
-// ponytail: curl fetches it (no HTTP client among the crates); none on PATH is no newer release.
-async fn fetch_manifest(url: &str) -> Option<Manifest> {
-    let out = tokio::process::Command::new("curl").args(["-fsSL", "--max-time", "4", url]).output().await.ok()?;
+// ponytail: curl fetches it (no HTTP client among the crates). GitHub's redirect to a release file can take 15s.
+async fn fetch_manifest(url: &str, secs: u32) -> Result<Manifest, String> {
+    let out = tokio::process::Command::new("curl")
+        .args(["-fsSL", "--retry", "2", "--max-time", &secs.to_string(), url])
+        .output()
+        .await
+        .map_err(|e| format!("couldn't run curl: {e}"))?;
     if !out.status.success() {
-        return None;
+        let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(format!("couldn't fetch {url}: {}", if why.is_empty() { "curl failed".into() } else { why }));
     }
-    parse_manifest(&serde_json::from_slice(&out.stdout).ok()?)
+    serde_json::from_slice(&out.stdout).ok().as_ref().and_then(parse_manifest).ok_or_else(|| format!("{url} isn't a release manifest"))
 }
 
 fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64)
 }
 
-// The release to move to, if there's a newer one for this install. Cached for 6h; never fails.
-pub async fn check_for_update(force: bool) -> Option<Manifest> {
+// The release to move to, if there's a newer one for this install. A background check (force false) is cached for 6h
+// and never fails (unreachable: what was cached); one the user asked for (force) always asks, and says when it couldn't.
+pub async fn check_for_update(force: bool) -> Result<Option<Manifest>, String> {
     let cfg = load_config();
     if !force && !cfg.update.check {
-        return None;
+        return Ok(None);
     }
     if FROM_SOURCE && std::env::var("MODISA_UPDATE_URL").map_or(true, |u| u.is_empty()) {
-        return None; // a checkout updates with git pull
+        return Ok(None); // a checkout updates with git pull
     }
-    let url = manifest_url(if channel() == "staging" || cfg.update.channel == Channel::Staging { "staging" } else { "stable" })?;
-    let cached: Option<Value> = std::fs::read(cache()).ok().and_then(|b| serde_json::from_slice(&b).ok());
-    let fresh = |c: &Value| c["url"] == url.as_str() && c["at"].as_f64().is_some_and(|at| now_ms() - at < EVERY);
-    let mut m = cached.as_ref().filter(|c| !force && fresh(c)).and_then(|c| parse_manifest(&c["manifest"]));
-    if m.is_none() {
-        m = fetch_manifest(&url).await;
-        if let Some(m) = &m {
-            let _ = std::fs::create_dir_all(&*DIR).and_then(|_| std::fs::write(cache(), json!({ "url": url, "at": now_ms() as u64, "manifest": m }).to_string()));
-        }
-    }
-    m.filter(|m| newer(&m.version, VERSION))
+    let Some(url) = manifest_url(if channel() == "staging" || cfg.update.channel == Channel::Staging { "staging" } else { "stable" }) else { return Ok(None) };
+    let cached: Option<Value> = std::fs::read(cache()).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(|c: &Value| c["url"] == url.as_str());
+    let fresh = |c: &Value| c["at"].as_f64().is_some_and(|at| now_ms() - at < EVERY);
+    let m = match cached.as_ref().filter(|c| !force && fresh(c)).and_then(|c| parse_manifest(&c["manifest"])) {
+        Some(m) => m,
+        None => match fetch_manifest(&url, if force { 30 } else { 15 }).await {
+            Ok(m) => {
+                let _ = std::fs::create_dir_all(&*DIR).and_then(|_| std::fs::write(cache(), json!({ "url": url, "at": now_ms() as u64, "manifest": m }).to_string()));
+                m
+            }
+            Err(e) if force => return Err(e),
+            Err(_) => match cached.as_ref().and_then(|c| parse_manifest(&c["manifest"])) {
+                Some(m) => m,
+                None => return Ok(None),
+            },
+        },
+    };
+    Ok(Some(m).filter(|m| newer(&m.version, VERSION)))
 }
 
 pub async fn run_version() -> i32 {
     let staging = if channel() == "staging" { " (staging)" } else { "" };
     let source = if FROM_SOURCE { " (from source)" } else { "" };
     outln!("modisa {VERSION}{staging}{source}");
-    if let Some(m) = check_for_update(false).await {
+    if let Ok(Some(m)) = check_for_update(false).await {
         outln!("update available: {} — run `{}`", m.version, update_command());
     }
     0
@@ -482,7 +495,18 @@ async fn update(ui: &Ui) -> i32 {
         return 1;
     };
     ui.banner(&format!("modisa {VERSION} · {plat}")).await;
-    let found = ui.step("looking for a newer release", check_for_update(true), |m| Some(m.as_ref().map_or("no newer release".into(), |m| format!("found modisa {}", m.version)))).await;
+    let found = ui.step("looking for a newer release", check_for_update(true), |m| match m {
+        Ok(m) => Some(m.as_ref().map_or("no newer release".into(), |m| format!("found modisa {}", m.version))),
+        Err(_) => None,
+    })
+    .await;
+    let found = match found {
+        Ok(m) => m,
+        Err(e) => {
+            ui.fail(&e);
+            return 1;
+        }
+    };
     let Some(m) = found else {
         ui.say(&format!("modisa {VERSION} is up to date"));
         return 0;

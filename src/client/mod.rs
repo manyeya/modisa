@@ -949,7 +949,7 @@ pub async fn run_client(opts: ClientOptions) -> i32 {
         tokio::task::spawn_local(async move {
             tokio::time::sleep(Duration::from_millis(1500)).await;
             loop {
-                let found = crate::cli::update::check_for_update(false).await;
+                let found = crate::cli::update::check_for_update(false).await.ok().flatten();
                 let Some(app) = me.upgrade() else { return };
                 app.borrow_mut().update = found;
                 app.borrow().dirty();

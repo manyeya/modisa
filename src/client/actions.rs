@@ -70,15 +70,16 @@ fn plural(n: usize, what: &str) -> String {
 }
 
 // UI events don't wait for actions: each runs as a task, and a failure while still connected is a toast.
+// Callers may hold the app (the settings page's ↵ does): it's read in the task, once they've let go.
 pub fn run(shared: &Shared, id: &str) {
-    {
-        let app = shared.borrow();
-        if app.quitting.is_some() || (id != "detach" && app.conn.as_ref().is_none_or(|c| c.closed())) {
-            return;
-        }
-    }
     let (s, id) = (shared.clone(), id.to_string());
     tokio::task::spawn_local(async move {
+        {
+            let app = s.borrow();
+            if app.quitting.is_some() || (id != "detach" && app.conn.as_ref().is_none_or(|c| c.closed())) {
+                return;
+            }
+        }
         if let Err(e) = action(&s, &id).await {
             let mut app = s.borrow_mut();
             if app.quitting.is_none() && app.conn.as_ref().is_some_and(|c| !c.closed()) {
@@ -362,13 +363,13 @@ pub async fn action(shared: &Shared, id: &str) -> Result<(), String> {
             Ok(())
         }
         "update-modisa" => {
-            let found = match shared.borrow().update.clone() {
+            let known = shared.borrow().update.clone();
+            let found = match known {
                 Some(m) => Some(m),
-                None => None,
-            };
-            let found = match found {
-                Some(m) => Some(m),
-                None => crate::cli::update::check_for_update(true).await,
+                None => {
+                    toast(shared, "looking for a newer modisa…", |th| th.dim);
+                    crate::cli::update::check_for_update(true).await?
+                }
             };
             let Some(m) = found else {
                 toast(shared, &format!("modisa {VERSION} is up to date"), |th| th.done);
