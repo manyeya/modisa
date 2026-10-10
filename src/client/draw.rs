@@ -322,8 +322,7 @@ fn tabs(app: &App, c: &mut Canvas) {
     }
     brand.pad(brand_width as usize);
     let mut x = slots::button(app, c, 0, y, &Seg { strip: brand, fg: th.bg.into(), bg: th.focus.into(), hit: Some(Hit::Action("workspace-picker")), plugin: false });
-    x += 1;
-    let available = (c.w - brand_width - 10).max(1) as usize; // 2 for the active tab's ✕
+    let available = (c.w - brand_width - 9).max(1) as usize; // 2 for the active tab's ✕, 3 for +, 4 for ‹ ›
     let win = tab_window(ws.tabs.len(), ws.active, available);
     for i in win.start..win.end.min(ws.tabs.len()) {
         let t = &ws.tabs[i];
@@ -350,7 +349,7 @@ fn tabs(app: &App, c: &mut Canvas) {
         }
         // sized to the label so tabs sit side by side; window.width only caps long names. Clicking the tab you're on
         // renames it.
-        let w = (win.width as i32 - 1).min(text.width() as i32).max(0) as usize;
+        let w = (win.width as i32).min(text.width() as i32).max(0) as usize;
         text.fit(w);
         text.pad(w);
         let active = app.roles.get("tab.active").copied().unwrap_or_default();
@@ -360,7 +359,6 @@ fn tabs(app: &App, c: &mut Canvas) {
         if on {
             x += c.button(x, y, "✕ ", 2, th.dim, th.border, hover, Hit::Action("close-tab"));
         }
-        x += 1;
     }
     x += c.button(x, y, " + ", 3, th.focus, th.bar, hover, Hit::Action("new-tab"));
     let _ = x;

@@ -753,7 +753,7 @@ pub(crate) mod tests {
             ]),
         );
         let top = rows(&a)[0].clone();
-        assert!(top.starts_with(" ◈ ★ main ▸   1:dev ●3 ✕"), "{top}");
+        assert!(top.starts_with(" ◈ ★ main ▸  1:dev ●3 ✕"), "{top}");
         assert!(!top.contains("NOPE"), "{top}");
         let b = app(120, 30, json!([radar("tab", "n", json!({ "tab": "t1", "position": "replace", "replaces": true, "line": "MINE" }))]));
         let top = rows(&b)[0].clone();
