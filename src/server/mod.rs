@@ -458,6 +458,15 @@ impl Server {
     }
 }
 
+// [notch] show: the flock in the MacBook's notch, which is a process of its own that `modisa notch start` puts in the
+// background (or `stop` takes out), so the server holds no child of it. Every session's server asks; a running notch
+// is left alone.
+fn notch(on: bool) {
+    if cfg!(target_os = "macos") {
+        let _ = tokio::process::Command::new(paths::self_exe()).args(["notch", if on { "start" } else { "stop" }]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+    }
+}
+
 // Save, tell clients why, stop the panes, and exit. empty: the session ended (its saved layout goes too).
 pub async fn shutdown(shared: Shared, empty: bool, why: &str) {
     let session = {
@@ -514,6 +523,9 @@ pub async fn run_server(session: &str) -> i32 {
 
     let cfg = config::load_config();
     let adapters = config::adapters::load_adapters(&cfg);
+    if cfg.notch.show {
+        notch(true);
+    }
     let shared: Shared = Rc::new_cyclic(|me: &Weak<RefCell<Server>>| {
         let sink_me = me.clone();
         let sink: session::pane::Sink = Rc::new(move |id: &str, instance: &str, ev: PaneEvent| {
@@ -553,7 +565,11 @@ pub async fn run_server(session: &str) -> i32 {
         config::watch_config(move || {
             if let Some(s) = me.upgrade() {
                 let mut srv = s.borrow_mut();
+                let was = srv.cfg.notch.show;
                 srv.cfg = config::load_config();
+                if srv.cfg.notch.show != was {
+                    notch(srv.cfg.notch.show); // turned on or off in the settings
+                }
                 srv.adapters = config::adapters::load_adapters(&srv.cfg);
                 srv.broadcast("config", json!({}));
                 plugins::slots_changed(&mut srv); // [slots] may say someone else replaces what

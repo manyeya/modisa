@@ -134,20 +134,27 @@ fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
             .into_iter()
             .map(|(name, p)| Row { kind: Kind::Radio { current: name == s.saved_theme, swatches: vec![p.focus, p.accent, p.working, p.blocked, p.done] }, label: name.clone(), about: "Previewed as you move; ↵ or a click keeps it".into(), act: Act::Theme(name) })
             .collect(),
-        "general" => vec![
-            heading("keyboard"),
-            choice("prefix key", &cfg.prefix, Act::Prefix, "The key that starts every modisa shortcut: Ctrl and a letter. Press it twice to send it to the pane"),
-            action("keyboard guide", "every shortcut", "dim", None, "↵ open", Act::Run("help"), "The shortcuts, searchable; choosing one runs it"),
-            heading("mouse"),
-            toggle("select on hover", cfg.mouse.hover, Act::Flip(Some("mouse"), "hover"), "The pointer resting on a row selects it, here and in every menu and picker. Off: only a click does"),
-            heading("updates"),
-            toggle("check for updates", cfg.update.check, Act::Flip(Some("update"), "check"), "Look for a new release every few hours; the status row says when one is out"),
-            choice("channel", json!(cfg.update.channel).as_str().unwrap_or("stable"), Act::Channel, "stable: releases. staging: a prerelease of what's coming"),
-            action("check now", VERSION, "dim", None, "↵ check", Act::Run("update-modisa"), "Look for a newer modisa now"),
-            heading("config file"),
-            action("edit config.toml", "in $EDITOR", "dim", None, "↵ open", Act::Run("edit-config"), "Everything on this page, and more (agents' launch commands, plugins), as text"),
-            action("reload config", "", "dim", None, "↵ reload", Act::Run("reload-config"), "Read config.toml again (it's also read whenever it changes)"),
-        ],
+        "general" => {
+            let mut rows = vec![
+                heading("keyboard"),
+                choice("prefix key", &cfg.prefix, Act::Prefix, "The key that starts every modisa shortcut: Ctrl and a letter. Press it twice to send it to the pane"),
+                action("keyboard guide", "every shortcut", "dim", None, "↵ open", Act::Run("help"), "The shortcuts, searchable; choosing one runs it"),
+                heading("mouse"),
+                toggle("select on hover", cfg.mouse.hover, Act::Flip(Some("mouse"), "hover"), "The pointer resting on a row selects it, here and in every menu and picker. Off: only a click does"),
+                heading("updates"),
+                toggle("check for updates", cfg.update.check, Act::Flip(Some("update"), "check"), "Look for a new release every few hours; the status row says when one is out"),
+                choice("channel", json!(cfg.update.channel).as_str().unwrap_or("stable"), Act::Channel, "stable: releases. staging: a prerelease of what's coming"),
+                action("check now", VERSION, "dim", None, "↵ check", Act::Run("update-modisa"), "Look for a newer modisa now"),
+                heading("config file"),
+                action("edit config.toml", "in $EDITOR", "dim", None, "↵ open", Act::Run("edit-config"), "Everything on this page, and more (agents' launch commands, plugins), as text"),
+                action("reload config", "", "dim", None, "↵ reload", Act::Run("reload-config"), "Read config.toml again (it's also read whenever it changes)"),
+            ];
+            if cfg!(target_os = "macos") {
+                let at = rows.len() - 3; // before the config file's
+                rows.splice(at..at, [heading("notch"), toggle("flock in the notch", cfg.notch.show, Act::Flip(Some("notch"), "show"), "A sheep for every agent in the MacBook's notch, from when modisa starts: point at it for the pasture, click a sheep to go to its pane")]);
+            }
+            rows
+        }
         "layout" => vec![
             heading("sidebar"),
             toggle("show the sidebar", cfg.sidebar.visible, Act::Flip(Some("sidebar"), "visible"), "Whether it's open when modisa starts; the status row's ◧ button and prefix b toggle it"),

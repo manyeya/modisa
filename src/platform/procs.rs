@@ -23,11 +23,13 @@ mod os {
     use super::Info;
     use std::mem::{size_of, zeroed};
 
+    // the short form: the full one (PROC_PIDTBSDINFO) refuses another user's process, such as the root-owned `login`
+    // between a terminal app and its shell
     fn ppid(pid: i32) -> Option<i32> {
-        let mut bsd: libc::proc_bsdinfo = unsafe { zeroed() };
-        let size = size_of::<libc::proc_bsdinfo>() as i32;
-        let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, &mut bsd as *mut _ as *mut libc::c_void, size) };
-        (n == size).then_some(bsd.pbi_ppid as i32)
+        let mut bsd: libc::proc_bsdshortinfo = unsafe { zeroed() };
+        let size = size_of::<libc::proc_bsdshortinfo>() as i32;
+        let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDT_SHORTBSDINFO, 0, &mut bsd as *mut _ as *mut libc::c_void, size) };
+        (n == size).then_some(bsd.pbsi_ppid as i32)
     }
 
     // KERN_PROCARGS2: argc, the executable's path, padding, then argc NUL-terminated arguments (then the environment).
@@ -76,6 +78,16 @@ mod os {
             }
             buf.resize(buf.len() * 4, 0); // full: there may be more
         }
+    }
+
+    // every process on the machine (the notch looks for the terminal a session is attached in)
+    pub fn all() -> Vec<i32> {
+        let n = unsafe { libc::proc_listallpids(std::ptr::null_mut(), 0) };
+        let mut buf = vec![0i32; n.max(0) as usize + 64]; // room for any started since
+        let bytes = (buf.len() * size_of::<i32>()) as i32;
+        let n = unsafe { libc::proc_listallpids(buf.as_mut_ptr() as *mut libc::c_void, bytes) };
+        buf.truncate(n.max(0) as usize);
+        buf
     }
 
     pub fn cwd(pid: i32) -> Option<String> {
@@ -133,6 +145,8 @@ mod os {
 }
 
 pub use os::{children, cwd, info};
+#[cfg(target_os = "macos")]
+pub use os::all;
 
 #[cfg(test)]
 mod tests {

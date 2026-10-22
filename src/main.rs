@@ -5,6 +5,8 @@ mod client;
 mod config;
 mod core;
 mod integrations;
+#[cfg(target_os = "macos")]
+mod notch;
 mod platform;
 mod protocol;
 mod server;

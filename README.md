@@ -203,6 +203,17 @@ Your own tools can report too: `modisa report --source my-tool --agent my-agent 
 
 Add an agent or override one with a TOML file in `~/.config/modisa/adapters/<id>.toml` (`name`, `process`, `launch`, `resume`, `resumeSession`, and `[[rules]]` in the manifest format). `modisa debug detect <pane>` shows the matched rule, the reporting integration, and the title and progress it saw.
 
+### In the notch (macOS)
+
+`modisa notch` puts the flock in your MacBook's notch, drawn in woodcut like modisa's emblem: the shepherd on one side of it, and on the other the agent that wants you most. Point at the notch and it opens into a pasture at night with a sheep for every agent in every session on the machine, each wearing a collar in its agent's colour. Working sheep walk to open grass and graze, stepping round each other. One that needs you runs to the shepherd and hops under a `!`, and he turns to it and raises his crook. A finished one stands with a ✓ and an idle one sleeps at the back. The moon lights them all, and gusts of wind cross the grass. Each sheep's name is along the bottom; point at a sheep for its agent, pane and state, and click it to focus its pane and bring its terminal forward. When an agent needs you, finishes, starts work in a pane you're not in, or joins, a line drops below the notch for a few seconds; click it to go there. A screen without a notch gets the same shape at the top.
+
+It's off until you turn it on: **flock in the notch** on the settings page (`[notch] show = true`) starts it with modisa, and turning it off takes it out. Or start it once by hand:
+
+```bash
+modisa notch         # starts it in the background (it survives closing the terminal)
+modisa notch stop
+```
+
 ## Driving modisa from an agent
 
 Every pane gets `MODISA_SOCKET` and `MODISA_PANE_ID`, so any agent that can run shell commands can drive the workspace:
@@ -329,6 +340,7 @@ git history and points its harness at this binary, so the behaviour it pins down
   - `persist/` — SQLite store, restore, `modisa.toml` templates
 - `src/client/` — the ratatui client: `mod.rs` startup and the `App` state, `draw.rs`, `input.rs`, `keys.rs` (keys as a pane's program expects them, kitty protocol included), `actions.rs`, `modals.rs`, `settings.rs`, `views/` (plugin views), `slots.rs` (plugins' pieces of the chrome), `sound.rs`
 - `src/vt.rs` — the headless terminal: `alacritty_terminal`, with text and ANSI export and replay
+- `src/notch/` — `modisa notch`, the flock in the MacBook's notch: an AppKit panel through objc2 (`mod.rs`), every session's agents polled from their sockets (`flock.rs`), the open pasture as a little world the sheep steer about in (`world.rs`), the woodcut art of the shepherd (modisa's emblem), the sheep and the night (`art.rs`), drawn with a canvas-like layer over AppKit (`pen.rs`)
 - `src/platform/` — process facts from the kernel (`procs.rs`: libproc on macOS, `/proc` on Linux) and the logo font
 - `src/integrations/` — every agent integration (`targets.rs`), config-file editing, plugin sources, and `modisa hook`
 - `src/skills/` — the modisa skill (`modisa/SKILL.md`), installed by the integrations

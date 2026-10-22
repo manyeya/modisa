@@ -71,6 +71,13 @@ pub async fn run(argv: Vec<String>) -> i32 {
         Some("kill") => sessions::kill_session(&named).await,
         Some("integration") => crate::integrations::run_integration(arg(0), arg(1)).await,
         Some("logos") => logos::run_logos(arg(0)).await,
+        #[cfg(target_os = "macos")]
+        Some("notch") => crate::notch::run(arg(0)),
+        #[cfg(not(target_os = "macos"))]
+        Some("notch") => {
+            errln!("modisa notch: the notch is a Mac's");
+            1
+        }
         Some("update") => {
             update::run_update().await; // as the original's main.ts: its status isn't the exit status
             0

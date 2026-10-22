@@ -97,6 +97,9 @@ setup
   modisa profile export | import <file or URL> [--yes]   your whole setup in one file: config, themes, plugins
   modisa integration status | install|uninstall <agent|all>   (hooks + the modisa skill)
   modisa logos [status|install|uninstall]  agents' logos in the sidebar: a font, and your terminals told about it
+  modisa notch [stop]                      the flock in the MacBook's notch: a sheep per agent, which says when one
+                                              needs you; click one to go to its pane (macOS; runs in the background;
+                                              [notch] show = true starts it with modisa)
   modisa config [path|edit]
   modisa config check [--json]             config.toml's mistakes (errors exit 1) and settings modisa ignores (warnings)
   modisa config reset-keys                 modisa's own keys back: [keys] and [plugin_keys] out, prefix C-b; the old

@@ -36,6 +36,12 @@ two-face = { version = "0.5.2", default-features = false, features = ["syntect-f
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
 
+# `modisa notch`: the flock in the MacBook's notch (src/notch)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAffineTransform", "NSArray", "NSAttributedString", "NSDate", "NSDictionary", "NSEnumerator", "NSGeometry", "NSString", "NSTimer"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "objc2-core-foundation", "NSAffineTransform", "NSApplication", "NSAttributedString", "NSBezierPath", "NSColor", "NSEvent", "NSFont", "NSFontDescriptor", "NSBitmapImageRep", "NSGradient", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSStringDrawing", "NSView", "NSWindow"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

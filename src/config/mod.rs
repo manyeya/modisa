@@ -319,6 +319,12 @@ pub struct Update {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct Notch {
+    pub show: bool, // the flock in the MacBook's notch, started with modisa (modisa notch); off by default
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Messaging {
     pub max_hops: i64,
     pub per_minute: i64,
@@ -425,6 +431,7 @@ pub struct Config {
     pub indicators: Indicators,
     pub pane_labels: PaneLabels,
     pub update: Update,
+    pub notch: Notch,
     pub messaging: Messaging,
     pub permissions: Permissions,
     pub agents: IndexMap<String, AgentOverride>,
@@ -468,6 +475,7 @@ pub fn defaults() -> Config {
         indicators: Indicators { style: IndicatorStyle::Symbols, tab: true, pane: true, sidebar: true },
         pane_labels: PaneLabels { agent: true },
         update: Update { check: true, channel: Channel::Stable },
+        notch: Notch { show: false },
         messaging: Messaging { max_hops: 10, per_minute: 5 },
         permissions: Permissions { keys_foreign: Policy::Ask, close_foreign: Policy::Ask, run_foreign: Policy::Ask },
         agents: IndexMap::new(),
@@ -492,7 +500,7 @@ macro_rules! default_from_defaults {
 }
 default_from_defaults!(
     Mouse.mouse, Sidebar.sidebar, Status.status, Git.git, Panes.panes, Notify.notify, Sound.sound, Indicators.indicators,
-    PaneLabels.pane_labels, Update.update, Messaging.messaging, Permissions.permissions, Tabs.tabs, Window.window
+    PaneLabels.pane_labels, Update.update, Notch.notch, Messaging.messaging, Permissions.permissions, Tabs.tabs, Window.window
 );
 
 impl Default for Config {
@@ -576,6 +584,9 @@ agent = true                # agent and state in the pane's border title
 [update]
 check = true                # tell me when a new modisa is out (modisa update installs it)
 channel = "stable"          # stable, or staging for prerelease builds
+
+[notch]
+show = false                # macOS: the flock in the MacBook's notch, a sheep per agent (modisa notch starts it once)
 
 [messaging]
 max_hops = 10               # stop reply chains after this many hops
@@ -778,6 +789,7 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         indicators: overlay(d.indicators, get("indicators")),
         pane_labels: overlay(d.pane_labels, get("pane_labels")),
         update: overlay(d.update, get("update")),
+        notch: overlay(d.notch, get("notch")),
         messaging: overlay(d.messaging, get("messaging")),
         permissions: overlay(d.permissions, get("permissions")),
         agents: entries(get("agents")),
@@ -1214,11 +1226,11 @@ mod tests {
     fn the_config_serializes_with_the_ts_field_names() {
         let v = serde_json::to_value(defaults()).unwrap();
         let fields: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-        // the TS build's, with this build's among them: tabs and window by the panes; actions to hook, and slots, at the end
+        // the TS build's, with this build's among them: tabs and window by the panes, notch after update; actions to hook, and slots, at the end
         assert_eq!(
             fields,
             [
-                "prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "tabs", "window", "notify", "sound", "indicators", "pane_labels", "update", "messaging", "permissions", "agents",
+                "prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "tabs", "window", "notify", "sound", "indicators", "pane_labels", "update", "notch", "messaging", "permissions", "agents",
                 "plugin", "plugin_keys", "keys", "actions", "root_keys", "modes", "command", "hook", "remote_command", "slots"
             ]
         );
