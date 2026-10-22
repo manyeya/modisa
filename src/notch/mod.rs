@@ -493,10 +493,10 @@ impl NotchView {
             if let Some(lead) = s.sheep.iter().max_by_key(|sh| sh.state.urgency()).cloned() {
                 let n = s.sheep.iter().filter(|sh| sh.state == lead.state).count();
                 // facing the notch, its head reaches 50 of its units forward and its tail 40 back: all of it clears
-                // the camera's edge
-                let (x, k) = (cx + nw / 2.0 + 2.0, 0.38);
-                art::sheep_small(x + 50.0 * k, nh - 3.0, k, true, &still(&lead, clock), clock, collar(&lead), 0.3);
-                text(&n.to_string(), x + 90.0 * k + 1.5, (nh - 13.0) / 2.0, 10.0, 0.4, tone(t, lead.state), 1.0);
+                // the camera's edge; small enough to leave the count room, and as high as the count
+                let (x, k) = (cx + nw / 2.0 + 2.0, 0.31);
+                art::sheep_small(x + 50.0 * k, (nh + 54.0 * k) / 2.0 + 1.0, k, true, &still(&lead, clock), clock, collar(&lead), 0.3);
+                text(&n.to_string(), x + 90.0 * k + 3.0, (nh - 13.0) / 2.0, 10.0, 0.4, tone(t, lead.state), 1.0);
             }
         }
         if let (Mode::Peek | Mode::Open, Some((news, _))) = (s.mode, s.news.clone()) {
