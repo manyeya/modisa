@@ -13,7 +13,7 @@ const out = `${root}/out`;
 const site = "https://manyeya.github.io/modisa/";
 const repo = "https://github.com/manyeya/modisa";
 const pages: Page[] = [...guide, ...reference];
-const tag = (await Bun.$`git describe --tags --abbrev=0 --match v*`.quiet().nothrow().text()).trim();
+const tag = (await Bun.$`git describe --tags --abbrev=0 --match ${"v*"}`.quiet().nothrow().text()).trim();
 const version = (Bun.env.MODISA_VERSION || tag || "0.1.0").replace(/^v/, "");
 
 const fonts = ["im-fell-english-latin", "alegreya-sans-400-latin"].map((f) => `<link rel="preload" href="__BASE__assets/fonts/${f}.woff2" as="font" type="font/woff2" crossorigin>`).join("");
