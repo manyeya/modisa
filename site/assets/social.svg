@@ -4,33 +4,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="630" viewBox="0 0 1200 630" font-kerning="normal">
   <defs>
     <style>
-      @font-face { font-family:"Space Grotesk"; src:url("fonts/space-grotesk-latin.woff2") format("woff2"); font-weight:300 700; }
+      @font-face { font-family:"IM Fell English"; src:url("fonts/im-fell-english-latin.woff2") format("woff2"); font-style:normal; }
+      @font-face { font-family:"IM Fell English"; src:url("fonts/im-fell-english-italic-latin.woff2") format("woff2"); font-style:italic; }
       @font-face { font-family:"JetBrains Mono"; src:url("fonts/jetbrains-mono-latin.woff2") format("woff2"); font-weight:100 800; }
     </style>
-    <!-- the mark is a gold-on-transparent figure; the site tints it with currentColor, so do the same here -->
+    <!-- the mark is a figure on transparent; tint it gold, as the site does -->
     <filter id="tint" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-      <feColorMatrix type="matrix" values="0 0 0 0 .753  0 0 0 0 .792  0 0 0 0 .961  0 0 0 1 0"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .961  0 0 0 0 .773  0 0 0 0 .259  0 0 0 1 0"/>
     </filter>
-    <radialGradient id="glow" cx="78%" cy="62%" r="62%">
-      <stop offset="0" stop-color="#7aa2f7" stop-opacity=".16"/>
-      <stop offset="1" stop-color="#7aa2f7" stop-opacity="0"/>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#06070f"/>
+      <stop offset=".62" stop-color="#11152c"/>
+      <stop offset="1" stop-color="#272c4d"/>
+    </linearGradient>
+    <radialGradient id="moonlight" cx="88%" cy="20%" r="36%">
+      <stop offset="0" stop-color="#dfe4f6" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#dfe4f6" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
-  <rect width="1200" height="630" fill="#1a1b26"/>
-  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect width="1200" height="630" fill="url(#sky)"/>
+  <rect width="1200" height="630" fill="url(#moonlight)"/>
+  <g fill="#dfe4f6">
+    <circle cx="640" cy="70" r="1.4" opacity=".6"/><circle cx="760" cy="150" r="1" opacity=".5"/><circle cx="920" cy="250" r="1.3" opacity=".6"/>
+    <circle cx="560" cy="210" r="1" opacity=".4"/><circle cx="1110" cy="300" r="1.2" opacity=".5"/><circle cx="830" cy="60" r="1" opacity=".5"/>
+    <circle cx="1020" cy="200" r="1" opacity=".4"/><circle cx="700" cy="290" r="1.2" opacity=".5"/><circle cx="480" cy="110" r="1" opacity=".4"/>
+  </g>
+  <circle cx="1056" cy="126" r="34" fill="#eef0fa"/>
+  <circle cx="1046" cy="118" r="7" fill="#d1d6ec"/><circle cx="1068" cy="136" r="5" fill="#d1d6ec"/>
 
-  <!-- the crook -->
-  <path d="M 1006 474 L 1006 258 A 70 70 0 0 1 1146 258 L 1146 306" fill="none" stroke="#c0caf5" stroke-opacity=".38" stroke-width="11" stroke-linecap="round"/>
+  <!-- the koppies, the hill and its acacia, the pasture -->
+  <path d="M0 470 L60 468 L84 420 L230 416 L256 466 L380 462 L404 432 L520 428 L548 470 L700 466 L724 410 L900 404 L930 462 L1200 458 L1200 630 L0 630 Z" fill="#20263f"/>
+  <path d="M0 470 L60 468 L84 420 L230 416 L256 466 L380 462 L404 432 L520 428 L548 470 L700 466 L724 410 L900 404 L930 462 L1200 458" fill="none" stroke="#dfe4f6" stroke-opacity=".16" stroke-width="2"/>
+  <path d="M0 520 C200 500 420 512 640 506 C820 500 960 452 1200 470 L1200 630 L0 630 Z" fill="#161a2f"/>
+  <path d="M0 520 C200 500 420 512 640 506 C820 500 960 452 1200 470" fill="none" stroke="#dfe4f6" stroke-opacity=".18" stroke-width="2"/>
+  <g fill="#161a2f" stroke="#161a2f" stroke-linecap="round">
+    <path d="M1050 470 Q1053 436 1044 410" stroke-width="8" fill="none"/>
+    <path d="M1051 444 Q1066 426 1076 410" stroke-width="6" fill="none"/>
+    <ellipse cx="1046" cy="400" rx="74" ry="12"/><ellipse cx="1012" cy="404" rx="34" ry="9"/><ellipse cx="1080" cy="403" rx="38" ry="10"/><ellipse cx="1050" cy="392" rx="44" ry="9"/>
+  </g>
+  <path d="M0 568 C260 556 520 566 800 560 C960 556 1080 548 1200 552 L1200 630 L0 630 Z" fill="#0f1224"/>
+  <path d="M0 568 C260 556 520 566 800 560 C960 556 1080 548 1200 552" fill="none" stroke="#dfe4f6" stroke-opacity=".16" stroke-width="2"/>
 
   <!-- brand -->
-  <image x="80" y="62" width="44" height="47" xlink:href="modisa-mark.png" filter="url(#tint)"/>
-  <text x="138" y="100" font-family="Space Grotesk" font-weight="600" font-size="40" letter-spacing="-2.8" fill="#c0caf5">modisa<tspan fill="#7aa2f7">.</tspan></text>
+  <image x="80" y="58" width="44" height="47" xlink:href="modisa-mark.png" filter="url(#tint)"/>
+  <text x="136" y="96" font-family="IM Fell English" font-size="46" fill="#f1e8d4">modisa</text>
 
   <!-- headline -->
-  <text x="80" y="300" font-family="JetBrains Mono" font-weight="700" font-size="86" letter-spacing="-3" fill="#c0caf5">Every agent.</text>
-  <text x="80" y="406" font-family="JetBrains Mono" font-weight="700" font-size="86" letter-spacing="-3" fill="#7aa2f7">One terminal.</text>
+  <text x="78" y="262" font-family="IM Fell English" font-size="104" letter-spacing="-1" fill="#f1e8d4">Tend the flock.</text>
+  <text x="78" y="368" font-family="IM Fell English" font-style="italic" font-size="104" letter-spacing="-1" fill="#f5c542">Keep your flow.</text>
 
   <!-- tagline -->
-  <text x="80" y="548" font-family="Space Grotesk" font-weight="500" font-size="27" fill="#a9b1d6">A terminal multiplexer for coding agents — it tells you <tspan fill="#7aa2f7" font-weight="600">who needs you.</tspan></text>
+  <text x="82" y="430" font-family="JetBrains Mono" font-weight="500" font-size="21" letter-spacing="3" fill="#cbc3b0">THE SHEPHERD FOR YOUR CODING AGENTS</text>
 </svg>

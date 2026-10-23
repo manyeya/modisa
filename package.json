@@ -6,7 +6,6 @@
     "site": "bun site/build.ts"
   },
   "devDependencies": {
-    "@iconify-json/solar": "^1.2.10",
     "@types/bun": "latest"
   }
 }

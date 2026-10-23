@@ -16,33 +16,33 @@ const pages: Page[] = [...guide, ...reference];
 const tag = (await Bun.$`git describe --tags --abbrev=0 --match v*`.quiet().nothrow().text()).trim();
 const version = (Bun.env.MODISA_VERSION || tag || "0.1.0").replace(/^v/, "");
 
-const fonts = `<link rel="preload" href="__BASE__assets/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>`;
+const fonts = ["im-fell-english-latin", "alegreya-sans-400-latin"].map((f) => `<link rel="preload" href="__BASE__assets/fonts/${f}.woff2" as="font" type="font/woff2" crossorigin>`).join("");
 
 // Structured data for search engines, escaped so a "</script>" in any text can't end the tag early.
 const ld = (data: object) => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", ...data }).replace(/</g, "\\u003c")}</script>`;
-const cardAlt = "modisa — Every agent. One terminal. A terminal multiplexer for coding agents.";
-const summary = "A terminal multiplexer for coding agents. Claude Code, Codex and 22 more in real panes — and you always know which one needs you.";
+const cardAlt = "modisa — Tend the flock. Keep your flow. The shepherd for your coding agents.";
+const summary = "The shepherd for your coding agents: a terminal multiplexer that keeps Claude Code, Codex and 22 more in real panes as one flock, and tells you which one needs you.";
 
 function shell(o: { title: string; description: string; body: string; base: string; path: string; landing?: boolean; type?: "website" | "article"; data?: object; noindex?: boolean }) {
   const t = escape(o.title), d = escape(o.description);
-  return `<!doctype html><html lang="en" data-theme="day"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="en" data-theme="night"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${t}</title><meta name="description" content="${d}">
 ${o.noindex ? `<meta name="robots" content="noindex">` : `<link rel="canonical" href="${site}${o.path}">`}
 <meta property="og:site_name" content="modisa"><meta property="og:locale" content="en_US"><meta property="og:type" content="${o.type ?? "website"}"><meta property="og:url" content="${site}${o.path}"><meta property="og:title" content="${t}"><meta property="og:description" content="${d}">
 <meta property="og:image" content="${site}assets/social.png"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${cardAlt}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${t}"><meta name="twitter:description" content="${d}"><meta name="twitter:image" content="${site}assets/social.png"><meta name="twitter:image:alt" content="${cardAlt}">
-<link rel="icon" type="image/png" href="${o.base}assets/modisa-mark.png"><link rel="apple-touch-icon" href="${o.base}assets/apple-touch-icon.png"><meta name="theme-color" content="#f6f6f9">
+<link rel="icon" type="image/png" href="${o.base}assets/modisa-mark.png"><link rel="apple-touch-icon" href="${o.base}assets/apple-touch-icon.png"><meta name="theme-color" content="#0f1224">
 <link rel="alternate" type="text/plain" title="modisa docs for LLMs" href="${site}llms.txt">${o.data ? ld(o.data) : ""}
-<script>try{var t=localStorage.getItem("modisa-theme");if(t==="day"||t==="night")document.documentElement.dataset.theme=t}catch(e){}</script>
-${fonts.replace("__BASE__", o.base)}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/terminal.css"><link rel="stylesheet" href="${o.base}assets/landing.css"><script type="module" src="${o.base}assets/motion.js"></script>` : ""}<script defer src="${o.base}assets/site.js"></script>
+${o.landing ? "" : `<script>try{var t=localStorage.getItem("modisa-theme");if(t==="day"||t==="night")document.documentElement.dataset.theme=t}catch(e){}</script>`}
+${fonts.replaceAll("__BASE__", o.base)}<link rel="stylesheet" href="${o.base}assets/site.css">${o.landing ? `<link rel="stylesheet" href="${o.base}assets/landing.css">` : ""}<script defer src="${o.base}assets/site.js"></script><script defer src="${o.base}assets/flock.js"></script>
 </head><body class="${o.landing ? "is-landing" : "is-docs"}" data-base="${o.base}"><a class="skip" href="#main">Skip to content</a>
 ${o.body}
-${footer(o.base)}
+${o.landing ? "" : footer(o.base)}
 ${search()}</body></html>`;
 }
 
 function footer(base: string) {
-  return `<footer class="foot"><a class="brand" href="${base}">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><p>A little order for your agents.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${base}plugins/">Plugins</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
+  return `<footer class="site-foot"><a class="brand" href="${base}">${mark(base)}modisa</a><p>Built in the open. Better as a flock.</p><nav aria-label="Footer"><a href="${base}docs/introduction/">Docs</a><a href="${base}docs/install/">Install</a><a href="${base}plugins/">Plugins</a><a href="${repo}/releases">Releases</a><a href="${repo}">GitHub</a></nav><small>v${escape(version)}</small></footer>`;
 }
 
 function search() {
@@ -50,8 +50,11 @@ function search() {
 }
 
 function docsHeader(base: string) {
-  return `<header class="top docs-top"><a class="brand" href="${base}" aria-label="modisa home">${mark(base)}<span>modisa<span class="brand-period">.</span></span></a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${base}plugins/">Plugins</a><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
+  return `<header class="docs-top"><a class="brand" href="${base}" aria-label="modisa home">${mark(base)}modisa</a><a class="top-tag" href="${base}docs/introduction/">Documentation</a><nav aria-label="Main"><button type="button" class="search-open" data-search-open><span>Search documentation</span><kbd>⌘ K</kbd></button><a href="${base}plugins/">Plugins</a><a href="${repo}" rel="noopener">GitHub ↗</a><button type="button" class="theme-switch" data-theme-toggle aria-label="Switch between night and day">☾</button></nav></header>`;
 }
+
+// A strip of the pasture under the header, a little different on every page.
+const band = (seed: string) => `<div class="band" aria-hidden="true"><canvas data-flock="band" data-seed="${escape(seed)}"></canvas></div>`;
 
 function docsPage(page: Page, index: number) {
   const base = "../../";
@@ -61,6 +64,7 @@ function docsPage(page: Page, index: number) {
   const prev = pages[index - 1], next = pages[index + 1];
   const body = `${docsHeader(base)}
 <div class="docs-bar"><button type="button" data-side-toggle aria-expanded="false" aria-controls="side">☰ ${escape(page.group)}</button><span>${escape(page.title)}</span></div>
+${band(page.slug)}
 <div class="docs">
   <aside class="side" id="side" aria-label="Documentation"><a class="side-home" href="${base}">← Back to modisa</a>${nav}<a class="side-start" href="../quick-start/"><span>YOUR FIRST SESSION</span><strong>Get up and running ↗</strong></a></aside>
   <main id="main" class="doc">
@@ -90,7 +94,7 @@ const found = (() => {
   console.warn(`plugin directory: ${DATA.plugins.error}; building it empty`);
   return [];
 })();
-const pluginsBlurb = "Community plugins for modisa, the terminal multiplexer for coding agents: search them, sort them, and install any with one command.";
+const pluginsBlurb = "Community plugins for modisa, the shepherd for your coding agents: search them, sort them, and install any with one command.";
 
 await Bun.$`rm -rf ${out}`;
 // assets/social.svg is the link-preview card's source; assets/social.png is it rasterized. To redo the png after an
@@ -99,18 +103,16 @@ await Bun.$`rm -rf ${out}`;
 //     --force-device-scale-factor=1 --window-size=1200,630 \
 //     --screenshot=site/assets/social.png "file://$PWD/site/assets/social.svg"
 for (const f of await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: `${root}/assets` }))) await Bun.write(`${out}/assets/${f}`, Bun.file(`${root}/assets/${f}`));
-const motion = await Bun.build({ entrypoints: [`${root}/client/motion.js`], outdir: `${out}/assets`, target: "browser", minify: true, naming: "motion.[ext]" });
-if (!motion.success) throw new AggregateError(motion.logs, "Site animation bundle failed");
 await Bun.write(`${out}/install.sh`, Bun.file(`${root}/../install.sh`));
 await Bun.write(`${out}/.nojekyll`, "");
-await Bun.write(`${out}/index.html`, shell({ title: "Modisa — Run a crew. Keep your flow.", description: summary, body: landing({ version, repo }), base: "./", path: "", landing: true, data: { "@graph": [
+await Bun.write(`${out}/index.html`, shell({ title: "modisa — Tend the flock. Keep your flow.", description: summary, body: landing({ version, repo }), base: "./", path: "", landing: true, data: { "@graph": [
   { "@type": "WebSite", name: "modisa", url: site, description: summary, inLanguage: "en" },
   { "@type": "SoftwareApplication", name: "modisa", description: summary, url: site, applicationCategory: "DeveloperApplication", operatingSystem: "macOS, Linux", softwareVersion: version, license: `${repo}/blob/main/LICENSE`, downloadUrl: `${repo}/releases/latest`, installUrl: `${site}docs/install/`, codeRepository: repo, image: `${site}assets/social.png`, offers: { "@type": "Offer", price: "0", priceCurrency: "USD" } },
 ] } }));
 for (const [i, page] of pages.entries()) await Bun.write(`${out}/docs/${page.slug}/index.html`, docsPage(page, i));
 await Bun.write(`${out}/plugins/index.html`, shell({
   title: "Plugins · modisa", description: pluginsBlurb, base: "../", path: "plugins/",
-  body: `${docsHeader("../")}${pluginsPage({ found, built: new Date().toISOString().slice(0, 10) })}`,
+  body: `${docsHeader("../")}${band("plugins")}${pluginsPage({ found, built: new Date().toISOString().slice(0, 10) })}`,
   data: { "@graph": [
     { "@type": "CollectionPage", name: "modisa plugins", description: pluginsBlurb, url: `${site}plugins/`, isPartOf: { "@type": "WebSite", name: "modisa", url: site } },
     { "@type": "ItemList", numberOfItems: found.length, itemListElement: found.map((f, i) => ({ "@type": "ListItem", position: i + 1, item: { "@type": "SoftwareSourceCode", name: f.name, description: f.description || undefined, codeRepository: f.url, url: f.url } })) },
@@ -121,7 +123,7 @@ await Bun.write(`${out}/search.json`, JSON.stringify([{ title: "Plugins", group:
   { title: p.title, group: p.group, text: plain(p.description), url: `docs/${p.slug}/` },
   ...p.sections.map((s) => ({ title: s.title, group: p.title, text: plain(s.html).slice(0, 400), url: `docs/${p.slug}/#${s.id}` })),
 ])]));
-await Bun.write(`${out}/404.html`, shell({ title: "Not found · modisa", description: "This page wandered off.", base: "/modisa/", path: "404.html", noindex: true, body: `${docsHeader("/modisa/")}<main id="main" class="lost"><p class="crumb">404</p><h1>This one wandered off.</h1><p>The page isn't here. The rest of the herd is.</p><a class="btn lantern" href="/modisa/docs/introduction/">Open the docs</a></main>` }));
+await Bun.write(`${out}/404.html`, shell({ title: "Not found · modisa", description: "This page wandered off.", base: "/modisa/", path: "404.html", noindex: true, body: `${docsHeader("/modisa/")}<main id="main" class="lost"><div><p class="crumb">404</p><h1>This one wandered off.</h1><p>The page isn't here. The rest of the flock is.</p><a class="btn lantern" href="/modisa/docs/introduction/">Open the docs</a></div><div class="night"><canvas data-flock="stray" aria-label="One sheep wandering alone under the moon."></canvas></div></main>` }));
 await Bun.write(`${out}/sitemap.xml`, `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["", "plugins/", ...pages.map((p) => `docs/${p.slug}/`)].map((u) => `<url><loc>${site}${u}</loc></url>`).join("")}</urlset>`);
 
 // For AI assistants and crawlers (llmstxt.org): llms.txt indexes the docs, llms-full.txt holds all of them as markdown.

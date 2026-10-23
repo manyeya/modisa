@@ -6,11 +6,11 @@ const INSTALL = "curl -fsSL https://manyeya.github.io/modisa/install.sh | sh";
 export const guide: Page[] = [
   {
     slug: "introduction", group: "Start", title: "Introduction",
-    description: "A terminal multiplexer for running many coding agents at once, and always knowing which one needs you.",
+    description: "The shepherd for your coding agents: run a whole flock of them at once, and always know which one needs you.",
     sections: [
       { id: "what", title: "What modisa is", html: p(
-        "Modisa is a terminal multiplexer, like tmux, built for coding agents. It has no AI of its own. Claude Code, Codex, OpenCode, Pi, Gemini and 20 other agents run in real terminal panes next to your shells, exactly as they would anywhere else.",
-        "What modisa adds is attention. It recognises every agent it hosts, reads its state, and tells you the moment one is <strong>blocked on you</strong>, is <strong>working</strong>, or has <strong>finished</strong> while you were looking elsewhere — in the pane border, the tab bar, the sidebar, and with a toast, a system notification or a sound.",
+        "Modisa is a terminal multiplexer, like tmux, built to keep a flock of coding agents. It has no AI of its own. Claude Code, Codex, OpenCode, Pi, Gemini and 20 other agents run in real terminal panes next to your shells, exactly as they would anywhere else.",
+        "What modisa adds is a shepherd's eye. It recognises every agent it hosts, reads its state, and tells you the moment one is <strong>blocked on you</strong>, is <strong>working</strong>, or has <strong>finished</strong> while you were looking elsewhere — in the pane border, the tab bar, the sidebar, and with a toast, a system notification or a sound.",
       ) },
       { id: "shape", title: "How it's shaped", html: ul([
         "<strong>Sessions</strong> are owned by a background server, so closing your terminal only detaches. Reattach from anywhere, including over ssh.",
