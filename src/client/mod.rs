@@ -12,6 +12,7 @@ pub mod format;
 pub mod vars;
 pub mod input;
 pub mod keys;
+pub mod look;
 pub mod modals;
 pub mod pane;
 pub mod plugin_ui;
@@ -63,6 +64,8 @@ pub struct Toast {
     pub title: Option<String>,
     pub lines: Vec<ratatui::text::Line<'static>>, // a plugin's rich text, in place of `text`
     pub buttons: Vec<(String, Hit)>,             // what its buttons say, and what pressing one does
+    pub born: Option<Instant>,                   // when it came: it slides in, and a line along its foot runs out
+    pub ms: u64,                                 // how long it stays
 }
 
 // A pane border (or the sidebar's edge) being dragged.
@@ -116,6 +119,13 @@ pub struct App {
     pub views: Vec<views::OpenView>, // plugins' views open now, in the order they opened: the last is on top
     pub slot_elems: HashMap<String, slots::SlotElem>, // what the user did in plugins' sidebar elements
     pub animating: bool, // a spinner is showing: frames come on their own
+    pub since: HashMap<String, (AgentState, Instant, bool)>, // each agent's state, since when, and whether we saw it begin
+    pub activity: HashMap<String, look::Activity>, // what each pane printed, second by second
+    pub focus_at: Instant, // when focus last moved (the ring sweeps round)
+    pub focus_last: String,
+    pub modal_at: Instant, // when the dialog opened (the veil fades in)
+    pub prefix_at: Instant, // when the prefix was pressed (the keys after it show if nothing follows)
+    pub was: (bool, bool), // a dialog was open, the prefix was armed, at the last frame
     pub prompt_ids: HashSet<u64>, // open permission prompts
     pub hits: Vec<(Rect, Hit)>, // what the last frame put where, topmost last
     pub hover: Option<(i32, i32)>, // where the pointer is
@@ -170,6 +180,13 @@ impl App {
             views: vec![],
             slot_elems: HashMap::new(),
             animating: false,
+            since: HashMap::new(),
+            activity: HashMap::new(),
+            focus_at: Instant::now(),
+            focus_last: String::new(),
+            modal_at: Instant::now(),
+            prefix_at: Instant::now(),
+            was: (false, false),
             prompt_ids: HashSet::new(),
             hits: vec![],
             hover: None,
@@ -327,6 +344,7 @@ impl App {
         self.toast_seq += 1;
         let id = self.toast_seq;
         t.id = id;
+        (t.born, t.ms) = (Some(Instant::now()), ms);
         for (_, h) in &mut t.buttons {
             if let Hit::Slot(s) = h {
                 s.toast = Some(id); // pressed, a button takes its toast away
@@ -334,6 +352,7 @@ impl App {
         }
         self.toasts.insert(0, t);
         self.toasts.truncate(TOASTS);
+        views::animate(self); // it slides in, and its time runs out along its foot
         let me = self.me.clone();
         tokio::task::spawn_local(async move {
             tokio::time::sleep(Duration::from_millis(ms)).await;
@@ -612,9 +631,13 @@ fn on_message(app: &mut App, m: Value) {
             }
         }
         "output" => {
-            if let Some(p) = d["pane"].as_str().and_then(|id| app.panes.get_mut(id)) {
-                p.screen.write(&unb64(d["data"].as_str().unwrap_or("")));
-                app.dirty();
+            if let Some(id) = d["pane"].as_str() {
+                if let Some(p) = app.panes.get_mut(id) {
+                    let data = unb64(d["data"].as_str().unwrap_or(""));
+                    p.screen.write(&data);
+                    app.activity.entry(id.to_string()).or_default().add(data.len());
+                    app.dirty();
+                }
             }
         }
         "notify" => {
@@ -664,7 +687,8 @@ fn set_view(app: &mut App, v: View) {
         modals::close(app, None);
     }
     slots::keep_elems(app);
-    views::animate(app); // a spinner in a plugin's sidebar section
+    look::track(app);
+    views::animate(app); // a spinner in a plugin's sidebar section, or an agent at work
     // Older servers could leave a selected, empty workspace after a spawn error. Keep server indices intact and move
     // back to a workspace that has a terminal.
     let v = app.view.as_ref().unwrap();

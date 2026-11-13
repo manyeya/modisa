@@ -48,7 +48,7 @@ pub fn draw(screen: &Screen, area: Rect, buf: &mut Buffer, fg: C, bg: C) -> Opti
         let Some(out) = buf.cell_mut((area.x + col, area.y + row as u16)) else { continue };
         match cell.zerowidth() {
             Some(extra) => out.set_symbol(&std::iter::once(cell.c).chain(extra.iter().copied()).collect::<String>()),
-            None => out.set_char(cell.c),
+            None => out.set_char(if cell.c == '\t' { ' ' } else { cell.c }), // the grid keeps a tab where one was printed
         };
         out.fg = color(cell.fg, content.colors, fg, bg);
         out.bg = color(cell.bg, content.colors, fg, bg);

@@ -122,6 +122,14 @@ pub enum Channel {
     Staging,
 }
 
+// How the chrome moves and how its pills end.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Ui {
+    pub motion: bool, // spinners, the breathing of what needs you, toasts sliding in, the focus ring's sweep
+    pub caps: String, // auto, rounded or square: the ends of the chrome's pills
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Mouse {
@@ -432,6 +440,7 @@ pub struct Config {
     pub pane_labels: PaneLabels,
     pub update: Update,
     pub notch: Notch,
+    pub ui: Ui,
     pub messaging: Messaging,
     pub permissions: Permissions,
     pub agents: IndexMap<String, AgentOverride>,
@@ -450,7 +459,7 @@ pub struct Config {
 pub fn defaults() -> Config {
     Config {
         prefix: "C-b".into(),
-        theme: "ion".into(),
+        theme: "pasture".into(),
         theme_light: None,
         mouse: Mouse { hover: true },
         sidebar: Sidebar {
@@ -467,7 +476,7 @@ pub fn defaults() -> Config {
         },
         status: Status { agents: true, panes: true, theme: false, left: String::new(), right: String::new() },
         git: Git { status: true, repo: true, counts: true, changes: true },
-        panes: Panes { border: BorderStyle::Single, title: String::new(), title_position: "top_left".into(), dim_unfocused: 0.0 },
+        panes: Panes { border: BorderStyle::Rounded, title: String::new(), title_position: "top_left".into(), dim_unfocused: 0.3 },
         tabs: Tabs { position: "top".into(), format: String::new() },
         window: Window { title: String::new() },
         notify: Notify { blocked: vec![NotifyKind::Toast, NotifyKind::System, NotifyKind::Sound], done: vec![NotifyKind::Toast], working: vec![], unread: false, click: "none".into(), agents: IndexMap::new() },
@@ -476,6 +485,7 @@ pub fn defaults() -> Config {
         pane_labels: PaneLabels { agent: true },
         update: Update { check: true, channel: Channel::Stable },
         notch: Notch { show: false },
+        ui: Ui { motion: true, caps: "auto".into() },
         messaging: Messaging { max_hops: 10, per_minute: 5 },
         permissions: Permissions { keys_foreign: Policy::Ask, close_foreign: Policy::Ask, run_foreign: Policy::Ask },
         agents: IndexMap::new(),
@@ -500,7 +510,7 @@ macro_rules! default_from_defaults {
 }
 default_from_defaults!(
     Mouse.mouse, Sidebar.sidebar, Status.status, Git.git, Panes.panes, Notify.notify, Sound.sound, Indicators.indicators,
-    PaneLabels.pane_labels, Update.update, Notch.notch, Messaging.messaging, Permissions.permissions, Tabs.tabs, Window.window
+    PaneLabels.pane_labels, Update.update, Notch.notch, Ui.ui, Messaging.messaging, Permissions.permissions, Tabs.tabs, Window.window
 );
 
 impl Default for Config {
@@ -511,7 +521,7 @@ impl Default for Config {
 
 pub const SAMPLE: &str = r##"# modisa config — changes apply live (Ctrl+B s opens the settings page)
 prefix = "C-b"              # C-<key>
-theme = "ion"               # ion, tokyonight, catppuccin-mocha, gruvbox, nord, dracula, bearded-* (see settings)
+theme = "pasture"           # pasture, ion, tokyonight, catppuccin-mocha, gruvbox, nord, dracula, bearded-* (see settings)
 
 [sidebar]
 visible = true
@@ -546,8 +556,8 @@ counts = true               # ↑ commits to push, ↓ commits to pull
 changes = true              # ● files changed
 
 [panes]
-border = "single"           # single, rounded, double, heavy, light_double_dashed … quadrant_outside, full, none
-dim_unfocused = 0.0         # 0 to 0.8: the other panes' text mixed toward the background
+border = "rounded"          # rounded, single, double, heavy, light_double_dashed … quadrant_outside, full, none
+dim_unfocused = 0.3         # 0 to 0.8: the other panes' text mixed toward the background
 # title = "{name} {?agent|{icon} {agent} {state}|}"
 title_position = "top_left" # top_left, top_center, top_right, bottom_left, bottom_center, bottom_right
 
@@ -587,6 +597,10 @@ channel = "stable"          # stable, or staging for prerelease builds
 
 [notch]
 show = false                # macOS: the flock in the MacBook's notch, a sheep per agent (modisa notch starts it once)
+
+[ui]
+motion = true               # spinners, a soft pulse on what needs you, toasts sliding in; false keeps everything still
+caps = "auto"               # the ends of the chrome's pills: rounded, square, or auto (rounded where the terminal draws them)
 
 [messaging]
 max_hops = 10               # stop reply chains after this many hops
@@ -790,6 +804,7 @@ pub fn merge(user: &Map<String, Value>) -> Config {
         pane_labels: overlay(d.pane_labels, get("pane_labels")),
         update: overlay(d.update, get("update")),
         notch: overlay(d.notch, get("notch")),
+        ui: overlay(d.ui, get("ui")),
         messaging: overlay(d.messaging, get("messaging")),
         permissions: overlay(d.permissions, get("permissions")),
         agents: entries(get("agents")),
@@ -1192,7 +1207,7 @@ mod tests {
         )
         .unwrap();
         let cfg = merge(&user);
-        assert_eq!((cfg.prefix.as_str(), cfg.theme.as_str()), ("C-a", "ion")); // a wrong type keeps the default
+        assert_eq!((cfg.prefix.as_str(), cfg.theme.as_str()), ("C-a", "pasture")); // a wrong type keeps the default
         assert_eq!(cfg.sidebar, Sidebar { width: 30, ..defaults().sidebar }); // logos "maybe" isn't one
         assert!(!cfg.git.status && cfg.git.repo); // [sidebar] git = false, the old place
         assert_eq!(cfg.notify, Notify { blocked: vec![NotifyKind::Toast], ..defaults().notify });
@@ -1230,7 +1245,7 @@ mod tests {
         assert_eq!(
             fields,
             [
-                "prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "tabs", "window", "notify", "sound", "indicators", "pane_labels", "update", "notch", "messaging", "permissions", "agents",
+                "prefix", "theme", "mouse", "sidebar", "status", "git", "panes", "tabs", "window", "notify", "sound", "indicators", "pane_labels", "update", "notch", "ui", "messaging", "permissions", "agents",
                 "plugin", "plugin_keys", "keys", "actions", "root_keys", "modes", "command", "hook", "remote_command", "slots"
             ]
         );

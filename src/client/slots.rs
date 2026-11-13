@@ -200,6 +200,11 @@ impl<'a> Strip<'a> {
 // modisa's own text (`own`, cut to fit) with plugins' pieces before and after it, or a plugin's instead, in `room`
 // cells. The pieces come first: modisa's text keeps a few cells, however much they take.
 pub fn label<'a>(ctx: &Ctx, a: &Around<'a>, own: &str, room: usize) -> Strip<'a> {
+    label_spans(ctx, a, &[(own.to_string(), Style::new())], room)
+}
+
+// the same, modisa's own text in its styles
+pub fn label_spans<'a>(ctx: &Ctx, a: &Around<'a>, own: &[(String, Style)], room: usize) -> Strip<'a> {
     let mut s = Strip::default();
     for p in &a.before {
         s.piece(ctx, p);
@@ -210,7 +215,12 @@ pub fn label<'a>(ctx: &Ctx, a: &Around<'a>, own: &str, room: usize) -> Strip<'a>
         Some(p) => s.piece(ctx, p),
         None => {
             let pieces = s.width() + after.iter().map(|l| line_width(l) + 1).sum::<usize>();
-            s.text(fit(own, room.saturating_sub(pieces).max(room.min(4))), Style::new());
+            let mut mine = Strip::default();
+            for (t, st) in own {
+                mine.text(fit(t, usize::MAX), *st); // fit cleans out control characters (a title can have them)
+            }
+            mine.fit(room.saturating_sub(pieces).max(room.min(4)));
+            s.append(mine);
         }
     }
     for (l, p) in after.into_iter().zip(&a.after) {
@@ -303,13 +313,21 @@ pub struct Seg<'a> {
     pub bg: String,
     pub hit: Option<Hit>,
     pub plugin: bool,
+    pub pill: bool, // drawn with rounded ends (look::caps), a cell each
 }
 
 impl Seg<'_> {
     pub fn own(text: &str, fg: &str, bg: &str, hit: Option<Hit>) -> Self {
         let mut strip = Strip::default();
         strip.text(text, Style::new());
-        Seg { strip, fg: fg.into(), bg: bg.into(), hit, plugin: false }
+        Seg { strip, fg: fg.into(), bg: bg.into(), hit, plugin: false, pill: false }
+    }
+    pub fn pill(mut self) -> Self {
+        self.pill = true;
+        self
+    }
+    pub fn width(&self) -> usize {
+        self.strip.width() + if self.pill { 2 } else { 0 }
     }
 }
 
@@ -318,7 +336,7 @@ fn seg<'a>(app: &App, ctx: &Ctx, p: &'a SlotPiece) -> Seg<'a> {
     strip.text(" ", Style::new());
     strip.piece(ctx, p);
     strip.text(" ", Style::new());
-    Seg { strip, fg: app.th.fg.into(), bg: app.th.bar.into(), hit: None, plugin: true }
+    Seg { strip, fg: app.th.fg.into(), bg: app.th.bar.into(), hit: None, plugin: true, pill: false }
 }
 
 // the pieces in `slot`, as segments
@@ -340,7 +358,7 @@ pub fn wrap<'a>(app: &'a App, ctx: &Ctx, slot: &str, own: Vec<Seg<'a>>) -> Vec<S
 
 // The row at `y`: `left` from the left edge, `right` against the right one.
 pub fn row<'a>(app: &App, c: &mut Canvas, y: i32, mut left: Vec<Seg<'a>>, mut right: Vec<Seg<'a>>) {
-    let own: usize = left.iter().chain(&right).filter(|s| !s.plugin).map(|s| s.strip.width()).sum();
+    let own: usize = left.iter().chain(&right).filter(|s| !s.plugin).map(|s| s.width()).sum();
     let mut room = (c.w.max(0) as usize).saturating_sub(own);
     for s in left.iter_mut().chain(right.iter_mut()).filter(|s| s.plugin) {
         s.strip.fit_or_drop(room);
@@ -350,27 +368,35 @@ pub fn row<'a>(app: &App, c: &mut Canvas, y: i32, mut left: Vec<Seg<'a>>, mut ri
     for s in &left {
         x += button(app, c, x, y, s);
     }
-    let total: i32 = right.iter().map(|s| s.strip.width() as i32).sum();
+    let total: i32 = right.iter().map(|s| s.width() as i32).sum();
     let mut rx = (c.w - total).max(x);
     for s in &right {
         rx += button(app, c, rx, y, s);
     }
 }
 
-// A segment drawn; under the pointer, one that does something takes the border colour behind the text colour.
+// A segment drawn; under the pointer, one that does something takes the border colour behind the text colour. A pill
+// has its ends in its fill, against the bar.
 pub fn button(app: &App, c: &mut Canvas, x: i32, y: i32, s: &Seg) -> i32 {
     let w = s.strip.width() as i32;
     if w == 0 {
         return 0;
     }
-    let r = Rect { x, y, w, h: 1 };
-    let (fg, bg) = if (s.hit.is_some() || s.strip.acts()) && c.hovered(r) { (app.th.fg, app.th.border) } else { (s.fg.as_str(), s.bg.as_str()) };
+    let at = x + s.pill as i32;
+    let r = Rect { x: at, y, w, h: 1 };
+    let hover = (s.hit.is_some() || s.strip.acts()) && c.hovered(Rect { x, y, w: s.width() as i32, h: 1 });
+    let hover_bg = if s.pill { super::design::mix(&s.bg, app.th.fg, 0.12) } else { app.th.border.to_string() };
+    let (fg, bg) = if hover { (app.th.fg, hover_bg.as_str()) } else { (s.fg.as_str(), s.bg.as_str()) };
     c.fill(r, bg);
     if let Some(h) = &s.hit {
-        c.hit(r, h.clone());
+        c.hit(Rect { x, y, w: s.width() as i32, h: 1 }, h.clone());
     }
-    s.strip.draw(c, x, y, Style::new().fg(color(fg)).bg(color(bg)), (c.w - x).max(0) as usize);
-    w
+    if s.pill {
+        super::look::cap(app, c, x, y, true, bg, app.th.bar);
+        super::look::cap(app, c, at + w, y, false, bg, app.th.bar);
+    }
+    s.strip.draw(c, at, y, Style::new().fg(color(fg)).bg(color(bg)), (c.w - at).max(0) as usize);
+    s.width() as i32
 }
 
 // ---------- pane borders ----------
@@ -640,7 +666,10 @@ pub(crate) mod tests {
     pub(crate) fn app(w: u16, h: u16, slots: Value) -> Rc<RefCell<App>> {
         let connect: Connect = Rc::new(|_, _| Box::pin(async { Err(crate::protocol::conn::fail("unreachable", "a test")) }));
         let opts = ClientOptions { session: "test".into(), connect, remote: false };
-        let app = Rc::new_cyclic(|me| RefCell::new(App::new(opts, crate::config::defaults(), (w as i32, h as i32), me.clone(), Rc::new(Notify::new()), Rc::new(Notify::new()))));
+        // still, and square-ended: the same frame whenever and wherever it's drawn
+        let mut cfg = crate::config::defaults();
+        cfg.ui = crate::config::Ui { motion: false, caps: "square".into() };
+        let app = Rc::new_cyclic(|me| RefCell::new(App::new(opts, cfg, (w as i32, h as i32), me.clone(), Rc::new(Notify::new()), Rc::new(Notify::new()))));
         let pane = |id: &str, agent: Value| json!({ "id": id, "instance": format!("{id}i"), "title": "zsh", "cwd": "/", "cols": 40, "rows": 20, "status": "running", "agent": agent });
         let view: View = serde_json::from_value(json!({
             "active": 0,
@@ -753,7 +782,7 @@ pub(crate) mod tests {
             ]),
         );
         let top = rows(&a)[0].clone();
-        assert!(top.starts_with(" ◈ ★ main ▸  1:dev ●3 ✕"), "{top}");
+        assert!(top.starts_with("  ◈ ★ main ▸     1:dev ●3 ✕"), "{top}"); // two pills, square-ended here
         assert!(!top.contains("NOPE"), "{top}");
         let b = app(120, 30, json!([radar("tab", "n", json!({ "tab": "t1", "position": "replace", "replaces": true, "line": "MINE" }))]));
         let top = rows(&b)[0].clone();
@@ -778,10 +807,10 @@ pub(crate) mod tests {
         let r = rows(&a);
         let (top, bottom) = (&r[1], &r[28]);
         assert!(top.contains("◆ zsh ◆ claude-code working 43% ─"), "{top}");
-        assert!(top.contains("─ TR ─┐"), "{top}");
+        assert!(top.contains("─ TR ─╮"), "{top}");
         assert!(!top.contains("STALE"), "{top}");
         assert!(top.contains("◇ SHELL ─") && top.matches("zsh").count() == 1, "{top}"); // p2's title is the plugin's
-        assert!(bottom.contains("└─ BL ─") && bottom.contains("─ BR ─┘"), "{bottom}");
+        assert!(bottom.contains("╰─ BL ─") && bottom.contains("─ BR ─╯"), "{bottom}");
         let hits = slot_hits(&a);
         let (_, t) = hits.iter().find(|(_, h)| h.ui["id"] == "t").unwrap();
         assert_eq!(t.target, Some(("p1".into(), "p1i".into())));
@@ -793,7 +822,7 @@ pub(crate) mod tests {
         let a = app(120, 30, json!([radar("pane.title", "t", json!({ "pane": "p1", "instance": "p1i", "line": "y".repeat(200) }))]));
         let top = rows(&a)[1].clone();
         let p1: String = top.chars().skip(26).take(47).collect(); // p1's box
-        assert!(p1.ends_with("y…─┐"), "{p1}");
+        assert!(p1.ends_with("y…─╮"), "{p1}");
     }
 
     #[test]

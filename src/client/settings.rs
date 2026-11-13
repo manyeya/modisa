@@ -57,6 +57,8 @@ pub enum Act {
     SidebarWidth,
     Logos,
     Border,
+    Caps,
+    Dim,
     Style(IndicatorStyle),
     Sound(AgentState),
     Volume,
@@ -139,6 +141,8 @@ fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
                 heading("keyboard"),
                 choice("prefix key", &cfg.prefix, Act::Prefix, "The key that starts every modisa shortcut: Ctrl and a letter. Press it twice to send it to the pane"),
                 action("keyboard guide", "every shortcut", "dim", None, "↵ open", Act::Run("help"), "The shortcuts, searchable; choosing one runs it"),
+                heading("motion"),
+                toggle("motion", cfg.ui.motion, Act::Flip(Some("ui"), "motion"), "A spinner while an agent works, a slow pulse on what needs you, toasts sliding in. Off: everything stays still"),
                 heading("mouse"),
                 toggle("select on hover", cfg.mouse.hover, Act::Flip(Some("mouse"), "hover"), "The pointer resting on a row selects it, here and in every menu and picker. Off: only a click does"),
                 heading("updates"),
@@ -166,7 +170,9 @@ fn rows(app: &App, s: &Settings, section: usize) -> Vec<Row> {
             toggle("pane count", cfg.status.panes, Act::Flip(Some("status"), "panes"), "How many panes this tab has; click it to switch pane"),
             toggle("theme name", cfg.status.theme, Act::Flip(Some("status"), "theme"), "The theme in use; click it to change theme"),
             heading("panes"),
-            choice("border style", json!(cfg.panes.border).as_str().unwrap_or("single"), Act::Border, "The line around each pane"),
+            choice("border style", json!(cfg.panes.border).as_str().unwrap_or("rounded"), Act::Border, "The line around each pane"),
+            choice("dim other panes", format!("{}%", (cfg.panes.dim_unfocused * 100.0).round()), Act::Dim, "The panes you're not in, faded toward the background so the focused one stands out; 0% for none"),
+            choice("pill ends", &cfg.ui.caps, Act::Caps, "The ends of the tab bar's and status row's pills. auto: rounded where the terminal draws them (Ghostty, kitty, WezTerm, VS Code)"),
             toggle("agent in the border title", cfg.pane_labels.agent, Act::Flip(Some("pane_labels"), "agent"), "The agent and what it's doing, in its pane's border"),
         ],
         "git" => vec![
@@ -479,8 +485,16 @@ fn step(app: &mut App, s: &mut Settings, act: &Act, by: i64) {
             save(app, Some("sidebar"), "logos", json!(cycle(&["auto", "on", "off"], &now, by)));
             tokio::task::spawn_local(super::setup_logos(app.shared()));
         }
+        Act::Caps => {
+            let now = app.cfg.ui.caps.clone();
+            save(app, Some("ui"), "caps", json!(cycle(&["auto", "rounded", "square"], &now, by)));
+        }
+        Act::Dim => {
+            let next = ((app.cfg.panes.dim_unfocused * 10.0).round() as i64 + by).clamp(0, 8) as f64 / 10.0;
+            save(app, Some("panes"), "dim_unfocused", json!(next));
+        }
         Act::Border => {
-            let now = json!(app.cfg.panes.border).as_str().unwrap_or("single").to_string();
+            let now = json!(app.cfg.panes.border).as_str().unwrap_or("rounded").to_string();
             save(app, Some("panes"), "border", json!(cycle(crate::config::BorderStyle::NAMES, &now, by)));
         }
         Act::Sound(event) => {
@@ -814,8 +828,9 @@ pub fn draw(app: &App, s: &mut Settings, c: &mut Canvas) {
     let th = &app.th;
     let r = super::design::floating(c.w, c.h, WIDTH, HEIGHT, None, None);
     c.fill(r, th.bar);
-    c.border(r, crate::config::BorderStyle::Rounded, &mix(th.border, th.focus, 0.45), Some(th.bar), None);
+    c.border(r, crate::config::BorderStyle::Rounded, &super::look::panel_line(th), Some(th.bar), None);
     c.hit(r, Hit::Inert);
+    super::look::shadow(c, r, th);
     let (x, inner) = (r.x + 2, (r.w - 4).max(1));
     let mut y = r.y + 1;
     let body = ((r.h - 2) - 6).max(3); // header, search, gap … gap, about, footer
@@ -896,7 +911,7 @@ pub fn draw(app: &App, s: &mut Settings, c: &mut Canvas) {
                     tx += c.text(tx, ly, "in use  ", th.done, Some(&bg), Modifier::empty(), 8);
                 }
                 for col in swatches {
-                    tx += c.text(tx, ly, "  ", th.fg, Some(col), Modifier::empty(), 2);
+                    tx += c.text(tx, ly, "● ", col, Some(&bg), Modifier::empty(), 2);
                 }
             }
             Kind::Toggle { on } => {

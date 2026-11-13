@@ -64,6 +64,8 @@ Prefix is `Ctrl+B`, then:
 | `Ctrl+B` | send a literal `Ctrl+B` |
 | `d` | detach (panes keep running) |
 
+Press the prefix and pause, and a panel shows the keys you can press next, grouped and as you've bound them; typing straight through never shows it.
+
 Rebind any of them under `[keys]` in the config: `zoom = "f"`, `split-right = ["v", "|"]`, or `""` for none, with actions named as the keyboard guide (`?`) names them. An action set there has only the keys given; `x`, `d` and Escape can't be given away. `modisa config reset-keys` puts modisa's keys and the `C-b` prefix back.
 
 Mouse: click a pane to focus it, drag the border between two panes to resize them (the pointer turns into a move cursor over a border), drag the sidebar's edge to widen or narrow it, click a tab to switch, and scroll for scrollback. Right-click a pane or tab for split, zoom, rename, copy visible output, search, theme, sidebar, and close actions. Every menu, picker and dialog has a search field and works with the mouse: the pointer selects, a click chooses, the wheel scrolls, and a click outside closes. `[mouse] hover = false` (or the settings page) stops the pointer selecting rows just by resting on them. Clipboard copying uses OSC 52 where supported by your terminal.
@@ -72,7 +74,7 @@ Spaces are named groups of tabs and panes. The status row shows where the active
 
 The settings page (`Ctrl+B s`, or ⚙ settings in the sidebar) lists its sections down the side — theme, general, layout, git, indicators, sound, alerts, agents, integrations, plugins — and typing searches all of them. Tab switches section, ↑↓ or the pointer selects, ←→ changes a value, Enter or a click applies, Esc closes. Every change applies at once and is saved to `~/.config/modisa/config.toml`, keeping your comments and other settings.
 
-- **theme** — Ion (default), Tokyo Night, Catppuccin Mocha, Gruvbox, Nord, Dracula, previewed live as you move
+- **theme** — Pasture (default: night ink, wool and gold), Ion, Tokyo Night, Catppuccin Mocha, Gruvbox, Nord, Dracula, previewed live as you move
 - **indicators** — the agent-state glyphs (symbols `! ◆ ✓ ○`, dots, or letters) and where they show: tab badge, pane border, sidebar
 - **sound** — the sound for when an agent needs you, is done, or starts working, from [cuelume](https://cuelume.dev)'s 17 (or off), and the volume; each plays as you pick it
 - **toasts** — toast, system notification and terminal bell per event

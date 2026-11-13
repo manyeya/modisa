@@ -126,8 +126,8 @@ pub fn has_keyboard(app: &App) -> bool {
 
 // Spinners move: a frame every 80ms while one shows (in a view, or a dialog waiting on something).
 pub fn animate(app: &mut App) {
-    if app.animating || !spinning(app) {
-        return;
+    if app.animating || !spinning(app) || tokio::runtime::Handle::try_current().is_err() {
+        return; // (no runtime: a test drawing a frame)
     }
     app.animating = true;
     let me = app.me.clone();
@@ -148,6 +148,7 @@ pub fn animate(app: &mut App) {
 fn spinning(app: &App) -> bool {
     super::modals::busy(app)
         || super::slots::spinning(app)
+        || super::look::moving(app)
         || app.views.iter().any(|v| {
             let mut any = false;
             build::walk(&v.state["root"], "0".into(), &mut |n, _| any |= n["type"] == "spinner");

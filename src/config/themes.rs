@@ -26,6 +26,8 @@ pub struct Theme {
 
 // In the order the settings page lists them.
 pub const THEMES: &[(&str, Theme)] = &[
+    // modisa's own: night ink, wool and gold, the site's colours; gold is where you're looking, ember what needs you
+    ("pasture", Theme { bg: "#0b0e1b", bar: "#121629", fg: "#ece4d0", dim: "#8e8a80", border: "#2a2f4b", focus: "#f5c542", accent: "#a9b6ff", warn: "#f2a65a", blocked: "#ff7a66", working: "#7cc7f2", done: "#9fd68c", idle: "#8e8a80" }),
     ("ion", Theme { bg: "#090f1b", bar: "#101b2c", fg: "#d9e7f5", dim: "#8295ad", border: "#293c54", focus: "#5ee7ef", accent: "#b39aff", warn: "#f0c674", blocked: "#ff7f96", working: "#5ee7ef", done: "#a5efb5", idle: "#8295ad" }),
     ("tokyonight", Theme { bg: "#1a1b26", bar: "#16161e", fg: "#c0caf5", dim: "#565f89", border: "#3b4261", focus: "#7aa2f7", accent: "#7aa2f7", warn: "#e0af68", blocked: "#f7768e", working: "#e0af68", done: "#7dcfff", idle: "#9ece6a" }),
     ("catppuccin-mocha", Theme { bg: "#1e1e2e", bar: "#181825", fg: "#cdd6f4", dim: "#6c7086", border: "#45475a", focus: "#cba6f7", accent: "#cba6f7", warn: "#f9e2af", blocked: "#f38ba8", working: "#f9e2af", done: "#89b4fa", idle: "#a6e3a1" }),

@@ -143,6 +143,7 @@ const SETTINGS: &[(&str, Schema)] = &[
     ("pane_labels", table(&[("agent", BOOL)])),
     ("update", table(&[("check", BOOL), ("channel", Schema::Enum(&["stable", "staging"]))])),
     ("notch", table(&[("show", BOOL)])),
+    ("ui", table(&[("motion", BOOL), ("caps", Schema::Enum(&["auto", "rounded", "square"]))])),
     ("messaging", table(&[("max_hops", POSITIVE), ("per_minute", POSITIVE)])),
     ("permissions", table(&[("keys_foreign", POLICY), ("close_foreign", POLICY), ("run_foreign", POLICY)])),
     ("agents", Schema::Record(&Schema::Record(&Schema::Unknown))), // per agent, over its adapter's fields

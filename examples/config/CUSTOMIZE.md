@@ -12,6 +12,10 @@ theme = "tokyonight"                                     # one theme
 theme = { dark = "tokyonight", light = "github-light" }  # by the terminal's own background
 ```
 
+The default is `pasture`: night ink, wool and gold, gold where you're looking and ember on what needs you. Every shade
+modisa adds to a theme's tokens (raised rows and pills, dialog panels, hairline borders, shadows, the focus ring from
+`focus` round to `accent`) is mixed from them, so a theme of your own gets all of it.
+
 With `dark` and `light`, a client asks the terminal for its background colour when it starts and takes the matching
 theme. (A terminal switching between light and dark while modisa runs is noticed when a client next attaches.) Light
 built-ins: `catppuccin-latte`, `github-light`, `tokyonight-day`, `solarized-light`, `gruvbox-light`, and the
@@ -110,8 +114,22 @@ of those formats (1–3 rows each); without it, modisa's own list, grouped by ta
 border = "rounded"          # single, rounded, double, heavy, light_double_dashed, heavy_double_dashed,
                             # light_triple_dashed, heavy_triple_dashed, light_quadruple_dashed, heavy_quadruple_dashed,
                             # quadrant_inside, quadrant_outside, proportional_wide, proportional_tall, full, none
-dim_unfocused = 0.25        # 0–0.8: the other panes' text mixed toward the background
+dim_unfocused = 0.3         # 0–0.8: the other panes' text mixed toward the background
 ```
+
+## Motion and pills
+
+```toml
+[ui]
+motion = true               # a spinner while an agent works, a slow pulse on what needs you, toasts sliding in,
+                            # the focus ring sweeping round when focus moves; false keeps everything still
+caps = "auto"               # the ends of the tab bar's and status row's pills: rounded, square, or auto (rounded
+                            # in Ghostty, kitty, WezTerm and VS Code, which draw the shape themselves)
+```
+
+Frames come on their own only while something moves (an agent working or needing you, a toast, a dialog opening);
+otherwise modisa draws when something changes, as before. An agent's row shows how long it has been in its state once
+modisa has seen that state begin, and, with room beside its name, what it printed in its last seconds.
 
 ## Keys
 

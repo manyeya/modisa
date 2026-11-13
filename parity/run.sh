@@ -21,6 +21,12 @@ cp "$here/install.sh" "$out/install.sh" # this project's installer, which the up
 #   check…": the examples from git history vendor library 10, and plugin check wants this build's 11
 rm "$out/test/e2e/plugin-views.test.ts"
 perl -pi -e 's/^test\((?="(every copy of the client library|the attention-log example passes|the worktrees example passes))/test.skip(/' "$out/test/e2e/plugin-authoring.test.ts"
+# Panes have rounded corners by default ([panes] border = "rounded", the Lantern look): the suite counted and found
+# panes by their square top-left corner, so it counts either
+perl -pi -e 's/s\.split\("┌"\)/s.split(\/[┌╭]\/)/' "$out/test/support/harness.ts"
+perl -pi -e 's/line\.includes\("┌"\)\)!\.indexOf\("┌"\)/\/[┌╭]\/.test(line))!.search(\/[┌╭]\/)/' "$out/test/e2e/ui/mouse.test.ts"
+# The default theme is pasture now, not ion: its background is what the terminal is told
+perl -pi -e 's{rgb:09/0f/1b}{rgb:0b/0e/1b}; s{ion, the default theme: bg #090f1b}{pasture, the default theme: bg #0b0e1b}' "$out/test/e2e/terminal-background.test.ts"
 # every way the suite starts modisa, pointed at the Rust binary
 find "$out/test" -name '*.ts' -exec perl -pi -e '
   s/\["bun", MAIN,/[process.env.MODISA_BIN!,/g;

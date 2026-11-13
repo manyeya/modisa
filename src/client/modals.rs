@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Position;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use serde_json::json;
 use tokio::sync::oneshot;
 
@@ -547,19 +547,9 @@ pub fn scroll(app: &mut App, by: i64) {
 
 // ---------- drawing ----------
 
-// The screen behind, dimmed: what was drawn takes a black veil.
-fn veil(c: &mut Canvas) {
-    let shade = |col: Color| match col {
-        Color::Rgb(r, g, b) => Color::Rgb((r as f64 * 0.45) as u8, (g as f64 * 0.45) as u8, (b as f64 * 0.45) as u8),
-        other => other,
-    };
-    for cell in c.buf.content.iter_mut() {
-        cell.fg = shade(cell.fg);
-        cell.bg = shade(cell.bg);
-        if !matches!(cell.fg, Color::Rgb(..)) {
-            cell.modifier |= Modifier::DIM;
-        }
-    }
+// The screen behind, drained of colour and sunk toward the background as the dialog opens.
+fn veil(app: &App, c: &mut Canvas) {
+    super::look::veil(c, &app.th, super::look::eased(app, app.modal_at, super::look::FADE));
     c.hit(Rect { x: 0, y: 0, w: c.w, h: c.h }, Hit::Veil);
 }
 
@@ -575,8 +565,9 @@ struct Frame {
 fn frame(th: &Theme, c: &mut Canvas, h: i32, w: i32, at: Option<(i32, i32)>) -> Frame {
     let r = floating(c.w, c.h, w, h, at.map(|a| a.0), at.map(|a| a.1));
     c.fill(r, th.bar);
-    c.border(r, BorderStyle::Rounded, &mix(th.border, th.focus, 0.45), Some(th.bar), None);
+    c.border(r, BorderStyle::Rounded, &super::look::panel_line(th), Some(th.bar), None);
     c.hit(r, Hit::Inert);
+    super::look::shadow(c, r, th);
     Frame { x: r.x + 2, y: r.y + 1, w: (r.w - 4).max(1), h: (r.h - 2).max(1), bottom: r.y + r.h - 1 }
 }
 
@@ -617,7 +608,7 @@ fn footer(th: &Theme, c: &mut Canvas, f: &Frame, y: i32, hints: &[(String, Strin
             break;
         }
         used += w;
-        c.text(x, y, key, th.fg, Some(th.bar), Modifier::empty(), w as usize);
+        c.text(x, y, key, th.fg, Some(th.bar), Modifier::BOLD, w as usize);
         c.text(x + width(key) as i32, y, &format!(" {what}   "), th.dim, Some(th.bar), Modifier::empty(), w as usize);
         x += w;
     }
@@ -683,7 +674,16 @@ pub fn draw(app: &mut App, c: &mut Canvas) -> Option<Position> {
     if matches!(app.modal, Some(Modal { kind: Kind::Popup(_), .. })) {
         return super::plugin_ui::draw_popup(app, c); // no veil: the popup's frame is what stands out
     }
-    veil(c);
+    veil(app, c);
+    // a dialog floats on its own panel, a shade off the bar, whatever draws in it
+    let th = app.th;
+    app.th.bar = super::look::intern(super::look::panel(&th));
+    let at = draw_kind(app, c);
+    app.th = th;
+    at
+}
+
+fn draw_kind(app: &mut App, c: &mut Canvas) -> Option<Position> {
     let modal = app.modal.as_mut()?;
     match &mut modal.kind {
         Kind::Popup(_) => None,
@@ -748,7 +748,7 @@ fn draw_list(app: &mut App, c: &mut Canvas) {
         let name = fit(&item.name, room.min(((room as f64 * 0.55).ceil() as usize).max(room.saturating_sub(desc_w + 2))).max(1));
         let mut x = f.x + 1;
         x = c.spans(x, f.y, &[(" ".into(), th.fg, false)], Some(&bg), 1);
-        x = c.spans(x, f.y, &highlight(&name, &query, name_color, th.accent, on), Some(&bg), room);
+        x = c.spans(x, f.y, &highlight(&name, &query, name_color, th.focus, on), Some(&bg), room);
         let desc_room = room as i64 - width(&name) as i64 - 3;
         if let Some(d) = item.description.as_ref().filter(|_| desc_room >= 4) {
             x = c.spans(x, f.y, &[("  ".into(), th.dim, false)], Some(&bg), 2);
